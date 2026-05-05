@@ -1,129 +1,155 @@
+// src/stores/useFleetStore.ts
+// Updated to use real GPS51 data instead of mock simulation
+
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { FleetUnit, GPSTelemetry } from "@/types";
+import { fetchLastPosition } from "@/services/gps51";
+
+// ─── GPS51 credentials ───────────────────────────────────────────────────────
+// ⚠️ Move these to .env in production:
+// VITE_GPS51_USERNAME=your_username
+// VITE_GPS51_PASSWORD=your_password
+const GPS51_USERNAME = import.meta.env.VITE_GPS51_USERNAME ?? "";
+const GPS51_PASSWORD = import.meta.env.VITE_GPS51_PASSWORD ?? "";
+// ─────────────────────────────────────────────────────────────────────────────
 
 interface FleetState {
   units: FleetUnit[];
   selectedUnitId: number | null;
-  startSimulation: () => void;
-  stopSimulation: () => void;
+  isLive: boolean;
+  lastFetchedAt: string | null;
+  fetchError: string | null;
+
+  // Actions
   selectUnit: (id: number | null) => void;
   getUnitTelemetry: (unitId: number) => GPSTelemetry | null;
+  startLiveTracking: () => void;
+  stopLiveTracking: () => void;
+  fetchNow: () => Promise<void>;
+
+  // Keep simulation for non-GPS51 units (optional)
+  startSimulation: () => void;
+  stopSimulation: () => void;
 }
 
-const createInitialTelemetry = (): GPSTelemetry => ({
-  lat: 41.4036,
-  lng: 2.1741,
-  hours: 4532,
-  status: "online",
-  speed: 45,
-  heading: 180,
-  lastUpdated: new Date().toISOString(),
-});
+// Your real tracker unit — ID 1 maps to the KS199D-4G device
+const GPS51_UNIT_ID = 1;
 
-const mockUnits: FleetUnit[] = [
-  {
-    id: 1,
-    equipmentId: 1,
-    unitName: "GPS-001 (Acme)",
-    telemetry: createInitialTelemetry(),
-    serviceDue: false,
+// Placeholder for initial render before first fetch
+const initialUnit: FleetUnit = {
+  id: GPS51_UNIT_ID,
+  equipmentId: 1,
+  unitName: "KS199D-4G Tracker",
+  telemetry: {
+    lat: 14.6507,   // Manila default until first fetch
+    lng: 21.0995,
+    hours: 0,
+    status: "idle",
+    speed: 0,
+    heading: 0,
+    lastUpdated: new Date().toISOString(),
   },
-  {
-    id: 2,
-    equipmentId: 3,
-    unitName: "GPS-003 (TechCorp)",
-    telemetry: {
-      ...createInitialTelemetry(),
-      lat: 37.3382,
-      lng: -121.8863,
-      hours: 3890,
-      speed: 0,
-      status: "idle",
-    },
-    serviceDue: false,
-  },
-  {
-    id: 3,
-    equipmentId: 4,
-    unitName: "GPS-004 (Metro)",
-    telemetry: {
-      ...createInitialTelemetry(),
-      lat: 41.8781,
-      lng: -87.6298,
-      hours: 2100,
-      speed: 62,
-      status: "online",
-    },
-    serviceDue: true,
-  },
-  {
-    id: 4,
-    equipmentId: 10,
-    unitName: "GPS-010 (Metro)",
-    telemetry: {
-      ...createInitialTelemetry(),
-      lat: 41.8313,
-      lng: -87.6452,
-      hours: 3450,
-      speed: 38,
-      status: "online",
-    },
-    serviceDue: false,
-  },
-  {
-    id: 5,
-    equipmentId: 7,
-    unitName: "GPS-007 (Atlas)",
-    telemetry: {
-      ...createInitialTelemetry(),
-      lat: 39.7392,
-      lng: -104.9903,
-      hours: 5200,
-      speed: 0,
-      status: "idle",
-    },
-    serviceDue: true,
-  },
-];
+  serviceDue: false,
+};
 
+let liveInterval: ReturnType<typeof setInterval> | null = null;
 let simulationInterval: ReturnType<typeof setInterval> | null = null;
 
 export const useFleetStore = create<FleetState>()(
   persist(
     (set, get) => ({
-      units: mockUnits,
-      selectedUnitId: 1,
+      units: [initialUnit],
+      selectedUnitId: GPS51_UNIT_ID,
+      isLive: false,
+      lastFetchedAt: null,
+      fetchError: null,
 
+      // ── Fetch real GPS data now ──────────────────────────────────────────
+      fetchNow: async () => {
+        try {
+          const position = await fetchLastPosition(GPS51_USERNAME, GPS51_PASSWORD);
+
+          if (!position) {
+            set({ fetchError: "No position data returned" });
+            return;
+          }
+
+          // Map GPS51 status string to our status type
+          const status: GPSTelemetry["status"] =
+            position.moving === 1 ? "online" : "idle";
+
+          set((state) => ({
+            fetchError: null,
+            lastFetchedAt: new Date().toISOString(),
+            units: state.units.map((unit) =>
+              unit.id === GPS51_UNIT_ID
+                ? {
+                    ...unit,
+                    telemetry: {
+                      lat: position.lat,
+                      lng: position.lng,
+                      speed: Math.round(position.speed * 0.000277778), // m/s → mph
+                      heading: position.course,
+                      status,
+                      hours: position.onlineHours,
+                      lastUpdated: new Date(position.devicetime).toISOString(),
+                    },
+                  }
+                : unit
+            ),
+          }));
+        } catch (err: any) {
+          set({ fetchError: err.message ?? "Unknown error fetching GPS data" });
+          console.error("GPS51 fetch error:", err);
+        }
+      },
+
+      // ── Start live tracking (polls every 30 seconds) ─────────────────────
+      startLiveTracking: () => {
+        if (liveInterval) return;
+        set({ isLive: true });
+
+        // Fetch immediately on start
+        get().fetchNow();
+
+        // Then every 30 seconds
+        liveInterval = setInterval(() => {
+          get().fetchNow();
+        }, 30_000);
+      },
+
+      // ── Stop live tracking ───────────────────────────────────────────────
+      stopLiveTracking: () => {
+        if (liveInterval) {
+          clearInterval(liveInterval);
+          liveInterval = null;
+        }
+        set({ isLive: false });
+      },
+
+      // ── Select a unit on the map ─────────────────────────────────────────
+      selectUnit: (id) => set({ selectedUnitId: id }),
+
+      getUnitTelemetry: (unitId) => {
+        const unit = get().units.find((u) => u.id === unitId);
+        return unit?.telemetry || null;
+      },
+
+      // ── Legacy simulation (kept for compatibility) ───────────────────────
       startSimulation: () => {
         if (simulationInterval) return;
         simulationInterval = setInterval(() => {
           set((state) => ({
-            units: state.units.map((unit) => {
-              const newLat = unit.telemetry.lat + (Math.random() - 0.5) * 0.0005;
-              const newLng = unit.telemetry.lng + (Math.random() - 0.5) * 0.0005;
-              const newHours = unit.telemetry.hours + 0.001;
-              const statuses: GPSTelemetry["status"][] = ["online", "idle"];
-              const newStatus = Math.random() > 0.9
-                ? statuses[Math.floor(Math.random() * statuses.length)]
-                : unit.telemetry.status;
-              const newSpeed = newStatus === "online" ? Math.floor(Math.random() * 80) : 0;
-              const newHeading = (unit.telemetry.heading + (Math.random() - 0.5) * 10) % 360;
-
-              return {
-                ...unit,
-                telemetry: {
-                  ...unit.telemetry,
-                  lat: newLat,
-                  lng: newLng,
-                  hours: newHours,
-                  status: newStatus,
-                  speed: newSpeed,
-                  heading: Math.abs(newHeading),
-                  lastUpdated: new Date().toISOString(),
-                },
-              };
-            }),
+            units: state.units.map((unit) => ({
+              ...unit,
+              telemetry: {
+                ...unit.telemetry,
+                lat: unit.telemetry.lat + (Math.random() - 0.5) * 0.0005,
+                lng: unit.telemetry.lng + (Math.random() - 0.5) * 0.0005,
+                lastUpdated: new Date().toISOString(),
+              },
+            })),
           }));
         }, 3000);
       },
@@ -134,19 +160,13 @@ export const useFleetStore = create<FleetState>()(
           simulationInterval = null;
         }
       },
-
-      selectUnit: (id) => {
-        set({ selectedUnitId: id });
-      },
-
-      getUnitTelemetry: (unitId) => {
-        const unit = get().units.find((u) => u.id === unitId);
-        return unit?.telemetry || null;
-      },
     }),
     {
       name: "nextos-fleet",
-      partialize: (state) => ({ units: state.units, selectedUnitId: state.selectedUnitId }),
+      partialize: (state) => ({
+        units: state.units,
+        selectedUnitId: state.selectedUnitId,
+      }),
     }
   )
 );

@@ -1,7 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useNavigate, useLocation } from "react-router";
 import { useAuthStore } from "@/stores/useAuthStore";
-import { useFleetStore } from "@/stores/useFleetStore";
 import type { UserRole } from "@/types";
 import {
   LayoutDashboard,
@@ -46,19 +45,11 @@ const navItems: NavItem[] = [
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const { user, login, logout, isAuthenticated } = useAuthStore();
-  const { startSimulation, stopSimulation } = useFleetStore();
   const navigate = useNavigate();
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(false);
   const [magicLinkEmail, setMagicLinkEmail] = useState("");
   const [magicLinkGenerated, setMagicLinkGenerated] = useState("");
-
-  useEffect(() => {
-    if (isAuthenticated) {
-      startSimulation();
-    }
-    return () => stopSimulation();
-  }, [isAuthenticated, startSimulation, stopSimulation]);
 
   const handleRoleChange = (role: UserRole) => {
     login(role);

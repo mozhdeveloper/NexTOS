@@ -29,6 +29,12 @@ import {
 } from "lucide-react";
 
 export default function Dashboard() {
+function formatHoursMinutes(hours: number): string {
+  const totalMinutes = Math.max(0, Math.floor((hours ?? 0) * 60));
+  const wholeHours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return `${wholeHours}h ${minutes}m`;
+}
   const { user } = useAuthStore();
   const { deals, tasks, leads, getOverdueTasks } = useCRMStore();
   const { getTotalRevenue, getOutstandingRevenue } = useBillingStore();
@@ -290,7 +296,7 @@ export default function Dashboard() {
             <div className="font-mono-tech text-[10px] text-[#88888C] space-y-0.5">
               <div>Lat: {unit.telemetry.lat.toFixed(4)}</div>
               <div>Lng: {unit.telemetry.lng.toFixed(4)}</div>
-              <div>Hours: {Math.floor(unit.telemetry.hours)}</div>
+              <div>Hours: {formatHoursMinutes(unit.telemetry.hours)}</div>
               <div className="flex items-center gap-1">
                 Speed: {unit.telemetry.speed} mph
                 {unit.serviceDue && (
