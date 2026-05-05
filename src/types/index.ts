@@ -51,7 +51,7 @@ export interface Lead {
   createdAt: string;
 }
 
-export type DealStage = "inquiry" | "proposal" | "negotiation" | "contracting" | "closed_won" | "closed_lost";
+export type DealStage = "inquiry" | "proposal" | "negotiation" | "closed_won" | "closed_lost";
 
 export interface Deal {
   id: number;

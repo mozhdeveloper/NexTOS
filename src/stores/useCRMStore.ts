@@ -141,7 +141,6 @@ export const useCRMStore = create<CRMState>()(
                 inquiry: 20,
                 proposal: 45,
                 negotiation: 70,
-                contracting: 90,
                 closed_won: 100,
                 closed_lost: 0,
               };

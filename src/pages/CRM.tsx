@@ -110,7 +110,6 @@ export default function CRM() {
     { id: "inquiry", label: "Inquiry", color: "#005F73" },
     { id: "proposal", label: "Proposal", color: "#8B5CF6" },
     { id: "negotiation", label: "Negotiation", color: "#F2A900" },
-    { id: "contracting", label: "Contracting", color: "#00A8E8" },
     { id: "closed_won", label: "Closed Won", color: "#10B981" },
     { id: "closed_lost", label: "Closed Lost", color: "#EF4444" },
   ];
@@ -415,7 +414,7 @@ export default function CRM() {
                   <Button
                     className="flex-1 bg-[#F2A900]"
                     onClick={() => {
-                      const probMap: Record<DealStage, number> = { inquiry: 20, proposal: 45, negotiation: 70, contracting: 85, closed_won: 100, closed_lost: 0 };
+                      const probMap: Record<DealStage, number> = { inquiry: 20, proposal: 45, negotiation: 70, closed_won: 100, closed_lost: 0 };
                       const value = Number(dealValue) || 0;
                       useCRMStore.getState().addDeal({
                         clientId: dealClientId ?? clients[0].id,
@@ -833,7 +832,6 @@ function DealCard({
     inquiry: "#005F73",
     proposal: "#8B5CF6",
     negotiation: "#F2A900",
-    contracting: "#00A8E8",
     closed_won: "#10B981",
     closed_lost: "#EF4444",
   };
