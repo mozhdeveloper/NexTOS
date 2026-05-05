@@ -17,6 +17,7 @@ import {
 import { Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import PageHeader from "@/components/PageHeader";
 import {
   Select,
   SelectContent,
@@ -97,19 +98,16 @@ export default function CRM() {
 
   return (
     <div className="space-y-4">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-[32px] font-bold text-[#EAEAEA] tracking-[-0.02em]">CRM</h1>
-          <p className="text-sm text-[#88888C] mt-0.5">Client management & sales pipeline</p>
-        </div>
-        <div className="flex items-center gap-2">
+      <PageHeader
+        title="CRM"
+        subtitle="Client management & sales pipeline"
+        actions={
           <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded bg-[#EF4444]/10 border border-[#EF4444]/20">
             <AlertTriangle className="w-3.5 h-3.5 text-[#EF4444]" />
             <span className="text-xs text-[#EF4444] font-medium">{overdueTasks.length} overdue</span>
           </div>
-        </div>
-      </div>
+        }
+      />
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-white/5 pb-0">

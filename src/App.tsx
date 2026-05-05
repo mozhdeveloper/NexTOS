@@ -7,6 +7,7 @@ import CRM from '@/pages/CRM'
 import Services from '@/pages/Services'
 import Fleet from '@/pages/Fleet'
 import ClientPortal from '@/pages/ClientPortal'
+import ClientEquipment from '@/pages/client/Equipment'
 import Billing from '@/pages/Billing'
 import Reports from '@/pages/Reports'
 import Settings from '@/pages/Settings'
@@ -29,7 +30,7 @@ function ClientPortalRoutes() {
       <Routes>
         <Route path="/"                    element={<Navigate to="/client" replace />} />
         <Route path="/client"              element={<ClientPortalPlaceholder />} />
-        <Route path="/client/equipment"    element={<ClientPortalPlaceholder />} />
+        <Route path="/client/equipment"    element={<ClientEquipment />} />
         <Route path="/client/history"      element={<ClientPortalPlaceholder />} />
         <Route path="/client/bookings"     element={<ClientPortalPlaceholder />} />
         <Route path="/client/packages"     element={<ClientPortalPlaceholder />} />
