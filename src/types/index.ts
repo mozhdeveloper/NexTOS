@@ -26,11 +26,14 @@ export interface Client {
   createdAt: string;
 }
 
+export type Department = "Purchasing" | "Engineering" | "Operations" | "Service" | "Finance" | "Management";
+
 export interface Contact {
   id: number;
   clientId: number;
   name: string;
   role: string;
+  department: Department;
   email: string;
   phone: string;
   isPrimary: boolean;

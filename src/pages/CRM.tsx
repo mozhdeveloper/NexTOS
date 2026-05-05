@@ -1,7 +1,9 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useCRMStore } from "@/stores/useCRMStore";
 import { useAuthStore } from "@/stores/useAuthStore";
-import type { Deal, DealStage, Task, Client } from "@/types";
+import { useOperationsStore } from "@/stores/useOperationsStore";
+import { useBillingStore } from "@/stores/useBillingStore";
+import type { Deal, DealStage, Task, Client, Contact, Equipment, ServiceRecord, Booking, Package, Invoice } from "@/types";
 import {
   Search,
   Filter,
@@ -13,6 +15,17 @@ import {
   Building2,
   TrendingUp,
   ArrowRightLeft,
+  ChevronLeft,
+  MapPin,
+  Calendar,
+  Layers,
+  FileText,
+  Wrench,
+  CreditCard,
+  User as UserIcon,
+  Plus,
+  X,
+  Package as PackageIcon,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
@@ -22,24 +35,35 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
 
 type TabType = "clients" | "pipeline" | "tasks" | "leads";
 
 export default function CRM() {
-  useAuthStore();
+  const { user } = useAuthStore();
   const {
     clients,
     deals,
     tasks,
     leads,
+    contacts,
     moveDealStage,
     completeTask,
     getOverdueTasks,
   } = useCRMStore();
+  
+  const { equipment, serviceRecords, bookings } = useOperationsStore();
+  const { packages, invoices } = useBillingStore();
+
   const [activeTab, setActiveTab] = useState<TabType>("pipeline");
   const [searchQuery, setSearchQuery] = useState("");
   const [clientFilter, setClientFilter] = useState("all");
   const [draggingDeal, setDraggingDeal] = useState<number | null>(null);
+  const [selectedClientId, setSelectedClientId] = useState<number | null>(null);
+
+  // Modals
+  const [dealModalOpen, setDealModalOpen] = useState(false);
+  const [taskModalOpen, setTaskModalOpen] = useState(false);
 
   // Filter clients
   const filteredClients = clients.filter((c) => {
@@ -50,6 +74,26 @@ export default function CRM() {
     const matchesFilter = clientFilter === "all" || c.status === clientFilter;
     return matchesSearch && matchesFilter;
   });
+
+  // Client Profile Data aggregation
+  const selectedClient = useMemo(() => 
+    clients.find(c => c.id === selectedClientId),
+    [selectedClientId, clients]
+  );
+
+  const clientData = useMemo(() => {
+    if (!selectedClientId) return null;
+    return {
+      contacts: contacts.filter(c => c.clientId === selectedClientId),
+      equipment: equipment.filter(e => e.clientId === selectedClientId),
+      deals: deals.filter(d => d.clientId === selectedClientId),
+      serviceHistory: serviceRecords.filter(s => s.clientId === selectedClientId),
+      bookings: bookings.filter(b => b.clientId === selectedClientId),
+      packages: packages.filter(p => p.clientId === selectedClientId),
+      invoices: invoices.filter(i => i.clientId === selectedClientId),
+      tasks: tasks.filter(t => t.relatedId === selectedClientId && t.relatedType === 'client'),
+    };
+  }, [selectedClientId, contacts, equipment, deals, serviceRecords, bookings, packages, invoices, tasks]);
 
   // Pipeline columns
   const stages: { id: DealStage; label: string; color: string }[] = [
@@ -89,6 +133,16 @@ export default function CRM() {
     );
   });
 
+  if (selectedClientId && selectedClient && clientData) {
+    return (
+      <ClientProfile 
+        client={selectedClient} 
+        data={clientData} 
+        onBack={() => setSelectedClientId(null)} 
+      />
+    );
+  }
+
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -105,7 +159,7 @@ export default function CRM() {
         </div>
       </div>
 
-      {/* Search Bar - Shared across tabs or specific? Let's make it shared for consistency */}
+      {/* Search Bar */}
       <div className="flex items-center gap-3">
         <div className="relative flex-1 max-w-xs">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#88888C]" />
@@ -144,10 +198,7 @@ export default function CRM() {
         ).map((tab) => (
           <button
             key={tab.id}
-            onClick={() => {
-              setActiveTab(tab.id);
-              // Search query is shared, but we could clear it if we wanted tab-specific
-            }}
+            onClick={() => setActiveTab(tab.id)}
             className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium transition-all border-b-2 ${
               activeTab === tab.id
                 ? "border-[#F2A900] text-[#F2A900] bg-[#F2A900]/5"
@@ -162,10 +213,20 @@ export default function CRM() {
 
       {/* Pipeline Tab */}
       {activeTab === "pipeline" && (
-        <div className="flex gap-3 overflow-x-auto pb-2 min-h-[500px]">
+        <div className="space-y-4">
+          <div className="flex items-center justify-between px-1">
+            <div className="flex items-center gap-2">
+              <TrendingUp className="w-4 h-4 text-[#F2A900]" />
+              <h3 className="text-sm font-semibold text-[#EAEAEA]">Sales Pipeline</h3>
+            </div>
+            <Button onClick={() => setDealModalOpen(true)} className="h-8 bg-[#F2A900] hover:bg-[#F2A900]/80 text-[#050505] text-xs font-bold">
+              <Plus className="w-3.5 h-3.5 mr-1.5" />
+              New Deal
+            </Button>
+          </div>
+          <div className="flex gap-3 overflow-x-auto pb-4 min-h-[600px] scrollbar-hide">
           {stages.map((stage) => {
             const stageDeals = filteredDeals.filter((d) => d.stage === stage.id);
-            // Calculate Weighted Value: Sum of (Value * Probability / 100)
             const weightedValue = stageDeals.reduce((sum, d) => sum + (d.value * d.probability / 100), 0);
             return (
               <div
@@ -210,6 +271,7 @@ export default function CRM() {
               </div>
             );
           })}
+          </div>
         </div>
       )}
 
@@ -230,7 +292,11 @@ export default function CRM() {
               </thead>
               <tbody>
                 {filteredClients.map((client) => (
-                  <ClientRow key={client.id} client={client} />
+                  <ClientRow 
+                    key={client.id} 
+                    client={client} 
+                    onClick={() => setSelectedClientId(client.id)}
+                  />
                 ))}
               </tbody>
             </table>
@@ -248,7 +314,7 @@ export default function CRM() {
                   (searchQuery === "" ||
                   l.source.toLowerCase().includes(searchQuery.toLowerCase()) ||
                   l.notes.toLowerCase().includes(searchQuery.toLowerCase())) &&
-                  (l.status !== 'lost' && l.status !== 'qualified') // Filter active leads
+                  (l.status !== 'lost' && l.status !== 'qualified')
               )
               .map((lead) => (
                 <LeadCard key={lead.id} lead={lead} client={clients.find((c) => c.id === lead.clientId)} />
@@ -260,7 +326,7 @@ export default function CRM() {
       {/* Tasks Tab */}
       {activeTab === "tasks" && (
         <div className="space-y-3">
-          <div className="flex justify-between items-center">
+          <div className="flex justify-between items-center mb-2">
             <div className="flex gap-2">
               <div className="relative max-w-xs">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#88888C]" />
@@ -272,6 +338,10 @@ export default function CRM() {
                 />
               </div>
             </div>
+            <Button onClick={() => setTaskModalOpen(true)} className="h-8 bg-[#F2A900] hover:bg-[#F2A900]/80 text-[#050505] text-xs font-bold">
+              <Plus className="w-3 h-3 mr-2" />
+              Add Task
+            </Button>
           </div>
 
           {overdueTasks.length > 0 && (
@@ -301,6 +371,316 @@ export default function CRM() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function ClientProfile({ 
+  client, 
+  data, 
+  onBack 
+}: { 
+  client: Client; 
+  data: any; 
+  onBack: () => void 
+}) {
+  const [profileTab, setProfileTab] = useState<"overview" | "assets" | "billing" | "history">("overview");
+
+  return (
+    <div className="space-y-6 animate-in fade-in slide-in-from-left-4 duration-300">
+      {/* Back & Breadcrumb */}
+      <button 
+        onClick={onBack}
+        className="flex items-center gap-2 text-[#88888C] hover:text-[#EAEAEA] transition-colors"
+      >
+        <ChevronLeft className="w-4 h-4" />
+        <span className="text-xs font-medium">Back to CRM</span>
+      </button>
+
+      {/* Profile Header */}
+      <div className="flex items-start justify-between">
+        <div className="flex items-center gap-4">
+          <div className="w-16 h-16 rounded bg-[#F2A900]/10 border border-[#F2A900]/20 flex items-center justify-center">
+            <Building2 className="w-8 h-8 text-[#F2A900]" />
+          </div>
+          <div>
+            <h2 className="text-3xl font-bold text-[#EAEAEA] tracking-tight">{client.companyName}</h2>
+            <div className="flex items-center gap-3 mt-1.5">
+              <div className="flex items-center gap-1 text-xs text-[#88888C]">
+                <Layers className="w-3.5 h-3.5" />
+                {client.industry}
+              </div>
+              <div className="flex items-center gap-1 text-xs text-[#88888C]">
+                <MapPin className="w-3.5 h-3.5" />
+                {client.city}, {client.country}
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <Button variant="outline" className="h-8 text-xs border-white/10 text-[#88888C]">
+            Edit Profile
+          </Button>
+          <Button className="h-8 text-xs bg-[#F2A900] text-[#050505] font-bold">
+            Create Booking
+          </Button>
+        </div>
+      </div>
+
+      {/* Profile Navigation */}
+      <div className="flex gap-6 border-b border-white/5">
+        {[
+          { id: "overview", label: "Overview", icon: Building2 },
+          { id: "assets", label: "Equipment & Assets", icon: PackageIcon },
+          { id: "billing", label: "Billing & Packages", icon: CreditCard },
+          { id: "history", label: "Service History", icon: Wrench },
+        ].map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setProfileTab(tab.id as any)}
+            className={`flex items-center gap-2 pb-3 text-xs font-semibold transition-all border-b-2 ${
+              profileTab === tab.id
+                ? "border-[#F2A900] text-[#F2A900]"
+                : "border-transparent text-[#88888C] hover:text-[#EAEAEA]"
+            }`}
+          >
+            <tab.icon className="w-3.5 h-3.5" />
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Tab Content */}
+      <div className="grid grid-cols-12 gap-6">
+        {profileTab === "overview" && (
+          <>
+            {/* Left Column: Basic Info & Contacts */}
+            <div className="col-span-8 space-y-6">
+              <div className="data-card p-5 space-y-4">
+                <h3 className="text-sm font-bold text-[#EAEAEA] flex items-center gap-2">
+                  <UserIcon className="w-4 h-4 text-[#F2A900]" />
+                  Departmental Contacts
+                </h3>
+                <div className="grid grid-cols-2 gap-4">
+                  {data.contacts.map((contact: Contact) => (
+                    <div key={contact.id} className="p-3 rounded bg-[#1A1A20] border border-white/5">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <div className="text-xs font-bold text-[#EAEAEA]">{contact.name}</div>
+                          <div className="text-[10px] text-[#F2A900] font-medium uppercase tracking-wider">
+                            {contact.department} • {contact.role}
+                          </div>
+                        </div>
+                        {contact.isPrimary && (
+                          <span className="px-1.5 py-0.5 rounded bg-[#10B981]/10 text-[#10B981] text-[9px] font-bold uppercase">
+                            Primary
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-3 mt-3">
+                        <div className="flex items-center gap-1 text-[10px] text-[#88888C]">
+                          <Mail className="w-3 h-3" />
+                          {contact.email}
+                        </div>
+                        <div className="flex items-center gap-1 text-[10px] text-[#88888C]">
+                          <Phone className="w-3 h-3" />
+                          {contact.phone}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Active Deals */}
+              <div className="data-card p-5 space-y-4">
+                <h3 className="text-sm font-bold text-[#EAEAEA] flex items-center gap-2">
+                  <TrendingUp className="w-4 h-4 text-[#F2A900]" />
+                  Active Deals
+                </h3>
+                <div className="space-y-2">
+                  {data.deals.map((deal: Deal) => (
+                    <div key={deal.id} className="flex items-center justify-between p-3 rounded bg-[#1A1A20] border border-white/5">
+                      <div>
+                        <div className="text-xs font-bold text-[#EAEAEA]">{deal.title}</div>
+                        <div className="text-[10px] text-[#88888C]">Expected Close: {new Date(deal.expectedClose).toLocaleDateString()}</div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-xs font-bold text-[#F2A900] font-mono-tech">${deal.value.toLocaleString()}</div>
+                        <div className="text-[10px] text-[#88888C] capitalize">{deal.stage.replace('_', ' ')}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Right Column: Summaries & Quick Tasks */}
+            <div className="col-span-4 space-y-6">
+              <div className="data-card p-5 space-y-4">
+                <h3 className="text-sm font-bold text-[#EAEAEA]">Client Summary</h3>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-[#88888C]">Total Assets</span>
+                    <span className="text-xs font-bold text-[#EAEAEA]">{data.equipment.length} Units</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-[#88888C]">Active Package</span>
+                    <span className="text-xs font-bold text-[#10B981]">
+                      {data.packages[0]?.tier.toUpperCase() || "NONE"}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-[#88888C]">Contract Value</span>
+                    <span className="text-xs font-bold text-[#F2A900] font-mono-tech">
+                      ${client.contractValue.toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="data-card p-5 space-y-4">
+                <h3 className="text-sm font-bold text-[#EAEAEA] flex items-center gap-2">
+                  <Calendar className="w-4 h-4 text-[#F2A900]" />
+                  Upcoming Bookings
+                </h3>
+                {data.bookings.map((booking: Booking) => (
+                  <div key={booking.id} className="p-2.5 rounded bg-[#1A1A20] border border-white/5">
+                    <div className="text-[10px] font-bold text-[#EAEAEA] uppercase">{booking.serviceType}</div>
+                    <div className="text-[10px] text-[#88888C] mt-1">{new Date(booking.requestedDate).toLocaleDateString()} • {booking.preferredTime}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+
+        {profileTab === "assets" && (
+          <div className="col-span-12">
+            <div className="data-card overflow-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-[#0A0A0C]">
+                    <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Unit ID</th>
+                    <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Type</th>
+                    <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Serial</th>
+                    <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Location</th>
+                    <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.equipment.map((eq: Equipment) => (
+                    <tr key={eq.id} className="border-b border-white/5">
+                      <td className="py-2.5 px-3 text-[#EAEAEA] font-bold">{eq.unitId}</td>
+                      <td className="py-2.5 px-3 text-[#EAEAEA]">{eq.type}</td>
+                      <td className="py-2.5 px-3 text-[#88888C] font-mono-tech">{eq.serialNumber}</td>
+                      <td className="py-2.5 px-3 text-[#EAEAEA]">{eq.location}</td>
+                      <td className="py-2.5 px-3">
+                        <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-[#10B981]/10 text-[#10B981] uppercase">
+                          {eq.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {profileTab === "billing" && (
+          <div className="col-span-12 space-y-6">
+            <div className="grid grid-cols-3 gap-6">
+              {data.packages.map((pkg: Package) => (
+                <div key={pkg.id} className="data-card p-5 border-t-4 border-t-[#F2A900]">
+                  <div className="text-[10px] text-[#F2A900] font-bold uppercase mb-1">{pkg.tier} Package</div>
+                  <div className="text-lg font-bold text-[#EAEAEA]">{pkg.name}</div>
+                  <div className="text-2xl font-bold text-[#EAEAEA] mt-4 font-mono-tech">${pkg.price}/mo</div>
+                  <div className="mt-4 space-y-2">
+                    {pkg.includedServices.map((service: string, i: number) => (
+                      <div key={i} className="flex items-center gap-2 text-[10px] text-[#88888C]">
+                        <CheckCircle2 className="w-3 h-3 text-[#10B981]" />
+                        {service}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="data-card overflow-auto">
+              <h3 className="p-4 text-sm font-bold text-[#EAEAEA]">Recent Invoices</h3>
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-[#0A0A0C]">
+                    <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Invoice #</th>
+                    <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Due Date</th>
+                    <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Amount</th>
+                    <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.invoices.map((inv: Invoice) => (
+                    <tr key={inv.id} className="border-b border-white/5">
+                      <td className="py-2.5 px-3 text-[#EAEAEA] font-mono-tech">{inv.invoiceNumber}</td>
+                      <td className="py-2.5 px-3 text-[#88888C]">{new Date(inv.dueDate).toLocaleDateString()}</td>
+                      <td className="py-2.5 px-3 text-[#F2A900] font-bold font-mono-tech">${inv.total.toFixed(2)}</td>
+                      <td className="py-2.5 px-3">
+                        <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-[#F2A900]/10 text-[#F2A900] uppercase">
+                          {inv.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {profileTab === "history" && (
+          <div className="col-span-12">
+            <div className="data-card overflow-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-[#0A0A0C]">
+                    <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Date</th>
+                    <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Equipment</th>
+                    <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Service Type</th>
+                    <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Technician</th>
+                    <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.serviceHistory.map((s: ServiceRecord) => (
+                    <tr key={s.id} className="border-b border-white/5">
+                      <td className="py-2.5 px-3 text-[#88888C] font-mono-tech">
+                        {s.completedDate ? new Date(s.completedDate).toLocaleDateString() : '—'}
+                      </td>
+                      <td className="py-2.5 px-3 text-[#EAEAEA] font-bold">
+                        {data.equipment.find((e: Equipment) => e.id === s.equipmentId)?.unitId || '—'}
+                      </td>
+                      <td className="py-2.5 px-3">
+                        <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-[#005F73]/10 text-[#005F73] uppercase">
+                          {s.serviceType}
+                        </span>
+                      </td>
+                      <td className="py-2.5 px-3 text-[#EAEAEA]">{s.technician}</td>
+                      <td className="py-2.5 px-3">
+                        <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${
+                          s.status === 'completed' ? 'bg-[#10B981]/10 text-[#10B981]' : 'bg-[#F2A900]/10 text-[#F2A900]'
+                        }`}>
+                          {s.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -349,7 +729,7 @@ function DealCard({
   );
 }
 
-function ClientRow({ client }: { client: Client }) {
+function ClientRow({ client, onClick }: { client: Client; onClick: () => void }) {
   const statusColors = {
     active: "bg-[#10B981]/20 text-[#10B981]",
     prospect: "bg-[#F2A900]/20 text-[#F2A900]",
@@ -357,7 +737,10 @@ function ClientRow({ client }: { client: Client }) {
   };
 
   return (
-    <tr className="grid-table-row border-b border-[#2A2A30]">
+    <tr 
+      className="grid-table-row border-b border-[#2A2A30] cursor-pointer hover:bg-[#2A2A30] transition-colors"
+      onClick={onClick}
+    >
       <td className="py-2.5 px-3">
         <div className="text-[#EAEAEA] font-medium">{client.companyName}</div>
         <div className="text-[10px] text-[#88888C]">{client.industry}</div>
@@ -394,7 +777,7 @@ function ClientRow({ client }: { client: Client }) {
   );
 }
 
-function LeadCard({ lead, client }: { lead: import("@/types").Lead; client?: Client }) {
+function LeadCard({ lead, client }: { lead: Lead; client?: Client }) {
   const priorityColors = {
     low: "bg-[#005F73]/20 text-[#005F73]",
     medium: "bg-[#F2A900]/20 text-[#F2A900]",

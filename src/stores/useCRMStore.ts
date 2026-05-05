@@ -40,21 +40,21 @@ const mockClients: Client[] = [
 ];
 
 const mockContacts: Contact[] = [
-  { id: 1, clientId: 1, name: "Robert Hale", role: "Security Director", email: "robert@acme.com", phone: "+1-555-0101", isPrimary: true },
-  { id: 2, clientId: 1, name: "Nancy Hale", role: "Operations Manager", email: "nancy@acme.com", phone: "+1-555-0111", isPrimary: false },
-  { id: 3, clientId: 2, name: "Lisa Park", role: "CTO", email: "lisa@techcorp.com", phone: "+1-555-0102", isPrimary: true },
-  { id: 4, clientId: 2, name: "Tom Bradley", role: "IT Manager", email: "tom@techcorp.com", phone: "+1-555-0112", isPrimary: false },
-  { id: 5, clientId: 3, name: "David Kim", role: "Property Manager", email: "david@guardian.com", phone: "+1-555-0103", isPrimary: true },
-  { id: 6, clientId: 4, name: "Amanda Foster", role: "Fleet Manager", email: "amanda@metrolog.com", phone: "+1-555-0104", isPrimary: true },
-  { id: 7, clientId: 5, name: "Carlos Mendez", role: "CEO", email: "carlos@securenet.com", phone: "+1-555-0105", isPrimary: true },
-  { id: 8, clientId: 6, name: "Jennifer Walsh", role: "Facilities Director", email: "jen@brightstar.com", phone: "+1-555-0106", isPrimary: true },
-  { id: 9, clientId: 7, name: "Dr. Sam Patel", role: "Medical Director", email: "sam@harbormed.com", phone: "+1-555-0107", isPrimary: true },
-  { id: 10, clientId: 8, name: "Mike Torres", role: "Project Manager", email: "mike@atlas.com", phone: "+1-555-0108", isPrimary: true },
-  { id: 11, clientId: 3, name: "Elena Rossi", role: "Assistant Manager", email: "elena@guardian.com", phone: "+1-555-0113", isPrimary: false },
-  { id: 12, clientId: 5, name: "Alex Kumar", role: "Security Analyst", email: "alex@securenet.com", phone: "+1-555-0114", isPrimary: false },
-  { id: 13, clientId: 7, name: "Rachel Green", role: "Compliance Officer", email: "rachel@harbormed.com", phone: "+1-555-0115", isPrimary: false },
-  { id: 14, clientId: 4, name: "Steve Chen", role: "Dispatcher", email: "steve@metrolog.com", phone: "+1-555-0116", isPrimary: false },
-  { id: 15, clientId: 8, name: "Dana White", role: "Site Supervisor", email: "dana@atlas.com", phone: "+1-555-0117", isPrimary: false },
+  { id: 1, clientId: 1, name: "Robert Hale", role: "Security Director", department: "Operations", email: "robert@acme.com", phone: "+1-555-0101", isPrimary: true },
+  { id: 2, clientId: 1, name: "Nancy Hale", role: "Finance Lead", department: "Finance", email: "nancy@acme.com", phone: "+1-555-0111", isPrimary: false },
+  { id: 3, clientId: 2, name: "Lisa Park", role: "CTO", department: "Engineering", email: "lisa@techcorp.com", phone: "+1-555-0102", isPrimary: true },
+  { id: 4, clientId: 2, name: "Tom Bradley", role: "Purchasing Manager", department: "Purchasing", email: "tom@techcorp.com", phone: "+1-555-0112", isPrimary: false },
+  { id: 5, clientId: 3, name: "David Kim", role: "Property Manager", department: "Operations", email: "david@guardian.com", phone: "+1-555-0103", isPrimary: true },
+  { id: 6, clientId: 4, name: "Amanda Foster", role: "Fleet Manager", department: "Operations", email: "amanda@metrolog.com", phone: "+1-555-0104", isPrimary: true },
+  { id: 7, clientId: 5, name: "Carlos Mendez", role: "CEO", department: "Management", email: "carlos@securenet.com", phone: "+1-555-0105", isPrimary: true },
+  { id: 8, clientId: 6, name: "Jennifer Walsh", role: "Facilities Director", department: "Operations", email: "jen@brightstar.com", phone: "+1-555-0106", isPrimary: true },
+  { id: 9, clientId: 7, name: "Dr. Sam Patel", role: "Medical Director", department: "Management", email: "sam@harbormed.com", phone: "+1-555-0107", isPrimary: true },
+  { id: 10, clientId: 8, name: "Mike Torres", role: "Project Manager", department: "Engineering", email: "mike@atlas.com", phone: "+1-555-0108", isPrimary: true },
+  { id: 11, clientId: 3, name: "Elena Rossi", role: "Service Coordinator", department: "Service", email: "elena@guardian.com", phone: "+1-555-0113", isPrimary: false },
+  { id: 12, clientId: 5, name: "Alex Kumar", role: "Security Analyst", department: "Engineering", email: "alex@securenet.com", phone: "+1-555-0114", isPrimary: false },
+  { id: 13, clientId: 7, name: "Rachel Green", role: "Finance Officer", department: "Finance", email: "rachel@harbormed.com", phone: "+1-555-0115", isPrimary: false },
+  { id: 14, clientId: 4, name: "Steve Chen", role: "Ops Lead", department: "Operations", email: "steve@metrolog.com", phone: "+1-555-0116", isPrimary: false },
+  { id: 15, clientId: 8, name: "Dana White", role: "Purchasing Specialist", department: "Purchasing", email: "dana@atlas.com", phone: "+1-555-0117", isPrimary: false },
 ];
 
 const mockLeads: Lead[] = [
