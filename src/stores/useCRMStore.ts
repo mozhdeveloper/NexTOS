@@ -141,6 +141,7 @@ export const useCRMStore = create<CRMState>()(
                 inquiry: 20,
                 proposal: 45,
                 negotiation: 70,
+                contracting: 90,
                 closed_won: 100,
                 closed_lost: 0,
               };
@@ -178,16 +179,43 @@ export const useCRMStore = create<CRMState>()(
       convertLeadToDeal: (leadId, dealData) => {
         const lead = get().leads.find((l) => l.id === leadId);
         if (!lead) return;
+
+        // If lead doesn't have a clientId, we create a basic client first
+        let effectiveClientId = lead.clientId;
+
+        if (!effectiveClientId) {
+          const newClientId = Date.now();
+          const newClient: Client = {
+            id: newClientId,
+            companyName: `New Client (${lead.source})`,
+            industry: "Unknown",
+            contactName: "TBD",
+            email: "tbd@example.com",
+            phone: "TBD",
+            status: "prospect",
+            address: "TBD",
+            city: "TBD",
+            country: "TBD",
+            contractValue: 0,
+            lastContact: new Date().toISOString(),
+            notes: `Converted from lead. ${lead.notes}`,
+            createdAt: new Date().toISOString(),
+          };
+          set((state) => ({ clients: [...state.clients, newClient] }));
+          effectiveClientId = newClientId;
+        }
+
         const newDeal: Deal = {
           ...dealData,
-          id: Date.now(),
-          clientId: lead.clientId || 0,
+          id: Date.now() + 1,
+          clientId: effectiveClientId,
           createdAt: new Date().toISOString(),
         };
+
         set((state) => ({
           deals: [...state.deals, newDeal],
           leads: state.leads.map((l) =>
-            l.id === leadId ? { ...l, status: "qualified" as const } : l
+            l.id === leadId ? { ...l, status: "qualified" as const, clientId: effectiveClientId } : l
           ),
         }));
       },
