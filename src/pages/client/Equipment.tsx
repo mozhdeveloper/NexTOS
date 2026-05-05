@@ -29,7 +29,7 @@ export default function ClientEquipment() {
   };
 
   return (
-    <div className="space-y-4 px-8 ">
+    <div className="space-y-4 px-8 pt-8">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-[32px] font-bold text-[#EAEAEA] tracking-[-0.02em]" >My Equipment</h1>

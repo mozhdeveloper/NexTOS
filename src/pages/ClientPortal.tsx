@@ -34,12 +34,16 @@ export default function ClientPortal() {
   const { user } = useAuthStore();
   const { equipment, serviceRecords, servicePhotos, bookings, addBooking } = useOperationsStore();
   const { clients } = useCRMStore();
+  const [selectedClientId, setSelectedClientId] = useState<number | null>(clients[0]?.id ?? null);
   const { invoices, packages, markInvoicePaid, addInvoice } = useBillingStore();
   const [activeTab, setActiveTab] = useState<TabType>("history");
   const [expandedEquipment, setExpandedEquipment] = useState<number | null>(null);
 
-  // Client-filtered data
-  const clientId = user?.clientId || 1;
+  // Client-filtered data (admin can pick a client). Default to first client for admins.
+  const clientId =
+    (user?.role !== "client"
+      ? (selectedClientId ?? clients[0]?.id ?? user?.clientId)
+      : user?.clientId) || 1;
   const client = clients.find((c) => c.id === clientId);
   const clientEquipment = equipment.filter((e) => e.clientId === clientId);
   const clientRecords = serviceRecords.filter((r) => r.clientId === clientId);
@@ -163,9 +167,22 @@ export default function ClientPortal() {
             {client?.companyName || "Your Account"} — Equipment history, bookings &amp; billing
           </p>
         </div>
-        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-[#005F73]/10 border border-[#005F73]/20">
-          <Shield className="w-3.5 h-3.5 text-[#005F73]" />
-          <span className="text-xs text-[#005F73] font-medium">Secure Portal</span>
+        <div className="flex items-center gap-2">
+          {user?.role !== "client" && (
+            <select
+              value={String(selectedClientId ?? clients[0]?.id ?? user?.clientId ?? 1)}
+              onChange={(e) => setSelectedClientId(Number(e.target.value))}
+              className="h-8 bg-[#1A1A20] border border-white/5 text-[#EAEAEA] text-xs px-2"
+            >
+              {clients.map((c) => (
+                <option key={c.id} value={c.id}>{c.companyName}</option>
+              ))}
+            </select>
+          )}
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-[#005F73]/10 border border-[#005F73]/20">
+            <Shield className="w-3.5 h-3.5 text-[#005F73]" />
+            <span className="text-xs text-[#005F73] font-medium">Secure Portal</span>
+          </div>
         </div>
       </div>
 
@@ -356,42 +373,71 @@ export default function ClientPortal() {
             </div>
           </div>
 
-          <div className="space-y-3">
-            {clientBookings.length > 0 ? (
-              clientBookings.map((b) => (
-                <div key={b.id} className="data-card">
-                  <div className="w-full flex items-center justify-between p-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded bg-[#005F73]/20 flex items-center justify-center">
-                        <Package className="w-4 h-4 text-[#005F73]" />
-                      </div>
-                      <div className="text-left">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-semibold text-[#EAEAEA] font-mono-tech">{clientEquipment.find((e) => e.id === b.equipmentId)?.unitId || "—"}</span>
-                          <span className="text-xs text-[#88888C]">{b.serviceType}</span>
-                        </div>
-                        <div className="text-[10px] text-[#88888C]">{new Date(b.requestedDate).toLocaleDateString()} · {b.preferredTime}</div>
-                      </div>
+          {(() => {
+            const isBookingPast = (b: { requestedDate: string; preferredTime?: string }) => {
+              const date = new Date(b.requestedDate);
+              const endTime = b.preferredTime?.split("-")[1];
+              if (endTime) {
+                const [hours, minutes] = endTime.split(":").map(Number);
+                date.setHours(hours, minutes, 0, 0);
+              } else {
+                date.setHours(23, 59, 59, 999);
+              }
+              return date < new Date();
+            };
+            const upcomingBookings = clientBookings.filter((b) => !isBookingPast(b));
+            const pastBookings = clientBookings.filter((b) => isBookingPast(b));
+            const BookingCard = ({ b, isPast }: { b: typeof clientBookings[0]; isPast: boolean }) => (
+              <div key={b.id} className="data-card">
+                <div className="w-full flex items-center justify-between p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded bg-[#005F73]/20 flex items-center justify-center">
+                      <Package className="w-4 h-4 text-[#005F73]" />
                     </div>
-                    <div className="text-right">
-                      <div className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${b.status === "confirmed" ? "bg-[#10B981]/20 text-[#10B981]" : "bg-[#F2A900]/20 text-[#F2A900]"}`}>
-                        {b.status}
+                    <div className="text-left">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-semibold text-[#EAEAEA] font-mono-tech">{clientEquipment.find((e) => e.id === b.equipmentId)?.unitId || "—"}</span>
+                        <span className="text-xs text-[#88888C]">{b.serviceType}</span>
                       </div>
+                      <div className="text-[10px] text-[#88888C]">{new Date(b.requestedDate).toLocaleDateString()} · {b.preferredTime}</div>
                     </div>
                   </div>
+                  <div className="text-right">
+                    {isPast ? (
+                      <div className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-[#10B981]/20 text-[#10B981]">completed</div>
+                      ) : (
+                      <div className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${b.status === "confirmed" ? "bg-[#3B82F6]/20 text-[#3B82F6]" : "bg-[#F2A900]/20 text-[#F2A900]"}`}>{b.status}</div>
+                    )}
+                  </div>
                 </div>
-              ))
-            ) : (
-              <div className="text-xs text-[#88888C]">No bookings found.</div>
-            )}
-          </div>
+              </div>
+            );
+            return (
+              <div className="grid md:grid-cols-2 gap-3">
+                <div>
+                  <h3 className="text-sm font-semibold text-[#EAEAEA] mb-2 flex items-center gap-2"><Calendar className="w-4 h-4 text-[#F2A900]"/> Upcoming</h3>
+                  <div className="space-y-2">
+                    {upcomingBookings.length === 0 && <div className="data-card p-4 text-sm text-[#88888C]">No upcoming bookings</div>}
+                    {upcomingBookings.map((b) => <BookingCard key={b.id} b={b} isPast={false} />)}
+                  </div>
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-[#EAEAEA] mb-2 flex items-center gap-2"><Clock className="w-4 h-4 text-[#8B5CF6]"/> Past</h3>
+                  <div className="space-y-2">
+                    {pastBookings.length === 0 && <div className="data-card p-4 text-sm text-[#88888C]">No past bookings</div>}
+                    {pastBookings.map((b) => <BookingCard key={b.id} b={b} isPast={true} />)}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Booking modal */}
           {bookingModalOpen && (
             <div className="fixed inset-0 z-50 flex items-center justify-center">
               <div className="absolute inset-0 bg-black/60" onClick={() => setBookingModalOpen(false)} />
               <div className="relative z-10 w-full max-w-lg mx-4">
-                <div className="bg-[#0A0A0C] rounded p-5">
+                <div className="bg-[#0A0A0C] rounded p-5 border border-white/10">
                   <button onClick={() => { setBookingModalOpen(false); setBookingStep(0); setBookingEquipment(""); setBookingDate(""); setBookingTime(""); setBookingNotes(""); setBookingComplete(false); }} className="absolute top-3 right-3 text-[#88888C]">
                     <X className="w-4 h-4" />
                   </button>
