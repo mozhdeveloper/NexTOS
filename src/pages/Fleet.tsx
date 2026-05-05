@@ -39,13 +39,17 @@ const idleIcon = L.icon({
 function MapCenter({ center }: { center: [number, number] }) {
   const map = useMap();
   useEffect(() => {
-    map.setView(center, 13);
+    // Recenter on live updates without overriding user-selected zoom level.
+    map.setView(center, map.getZoom());
   }, [center, map]);
   return null;
 }
 
-function formatHoursMinutes(hours: number): string {
-  const totalMinutes = Math.max(0, Math.floor((hours ?? 0) * 60));
+function formatHoursMinutes(telemetry: { hours: number; stateStartTime?: number }): string {
+  const rawHours = telemetry.stateStartTime
+    ? (Date.now() - telemetry.stateStartTime) / (1000 * 60 * 60)
+    : (telemetry.hours ?? 0);
+  const totalMinutes = Math.max(0, Math.floor(rawHours * 60));
   const wholeHours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
   return `${wholeHours}h ${minutes}m`;
@@ -66,7 +70,7 @@ export default function Fleet() {
   }, []);
 
   useEffect(() => {
-    if (selectedUnit) {
+    if (selectedUnit && typeof selectedUnit.telemetry.lat === "number" && typeof selectedUnit.telemetry.lng === "number") {
       setMapCenter([selectedUnit.telemetry.lat, selectedUnit.telemetry.lng]);
     }
   }, [selectedUnit]);
@@ -117,7 +121,7 @@ export default function Fleet() {
               url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
             />
             <MapCenter center={mapCenter} />
-            {units.map((unit) => (
+            {units.filter((unit) => typeof unit.telemetry.lat === "number" && typeof unit.telemetry.lng === "number").map((unit) => (
               <Marker
                 key={unit.id}
                 position={[unit.telemetry.lat, unit.telemetry.lng]}
@@ -132,14 +136,14 @@ export default function Fleet() {
                     <div className="text-[10px] text-[#88888C] space-y-0.5">
                       <div>Status: <span className={unit.telemetry.status === "online" ? "text-[#10B981]" : "text-[#F2A900]"}>{unit.telemetry.status}</span></div>
                       <div>Speed: {unit.telemetry.speed} mph</div>
-                      <div>Hours: {formatHoursMinutes(unit.telemetry.hours)}</div>
+                      <div>Hours: {formatHoursMinutes(unit.telemetry)}</div>
                     </div>
                   </div>
                 </Popup>
               </Marker>
             ))}
             {/* Pulse effect for selected unit */}
-            {selectedUnit && (
+            {selectedUnit && typeof selectedUnit.telemetry.lat === "number" && typeof selectedUnit.telemetry.lng === "number" && (
               <Circle
                 center={[selectedUnit.telemetry.lat, selectedUnit.telemetry.lng]}
                 radius={500}
@@ -164,7 +168,7 @@ export default function Fleet() {
                 <div className="flex justify-between">
                   <span className="text-[#88888C]">Coordinates</span>
                   <span className="text-[#EAEAEA]">
-                    {selectedUnit.telemetry.lat.toFixed(4)}, {selectedUnit.telemetry.lng.toFixed(4)}
+                    {(selectedUnit.telemetry.lat ?? 0).toFixed(4)}, {(selectedUnit.telemetry.lng ?? 0).toFixed(4)}
                   </span>
                 </div>
                 <div className="flex justify-between">
@@ -173,11 +177,11 @@ export default function Fleet() {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-[#88888C]">Heading</span>
-                  <span className="text-[#EAEAEA]">{Math.floor(selectedUnit.telemetry.heading)}°</span>
+                  <span className="text-[#EAEAEA]">{Math.floor(selectedUnit.telemetry.heading ?? 0)}°</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-[#88888C]">Engine Hours</span>
-                  <span className="text-[#F2A900]">{formatHoursMinutes(selectedUnit.telemetry.hours)}</span>
+                  <span className="text-[#F2A900]">{formatHoursMinutes(selectedUnit.telemetry)}</span>
                 </div>
                 {selectedUnit.serviceDue && (
                   <div className="flex items-center gap-1 mt-1 pt-1 border-t border-white/5">
@@ -228,7 +232,7 @@ export default function Fleet() {
                     <div>{client?.companyName || "—"}</div>
                     <div className="flex items-center gap-2">
                       <span>Speed: {unit.telemetry.speed} mph</span>
-                      <span>Hours: {formatHoursMinutes(unit.telemetry.hours)}</span>
+                      <span>Hours: {formatHoursMinutes(unit.telemetry)}</span>
                     </div>
                     {unit.serviceDue && (
                       <div className="flex items-center gap-1 text-[#EF4444]">

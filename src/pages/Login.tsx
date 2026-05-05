@@ -89,7 +89,7 @@ export default function Login() {
           </div>
 
           <Button
-            onClick={() => login(selectedRole)}
+            onClick={() => login(selectedRole, selectedRole === "client" ? 1 : undefined)}
             className="w-full h-10 bg-[#F2A900] hover:bg-[#F2A900]/80 text-[#050505] font-bold text-sm"
           >
             Access Platform

@@ -1,5 +1,6 @@
-import { Routes, Route } from 'react-router'
+import { Routes, Route, Navigate } from 'react-router'
 import AppShell from '@/components/AppShell'
+import ClientPortalShell from '@/components/ClientPortalShell'
 import Login from '@/pages/Login'
 import Dashboard from '@/pages/Dashboard'
 import CRM from '@/pages/CRM'
@@ -11,6 +12,34 @@ import Reports from '@/pages/Reports'
 import Settings from '@/pages/Settings'
 import NotFound from '@/pages/NotFound'
 import { useAuthStore } from '@/stores/useAuthStore'
+
+function ClientPortalPlaceholder() {
+  return (
+    <div className="flex h-full min-h-screen items-center justify-center">
+      <p className="text-[#88888C] text-sm font-mono-tech">
+        Select a page from the navigation
+      </p>
+    </div>
+  )
+}
+
+function ClientPortalRoutes() {
+  return (
+    <ClientPortalShell>
+      <Routes>
+        <Route path="/"                    element={<Navigate to="/client" replace />} />
+        <Route path="/client"              element={<ClientPortalPlaceholder />} />
+        <Route path="/client/equipment"    element={<ClientPortalPlaceholder />} />
+        <Route path="/client/history"      element={<ClientPortalPlaceholder />} />
+        <Route path="/client/bookings"     element={<ClientPortalPlaceholder />} />
+        <Route path="/client/packages"     element={<ClientPortalPlaceholder />} />
+        <Route path="/client/billing"      element={<ClientPortalPlaceholder />} />
+        <Route path="/client/reports"      element={<ClientPortalPlaceholder />} />
+        <Route path="*"                    element={<Navigate to="/client" replace />} />
+      </Routes>
+    </ClientPortalShell>
+  )
+}
 
 function AuthenticatedRoutes() {
   return (
@@ -31,12 +60,19 @@ function AuthenticatedRoutes() {
 }
 
 export default function App() {
-  const { isAuthenticated } = useAuthStore()
+  const { isAuthenticated, user } = useAuthStore()
 
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
-      <Route path="/*" element={isAuthenticated ? <AuthenticatedRoutes /> : <Login />} />
+      <Route
+        path="/*"
+        element={
+          !isAuthenticated ? <Login /> :
+          user?.role === 'client' ? <ClientPortalRoutes /> :
+          <AuthenticatedRoutes />
+        }
+      />
     </Routes>
   )
 }
