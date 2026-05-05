@@ -11,6 +11,7 @@ import ClientEquipment from '@/pages/client/Equipment'
 import Billing from '@/pages/Billing'
 import Reports from '@/pages/Reports'
 import Settings from '@/pages/Settings'
+import AssetScanner from '@/pages/AssetScanner'
 import NotFound from '@/pages/NotFound'
 import { useAuthStore } from '@/stores/useAuthStore'
 
@@ -54,6 +55,7 @@ function AuthenticatedRoutes() {
         <Route path="/billing" element={<Billing />} />
         <Route path="/reports" element={<Reports />} />
         <Route path="/settings" element={<Settings />} />
+        <Route path="/scan/:serial" element={<AssetScanner />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </AppShell>

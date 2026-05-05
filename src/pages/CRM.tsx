@@ -74,6 +74,7 @@ export default function CRM() {
     { id: "inquiry", label: "Inquiry", color: "#005F73" },
     { id: "proposal", label: "Proposal", color: "#8B5CF6" },
     { id: "negotiation", label: "Negotiation", color: "#F2A900" },
+    { id: "contracting", label: "Contracting", color: "#00A8E8" },
     { id: "closed_won", label: "Closed Won", color: "#10B981" },
     { id: "closed_lost", label: "Closed Lost", color: "#EF4444" },
   ];
@@ -96,6 +97,16 @@ export default function CRM() {
     }
   };
 
+  // Filter deals for pipeline
+  const filteredDeals = deals.filter((d) => {
+    const client = clients.find((c) => c.id === d.clientId);
+    return (
+      searchQuery === "" ||
+      d.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      client?.companyName.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  });
+
   return (
     <div className="space-y-4">
       <PageHeader
@@ -109,6 +120,33 @@ export default function CRM() {
         }
       />
 
+      {/* Search Bar - Shared across tabs or specific? Let's make it shared for consistency */}
+      <div className="flex items-center gap-3">
+        <div className="relative flex-1 max-w-xs">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#88888C]" />
+          <Input
+            placeholder={`Search ${activeTab === 'pipeline' ? 'deals' : activeTab}...`}
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-8 h-8 bg-[#1A1A20] border-white/10 text-[#EAEAEA] text-xs placeholder:text-[#88888C]/50"
+          />
+        </div>
+        {activeTab === "clients" && (
+          <Select value={clientFilter} onValueChange={setClientFilter}>
+            <SelectTrigger className="h-8 w-36 bg-[#1A1A20] border-white/10 text-[#EAEAEA] text-xs">
+              <Filter className="w-3 h-3 mr-1" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="bg-[#1A1A20] border-white/10">
+              <SelectItem value="all" className="text-xs text-[#EAEAEA]">All Status</SelectItem>
+              <SelectItem value="active" className="text-xs text-[#EAEAEA]">Active</SelectItem>
+              <SelectItem value="prospect" className="text-xs text-[#EAEAEA]">Prospect</SelectItem>
+              <SelectItem value="inactive" className="text-xs text-[#EAEAEA]">Inactive</SelectItem>
+            </SelectContent>
+          </Select>
+        )}
+      </div>
+
       {/* Tabs */}
       <div className="flex gap-1 border-b border-white/5 pb-0">
         {(
@@ -121,7 +159,10 @@ export default function CRM() {
         ).map((tab) => (
           <button
             key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
+            onClick={() => {
+              setActiveTab(tab.id);
+              // Search query is shared, but we could clear it if we wanted tab-specific
+            }}
             className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium transition-all border-b-2 ${
               activeTab === tab.id
                 ? "border-[#F2A900] text-[#F2A900] bg-[#F2A900]/5"
@@ -149,30 +190,36 @@ export default function CRM() {
               </Button>
             </div>
           </div>
-          <div className="flex gap-3 overflow-x-auto pb-2">
+          <div className="flex gap-3 overflow-x-auto pb-2 min-h-[500px]">
           {stages.map((stage) => {
-            const stageDeals = deals.filter((d) => d.stage === stage.id);
-            const stageValue = stageDeals.reduce((sum, d) => sum + d.value, 0);
+            const stageDeals = filteredDeals.filter((d) => d.stage === stage.id);
+            // Calculate Weighted Value: Sum of (Value * Probability / 100)
+            const weightedValue = stageDeals.reduce((sum, d) => sum + (d.value * d.probability / 100), 0);
             return (
               <div
                 key={stage.id}
-                className="min-w-[240px] flex-1"
+                className={`min-w-[260px] flex-1 rounded-lg transition-colors ${
+                  draggingDeal !== null ? "bg-white/[0.02] ring-1 ring-white/5" : ""
+                }`}
                 onDragOver={handleDragOver}
                 onDrop={(e) => handleDrop(e, stage.id)}
               >
-                <div className="flex items-center justify-between mb-2 px-1">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2.5 h-2.5 rounded-full" style={{ background: stage.color }} />
-                    <span className="text-xs font-semibold text-[#EAEAEA]">{stage.label}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
+                <div className="flex flex-col mb-3 px-1">
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2.5 h-2.5 rounded-full" style={{ background: stage.color }} />
+                      <span className="text-xs font-semibold text-[#EAEAEA]">{stage.label}</span>
+                    </div>
                     <span className="text-[10px] text-[#88888C]">{stageDeals.length} deals</span>
-                    <span className="text-[10px] text-[#F2A900] font-mono-tech">
-                      ${(stageValue / 1000).toFixed(0)}k
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[9px] text-[#88888C] uppercase tracking-wider">Weighted Revenue</span>
+                    <span className="text-[11px] text-[#F2A900] font-mono-tech font-bold">
+                      ${(weightedValue / 1000).toFixed(1)}k
                     </span>
                   </div>
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-2 p-1">
                   {stageDeals.map((deal) => (
                     <DealCard
                       key={deal.id}
@@ -182,6 +229,11 @@ export default function CRM() {
                       onDragStart={() => handleDragStart(deal.id)}
                     />
                   ))}
+                  {stageDeals.length === 0 && draggingDeal !== null && (
+                    <div className="h-20 rounded border-2 border-dashed border-white/5 flex items-center justify-center text-[10px] text-[#88888C]">
+                      Drop here
+                    </div>
+                  )}
                 </div>
               </div>
             );
@@ -193,30 +245,6 @@ export default function CRM() {
       {/* Clients Tab */}
       {activeTab === "clients" && (
         <div className="space-y-3">
-          <div className="flex items-center gap-3">
-            <div className="relative flex-1 max-w-xs">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#88888C]" />
-              <Input
-                placeholder="Search clients..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-8 h-8 bg-[#1A1A20] border-white/10 text-[#EAEAEA] text-xs placeholder:text-[#88888C]/50"
-              />
-            </div>
-            <Select value={clientFilter} onValueChange={setClientFilter}>
-              <SelectTrigger className="h-8 w-36 bg-[#1A1A20] border-white/10 text-[#EAEAEA] text-xs">
-                <Filter className="w-3 h-3 mr-1" />
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="bg-[#1A1A20] border-white/10">
-                <SelectItem value="all" className="text-xs text-[#EAEAEA]">All Status</SelectItem>
-                <SelectItem value="active" className="text-xs text-[#EAEAEA]">Active</SelectItem>
-                <SelectItem value="prospect" className="text-xs text-[#EAEAEA]">Prospect</SelectItem>
-                <SelectItem value="inactive" className="text-xs text-[#EAEAEA]">Inactive</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
           <div className="data-card overflow-auto">
             <table className="w-full text-xs">
               <thead>
@@ -242,24 +270,14 @@ export default function CRM() {
       {/* Leads Tab */}
       {activeTab === "leads" && (
         <div className="space-y-3">
-          <div className="flex justify-between items-center">
-            <div className="relative max-w-xs">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#88888C]" />
-              <Input
-                placeholder="Search leads..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-8 h-8 bg-[#1A1A20] border-white/10 text-[#EAEAEA] text-xs placeholder:text-[#88888C]/50"
-              />
-            </div>
-          </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {leads
               .filter(
                 (l) =>
-                  searchQuery === "" ||
+                  (searchQuery === "" ||
                   l.source.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                  l.notes.toLowerCase().includes(searchQuery.toLowerCase())
+                  l.notes.toLowerCase().includes(searchQuery.toLowerCase())) &&
+                  (l.status !== 'lost' && l.status !== 'qualified') // Filter active leads
               )
               .map((lead) => (
                 <LeadCard key={lead.id} lead={lead} client={clients.find((c) => c.id === lead.clientId)} />
@@ -355,7 +373,7 @@ export default function CRM() {
                   <Button
                     className="flex-1 bg-[#F2A900]"
                     onClick={() => {
-                      const probMap: Record<DealStage, number> = { inquiry: 20, proposal: 45, negotiation: 70, closed_won: 100, closed_lost: 0 };
+                      const probMap: Record<DealStage, number> = { inquiry: 20, proposal: 45, negotiation: 70, contracting: 85, closed_won: 100, closed_lost: 0 };
                       const value = Number(dealValue) || 0;
                       useCRMStore.getState().addDeal({
                         clientId: dealClientId ?? clients[0].id,
@@ -463,6 +481,7 @@ function DealCard({
     inquiry: "#005F73",
     proposal: "#8B5CF6",
     negotiation: "#F2A900",
+    contracting: "#00A8E8",
     closed_won: "#10B981",
     closed_lost: "#EF4444",
   };

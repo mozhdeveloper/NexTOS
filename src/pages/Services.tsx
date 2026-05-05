@@ -1,4 +1,5 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
+import { useLocation } from "react-router";
 import { useOperationsStore } from "@/stores/useOperationsStore";
 import { useCRMStore } from "@/stores/useCRMStore";
 import { useAuthStore } from "@/stores/useAuthStore";
@@ -64,6 +65,18 @@ export default function Services() {
   const [beforePhotos, setBeforePhotos] = useState<string[]>([]);
   const [afterPhotos, setAfterPhotos] = useState<string[]>([]);
   const [showReport, setShowReport] = useState<ServiceRecord | null>(null);
+
+  const location = useLocation();
+
+  useEffect(() => {
+    // Check if we arrived here via a scan redirect
+    const state = location.state as { selectedUnitId?: number };
+    if (state?.selectedUnitId) {
+      setSelectedEquipment(state.selectedUnitId);
+      // Optional: Clear the state so it doesn't re-select on refresh
+      window.history.replaceState({}, document.title);
+    }
+  }, [location]);
 
   const filteredEquipment = equipment.filter(
     (eq: Equipment) =>
@@ -180,6 +193,12 @@ export default function Services() {
                 <Button
                   variant="outline"
                   size="sm"
+                  onClick={() => {
+                    if (selectedEquipment) {
+                      const eq = equipment.find(e => e.id === selectedEquipment);
+                      if (eq) setQrSerial(eq.serialNumber);
+                    }
+                  }}
                   className="h-8 border-[#F2A900]/30 text-[#F2A900] hover:bg-[#F2A900]/10 text-xs"
                 >
                   <QrCode className="w-3.5 h-3.5 mr-1" />
@@ -188,23 +207,54 @@ export default function Services() {
               </DialogTrigger>
               <DialogContent className="bg-[#121214] border-[#F2A900]/20 max-w-sm">
                 <DialogHeader>
-                  <DialogTitle className="text-[#EAEAEA] text-base">QR Code Generator</DialogTitle>
+                  <DialogTitle className="text-[#EAEAEA] text-base">Smart Asset QR Generator</DialogTitle>
                 </DialogHeader>
                 <div className="space-y-3">
-                  <Input
-                    placeholder="Enter serial number"
-                    value={qrSerial}
-                    onChange={(e) => setQrSerial(e.target.value)}
-                    className="bg-[#1A1A20] border-white/10 text-[#EAEAEA] text-xs"
-                  />
+                  <div className="space-y-1">
+                    <label className="text-[10px] text-[#88888C] uppercase tracking-wider">Asset Serial Number</label>
+                    <Input
+                      placeholder="Enter serial number"
+                      value={qrSerial}
+                      onChange={(e) => setQrSerial(e.target.value)}
+                      className="bg-[#1A1A20] border-white/10 text-[#EAEAEA] text-xs"
+                    />
+                  </div>
                   {qrSerial && (
-                    <div className="flex flex-col items-center gap-3 p-4 bg-white rounded">
-                      <QRCodeSVG value={qrSerial} size={200} />
-                      <span className="text-xs text-[#050505] font-mono-tech">{qrSerial}</span>
+                    <div className="flex flex-col items-center gap-3 p-4 bg-white rounded qr-container">
+                      <QRCodeSVG value={`${window.location.origin}/scan/${qrSerial}`} size={200} />
+                      <div className="text-center">
+                        <div className="text-[10px] text-[#050505] font-bold uppercase tracking-widest">NexTOS Smart Asset</div>
+                        <div className="text-xs text-[#050505] font-mono-tech font-bold">{qrSerial}</div>
+                      </div>
                     </div>
                   )}
                   <Button
-                    onClick={() => setQrSerial("")}
+                    onClick={() => {
+                      const printWindow = window.open('', '_blank');
+                      if (printWindow) {
+                        printWindow.document.write(`
+                          <html>
+                            <head>
+                              <title>Print QR Label</title>
+                              <style>
+                                body { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; font-family: monospace; }
+                                .serial { margin-top: 10px; font-size: 20px; font-weight: bold; }
+                              </style>
+                            </head>
+                            <body>
+                              ${document.querySelector('.qr-container')?.innerHTML || ''}
+                              <script>
+                                window.onload = () => {
+                                  window.print();
+                                  window.close();
+                                };
+                              </script>
+                            </body>
+                          </html>
+                        `);
+                        printWindow.document.close();
+                      }
+                    }}
                     variant="outline"
                     size="sm"
                     className="w-full border-white/10 text-[#88888C] text-xs"
