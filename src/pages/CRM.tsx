@@ -14,6 +14,8 @@ import {
   TrendingUp,
   ArrowRightLeft,
 } from "lucide-react";
+import { Plus, X } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -26,7 +28,7 @@ import {
 type TabType = "clients" | "pipeline" | "tasks" | "leads";
 
 export default function CRM() {
-  useAuthStore();
+  const { user } = useAuthStore();
   const {
     clients,
     deals,
@@ -36,6 +38,21 @@ export default function CRM() {
     completeTask,
     getOverdueTasks,
   } = useCRMStore();
+  // Deal modal state
+  const [dealModalOpen, setDealModalOpen] = useState(false);
+  const [dealTitle, setDealTitle] = useState("");
+  const [dealValue, setDealValue] = useState("");
+  const [dealStage, setDealStage] = useState<DealStage>("inquiry");
+  const [dealClientId, setDealClientId] = useState<number | null>(clients[0]?.id ?? null);
+  
+
+  // Task modal state
+  const [taskModalOpen, setTaskModalOpen] = useState(false);
+  const [taskTitle, setTaskTitle] = useState("");
+  const [taskDueDate, setTaskDueDate] = useState("");
+  const [taskPriority, setTaskPriority] = useState<"low" | "medium" | "high">("medium");
+  const [taskClientId, setTaskClientId] = useState<number | null>(clients[0]?.id ?? null);
+  
   const [activeTab, setActiveTab] = useState<TabType>("pipeline");
   const [searchQuery, setSearchQuery] = useState("");
   const [clientFilter, setClientFilter] = useState("all");
@@ -121,7 +138,20 @@ export default function CRM() {
 
       {/* Pipeline Tab */}
       {activeTab === "pipeline" && (
-        <div className="flex gap-3 overflow-x-auto pb-2">
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <TrendingUp className="w-4 h-4 text-[#88888C]" />
+              <h3 className="text-sm font-semibold text-[#EAEAEA]">Pipeline</h3>
+            </div>
+            <div>
+              <Button onClick={() => setDealModalOpen(true)} className="h-8 bg-[#F2A900] hover:bg-[#F2A900]/80 text-[#050505] text-xs">
+                <Plus className="w-3 h-3 mr-2" />
+                New Deal
+              </Button>
+            </div>
+          </div>
+          <div className="flex gap-3 overflow-x-auto pb-2">
           {stages.map((stage) => {
             const stageDeals = deals.filter((d) => d.stage === stage.id);
             const stageValue = stageDeals.reduce((sum, d) => sum + d.value, 0);
@@ -158,6 +188,7 @@ export default function CRM() {
               </div>
             );
           })}
+          </div>
         </div>
       )}
 
@@ -254,6 +285,12 @@ export default function CRM() {
                 />
               </div>
             </div>
+            <div>
+              <Button onClick={() => setTaskModalOpen(true)} className="h-8 bg-[#F2A900] hover:bg-[#F2A900]/80 text-[#050505] text-xs">
+                <Plus className="w-3 h-3 mr-2" />
+                Add Task
+              </Button>
+            </div>
           </div>
 
           {overdueTasks.length > 0 && (
@@ -280,6 +317,132 @@ export default function CRM() {
               .map((task) => (
                 <TaskItem key={task.id} task={task} onComplete={completeTask} />
               ))}
+          </div>
+        </div>
+      )}
+
+      {/* Deal Modal */}
+      {dealModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/60" onClick={() => setDealModalOpen(false)} />
+          <div className="relative z-10 w-full max-w-md mx-4">
+            <div className="bg-[#0A0A0C] rounded p-5">
+              <button onClick={() => setDealModalOpen(false)} className="absolute top-3 right-3 text-[#88888C]"><X className="w-4 h-4" /></button>
+              <h3 className="text-sm font-semibold text-[#EAEAEA] mb-3">New Deal</h3>
+              <div className="space-y-3">
+                <Input placeholder="Deal title" value={dealTitle} onChange={(e) => setDealTitle(e.target.value)} className="bg-[#1A1A20]" />
+                <Input placeholder="Value" value={dealValue} onChange={(e) => setDealValue(e.target.value)} className="bg-[#1A1A20]" />
+                <Select value={dealStage} onValueChange={(v) => setDealStage(v as DealStage)}>
+                  <SelectTrigger className="h-8 bg-[#1A1A20] border-white/10 text-[#EAEAEA] text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-[#1A1A20] border-white/10">
+                    {stages.map((s) => (
+                      <SelectItem key={s.id} value={s.id} className="text-xs text-[#EAEAEA]">{s.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={String(dealClientId ?? "")} onValueChange={(v) => setDealClientId(Number(v))}>
+                  <SelectTrigger className="h-8 bg-[#1A1A20] border-white/10 text-[#EAEAEA] text-xs">
+                    <SelectValue placeholder="Select client" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-[#1A1A20] border-white/10">
+                    {clients.map((c) => (
+                      <SelectItem key={c.id} value={String(c.id)} className="text-xs text-[#EAEAEA]">{c.companyName}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={() => setDealModalOpen(false)} className="flex-1">Cancel</Button>
+                  <Button
+                    className="flex-1 bg-[#F2A900]"
+                    onClick={() => {
+                      const probMap: Record<DealStage, number> = { inquiry: 20, proposal: 45, negotiation: 70, closed_won: 100, closed_lost: 0 };
+                      const value = Number(dealValue) || 0;
+                      useCRMStore.getState().addDeal({
+                        clientId: dealClientId ?? clients[0].id,
+                        title: dealTitle,
+                        value,
+                        stage: dealStage,
+                        probability: probMap[dealStage],
+                        expectedClose: new Date().toISOString(),
+                        assignedTo: user?.name || "Sales",
+                      });
+                      setTimeout(() => {
+                        setDealModalOpen(false);
+                        setDealTitle("");
+                        setDealValue("");
+                      }, 1200);
+                    }}
+                  >
+                    Create
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Task Modal */}
+      {taskModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/60" onClick={() => setTaskModalOpen(false)} />
+          <div className="relative z-10 w-full max-w-md mx-4">
+            <div className="bg-[#0A0A0C] rounded p-5">
+              <button onClick={() => setTaskModalOpen(false)} className="absolute top-3 right-3 text-[#88888C]"><X className="w-4 h-4" /></button>
+              <h3 className="text-sm font-semibold text-[#EAEAEA] mb-3">Add Task</h3>
+              <div className="space-y-3">
+                <Input placeholder="Task title" value={taskTitle} onChange={(e) => setTaskTitle(e.target.value)} className="bg-[#1A1A20]" />
+                <Input type="date" value={taskDueDate} onChange={(e) => setTaskDueDate(e.target.value)} className="bg-[#1A1A20]" />
+                <Select value={taskPriority} onValueChange={(v) => setTaskPriority(v as any)}>
+                  <SelectTrigger className="h-8 bg-[#1A1A20] border-white/10 text-[#EAEAEA] text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-[#1A1A20] border-white/10">
+                    <SelectItem value="low" className="text-xs text-[#EAEAEA]">Low</SelectItem>
+                    <SelectItem value="medium" className="text-xs text-[#EAEAEA]">Medium</SelectItem>
+                    <SelectItem value="high" className="text-xs text-[#EAEAEA]">High</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={taskClientId === null ? "none" : String(taskClientId)} onValueChange={(v) => setTaskClientId(v === "none" ? null : Number(v))}>
+                  <SelectTrigger className="h-8 bg-[#1A1A20] border-white/10 text-[#EAEAEA] text-xs">
+                    <SelectValue placeholder="Assign to client (optional)" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-[#1A1A20] border-white/10">
+                    <SelectItem value="none">None</SelectItem>
+                    {clients.map((c) => (
+                      <SelectItem key={c.id} value={String(c.id)} className="text-xs text-[#EAEAEA]">{c.companyName}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={() => setTaskModalOpen(false)} className="flex-1">Cancel</Button>
+                  <Button
+                    className="flex-1 bg-[#F2A900]"
+                    onClick={() => {
+                      useCRMStore.getState().addTask({
+                        title: taskTitle,
+                        description: "",
+                        assignedTo: user?.name || "", 
+                        relatedType: taskClientId ? "client" : "general",
+                        relatedId: taskClientId ?? null,
+                        dueDate: taskDueDate || new Date().toISOString(),
+                        priority: taskPriority,
+                        status: "pending",
+                      });
+                      setTimeout(() => {
+                        setTaskModalOpen(false);
+                        setTaskTitle("");
+                        setTaskDueDate("");
+                      }, 1200);
+                    }}
+                  >
+                    Create
+                  </Button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}
