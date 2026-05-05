@@ -39,8 +39,7 @@ const idleIcon = L.icon({
 function MapCenter({ center }: { center: [number, number] }) {
   const map = useMap();
   useEffect(() => {
-    // Recenter on live updates without overriding user-selected zoom level.
-    map.setView(center, map.getZoom());
+    map.setView(center, 13);
   }, [center, map]);
   return null;
 }
@@ -67,7 +66,7 @@ export default function Fleet() {
   }, []);
 
   useEffect(() => {
-    if (selectedUnit && typeof selectedUnit.telemetry.lat === "number" && typeof selectedUnit.telemetry.lng === "number") {
+    if (selectedUnit) {
       setMapCenter([selectedUnit.telemetry.lat, selectedUnit.telemetry.lng]);
     }
   }, [selectedUnit]);
@@ -118,7 +117,7 @@ export default function Fleet() {
               url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
             />
             <MapCenter center={mapCenter} />
-            {units.filter((unit) => typeof unit.telemetry.lat === "number" && typeof unit.telemetry.lng === "number").map((unit) => (
+            {units.map((unit) => (
               <Marker
                 key={unit.id}
                 position={[unit.telemetry.lat, unit.telemetry.lng]}
@@ -140,7 +139,7 @@ export default function Fleet() {
               </Marker>
             ))}
             {/* Pulse effect for selected unit */}
-            {selectedUnit && typeof selectedUnit.telemetry.lat === "number" && typeof selectedUnit.telemetry.lng === "number" && (
+            {selectedUnit && (
               <Circle
                 center={[selectedUnit.telemetry.lat, selectedUnit.telemetry.lng]}
                 radius={500}
@@ -165,7 +164,7 @@ export default function Fleet() {
                 <div className="flex justify-between">
                   <span className="text-[#88888C]">Coordinates</span>
                   <span className="text-[#EAEAEA]">
-                    {(selectedUnit.telemetry.lat ?? 0).toFixed(4)}, {(selectedUnit.telemetry.lng ?? 0).toFixed(4)}
+                    {selectedUnit.telemetry.lat.toFixed(4)}, {selectedUnit.telemetry.lng.toFixed(4)}
                   </span>
                 </div>
                 <div className="flex justify-between">
@@ -174,11 +173,11 @@ export default function Fleet() {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-[#88888C]">Heading</span>
-                  <span className="text-[#EAEAEA]">{Math.floor(selectedUnit.telemetry.heading ?? 0)}°</span>
+                  <span className="text-[#EAEAEA]">{Math.floor(selectedUnit.telemetry.heading)}°</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-[#88888C]">Engine Hours</span>
-                  <span className="text-[#F2A900]">{formatHoursMinutes(selectedUnit.telemetry.hours ?? 0)}</span>
+                  <span className="text-[#F2A900]">{formatHoursMinutes(selectedUnit.telemetry.hours)}</span>
                 </div>
                 {selectedUnit.serviceDue && (
                   <div className="flex items-center gap-1 mt-1 pt-1 border-t border-white/5">
