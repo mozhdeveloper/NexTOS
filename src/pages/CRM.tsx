@@ -4,6 +4,7 @@ import { useAuthStore } from "@/stores/useAuthStore";
 import { useOperationsStore } from "@/stores/useOperationsStore";
 import { useBillingStore } from "@/stores/useBillingStore";
 import type { Deal, DealStage, Task, Client, Contact, Equipment, ServiceRecord, Booking, Package, Invoice, Lead } from "@/types";
+import { QRCodeSVG } from "qrcode.react";
 import {
   Search,
   Filter,
@@ -25,6 +26,8 @@ import {
   Plus,
   X,
   Package as PackageIcon,
+  QrCode,
+  Download,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,7 +40,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-type TabType = "clients" | "pipeline" | "tasks" | "leads";
+type TabType = "clients" | "pipeline" | "tasks" | "leads" | "performance";
 
 export default function CRM() {
   const { user } = useAuthStore();
@@ -74,6 +77,15 @@ export default function CRM() {
   const [taskDueDate, setTaskDueDate] = useState("");
   const [taskPriority, setTaskPriority] = useState<"low" | "medium" | "high">("medium");
   const [taskClientId, setTaskClientId] = useState<number | null>(clients[0]?.id ?? null);
+
+  // Equipment modal state
+  const [equipmentModalOpen, setEquipmentModalOpen] = useState(false);
+  const [eqUnitId, setEqUnitId] = useState("");
+  const [eqType, setEqType] = useState("");
+  const [eqSerial, setEqSerial] = useState("");
+  const [eqModel, setEqModel] = useState("");
+  const [eqLocation, setEqLocation] = useState("");
+  const [eqHours, setEqHours] = useState("");
 
   // Filter clients
   const filteredClients = clients.filter((c) => {
@@ -142,240 +154,257 @@ export default function CRM() {
     );
   });
 
-  if (selectedClientId && selectedClient && clientData) {
-    return (
-      <ClientProfile 
-        client={selectedClient} 
-        data={clientData} 
-        onBack={() => setSelectedClientId(null)} 
-      />
-    );
-  }
-
   return (
     <div className="space-y-4">
-      <PageHeader
-        title="CRM"
-        subtitle="Client management & sales pipeline"
-        actions={
-          <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded bg-[#EF4444]/10 border border-[#EF4444]/20">
-            <AlertTriangle className="w-3.5 h-3.5 text-[#EF4444]" />
-            <span className="text-xs text-[#EF4444] font-medium">{overdueTasks.length} overdue</span>
-          </div>
-        }
-      />
-
-      {/* Search Bar */}
-      <div className="flex items-center gap-3">
-        <div className="relative flex-1 max-w-xs">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#88888C]" />
-          <Input
-            placeholder={`Search ${activeTab === 'pipeline' ? 'deals' : activeTab}...`}
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-8 h-8 bg-[#1A1A20] border-white/10 text-[#EAEAEA] text-xs placeholder:text-[#88888C]/50"
+      {selectedClientId && selectedClient && clientData ? (
+        <ClientProfile 
+          client={selectedClient} 
+          data={clientData} 
+          onBack={() => setSelectedClientId(null)} 
+          onAddEquipment={() => setEquipmentModalOpen(true)}
+        />
+      ) : (
+        <>
+          <PageHeader
+            title="CRM"
+            subtitle="Client management & sales pipeline"
+            actions={
+              <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded bg-[#EF4444]/10 border border-[#EF4444]/20">
+                <AlertTriangle className="w-3.5 h-3.5 text-[#EF4444]" />
+                <span className="text-xs text-[#EF4444] font-medium">{overdueTasks.length} overdue</span>
+              </div>
+            }
           />
-        </div>
-        {activeTab === "clients" && (
-          <Select value={clientFilter} onValueChange={setClientFilter}>
-            <SelectTrigger className="h-8 w-36 bg-[#1A1A20] border-white/10 text-[#EAEAEA] text-xs">
-              <Filter className="w-3 h-3 mr-1" />
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent className="bg-[#1A1A20] border-white/10">
-              <SelectItem value="all" className="text-xs text-[#EAEAEA]">All Status</SelectItem>
-              <SelectItem value="active" className="text-xs text-[#EAEAEA]">Active</SelectItem>
-              <SelectItem value="prospect" className="text-xs text-[#EAEAEA]">Prospect</SelectItem>
-              <SelectItem value="inactive" className="text-xs text-[#EAEAEA]">Inactive</SelectItem>
-            </SelectContent>
-          </Select>
-        )}
-      </div>
 
-      {/* Tabs */}
-      <div className="flex gap-1 border-b border-white/5 pb-0">
-        {(
-          [
-            { id: "pipeline" as TabType, label: "Pipeline", icon: TrendingUp },
-            { id: "clients" as TabType, label: "Clients", icon: Building2 },
-            { id: "leads" as TabType, label: "Leads", icon: ArrowRightLeft },
-            { id: "tasks" as TabType, label: "Tasks", icon: Clock },
-          ] as const
-        ).map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium transition-all border-b-2 ${
-              activeTab === tab.id
-                ? "border-[#F2A900] text-[#F2A900] bg-[#F2A900]/5"
-                : "border-transparent text-[#88888C] hover:text-[#EAEAEA]"
-            }`}
-          >
-            <tab.icon className="w-3.5 h-3.5" />
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Pipeline Tab */}
-      {activeTab === "pipeline" && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between px-1">
-            <div className="flex items-center gap-2">
-              <TrendingUp className="w-4 h-4 text-[#F2A900]" />
-              <h3 className="text-sm font-semibold text-[#EAEAEA]">Sales Pipeline</h3>
+          {/* Search Bar */}
+          <div className="flex items-center gap-3">
+            <div className="relative flex-1 max-w-xs">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#88888C]" />
+              <Input
+                placeholder={`Search ${activeTab === 'pipeline' ? 'deals' : activeTab}...`}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-8 h-8 bg-[#1A1A20] border-white/10 text-[#EAEAEA] text-xs placeholder:text-[#88888C]/50"
+              />
             </div>
-            <Button onClick={() => setDealModalOpen(true)} className="h-8 bg-[#F2A900] hover:bg-[#F2A900]/80 text-[#050505] text-xs font-bold">
-              <Plus className="w-3.5 h-3.5 mr-1.5" />
-              New Deal
-            </Button>
+            {activeTab === "clients" && (
+              <Select value={clientFilter} onValueChange={setClientFilter}>
+                <SelectTrigger className="h-8 w-36 bg-[#1A1A20] border-white/10 text-[#EAEAEA] text-xs">
+                  <Filter className="w-3 h-3 mr-1" />
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-[#1A1A20] border-white/10">
+                  <SelectItem value="all" className="text-xs text-[#EAEAEA]">All Status</SelectItem>
+                  <SelectItem value="active" className="text-xs text-[#EAEAEA]">Active</SelectItem>
+                  <SelectItem value="prospect" className="text-xs text-[#EAEAEA]">Prospect</SelectItem>
+                  <SelectItem value="inactive" className="text-xs text-[#EAEAEA]">Inactive</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
           </div>
-          <div className="flex gap-3 overflow-x-auto pb-4 min-h-[600px] scrollbar-hide">
-          {stages.map((stage) => {
-            const stageDeals = filteredDeals.filter((d) => d.stage === stage.id);
-            const weightedValue = stageDeals.reduce((sum, d) => sum + (d.value * d.probability / 100), 0);
-            return (
-              <div
-                key={stage.id}
-                className={`min-w-[260px] flex-1 rounded-lg transition-colors ${
-                  draggingDeal !== null ? "bg-white/[0.02] ring-1 ring-white/5" : ""
+
+          {/* Tabs */}
+          <div className="flex gap-1 border-b border-white/5 pb-0">
+            {(
+              [
+                { id: "pipeline" as TabType, label: "Pipeline", icon: TrendingUp },
+                { id: "clients" as TabType, label: "Clients", icon: Building2 },
+                { id: "leads" as TabType, label: "Leads", icon: ArrowRightLeft },
+                { id: "tasks" as TabType, label: "Tasks", icon: Clock },
+              ] as const
+            ).map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium transition-all border-b-2 ${
+                  activeTab === tab.id
+                    ? "border-[#F2A900] text-[#F2A900] bg-[#F2A900]/5"
+                    : "border-transparent text-[#88888C] hover:text-[#EAEAEA]"
                 }`}
-                onDragOver={handleDragOver}
-                onDrop={(e) => handleDrop(e, stage.id)}
               >
-                <div className="flex flex-col mb-3 px-1">
-                  <div className="flex items-center justify-between mb-1">
-                    <div className="flex items-center gap-2">
-                      <div className="w-2.5 h-2.5 rounded-full" style={{ background: stage.color }} />
-                      <span className="text-xs font-semibold text-[#EAEAEA]">{stage.label}</span>
-                    </div>
-                    <span className="text-[10px] text-[#88888C]">{stageDeals.length} deals</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-[9px] text-[#88888C] uppercase tracking-wider">Weighted Revenue</span>
-                    <span className="text-[11px] text-[#F2A900] font-mono-tech font-bold">
-                      ${(weightedValue / 1000).toFixed(1)}k
-                    </span>
-                  </div>
+                <tab.icon className="w-3.5 h-3.5" />
+                {tab.label}
+              </button>
+            ))}
+            <button
+              onClick={() => setActiveTab("performance")}
+              className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium transition-all border-b-2 ${
+                activeTab === "performance"
+                  ? "border-[#F2A900] text-[#F2A900] bg-[#F2A900]/5"
+                  : "border-transparent text-[#88888C] hover:text-[#EAEAEA]"
+              }`}
+            >
+              <TrendingUp className="w-3.5 h-3.5" />
+              Performance
+            </button>
+          </div>
+
+          {/* Performance Tab */}
+          {activeTab === "performance" && (
+            <SalesPerformance leads={leads} deals={deals} tasks={tasks} />
+          )}
+
+          {/* Pipeline Tab */}
+          {activeTab === "pipeline" && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between px-1">
+                <div className="flex items-center gap-2">
+                  <TrendingUp className="w-4 h-4 text-[#F2A900]" />
+                  <h3 className="text-sm font-semibold text-[#EAEAEA]">Sales Pipeline</h3>
                 </div>
-                <div className="space-y-2 p-1">
-                  {stageDeals.map((deal) => (
-                    <DealCard
-                      key={deal.id}
-                      deal={deal}
-                      client={clients.find((c) => c.id === deal.clientId)}
-                      draggable
-                      onDragStart={() => handleDragStart(deal.id)}
-                    />
-                  ))}
-                  {stageDeals.length === 0 && draggingDeal !== null && (
-                    <div className="h-20 rounded border-2 border-dashed border-white/5 flex items-center justify-center text-[10px] text-[#88888C]">
-                      Drop here
+                <Button onClick={() => setDealModalOpen(true)} className="h-8 bg-[#F2A900] hover:bg-[#F2A900]/80 text-[#050505] text-xs font-bold">
+                  <Plus className="w-3.5 h-3.5 mr-1.5" />
+                  New Deal
+                </Button>
+              </div>
+              <div className="flex gap-3 overflow-x-auto pb-4 min-h-[600px] scrollbar-hide">
+              {stages.map((stage) => {
+                const stageDeals = filteredDeals.filter((d) => d.stage === stage.id);
+                const weightedValue = stageDeals.reduce((sum, d) => sum + (d.value * d.probability / 100), 0);
+                return (
+                  <div
+                    key={stage.id}
+                    className={`min-w-[260px] flex-1 rounded-lg transition-colors ${
+                      draggingDeal !== null ? "bg-white/[0.02] ring-1 ring-white/5" : ""
+                    }`}
+                    onDragOver={handleDragOver}
+                    onDrop={(e) => handleDrop(e, stage.id)}
+                  >
+                    <div className="flex flex-col mb-3 px-1">
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="flex items-center gap-2">
+                          <div className="w-2.5 h-2.5 rounded-full" style={{ background: stage.color }} />
+                          <span className="text-xs font-semibold text-[#EAEAEA]">{stage.label}</span>
+                        </div>
+                        <span className="text-[10px] text-[#88888C]">{stageDeals.length} deals</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[9px] text-[#88888C] uppercase tracking-wider">Weighted Revenue</span>
+                        <span className="text-[11px] text-[#F2A900] font-mono-tech font-bold">
+                          ${(weightedValue / 1000).toFixed(1)}k
+                        </span>
+                      </div>
                     </div>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-          </div>
-        </div>
-      )}
-
-      {/* Clients Tab */}
-      {activeTab === "clients" && (
-        <div className="space-y-3">
-          <div className="data-card overflow-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="bg-[#0A0A0C]">
-                  <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Company</th>
-                  <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Contact</th>
-                  <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Status</th>
-                  <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Value</th>
-                  <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Last Contact</th>
-                  <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredClients.map((client) => (
-                  <ClientRow 
-                    key={client.id} 
-                    client={client} 
-                    onClick={() => setSelectedClientId(client.id)}
-                  />
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* Leads Tab */}
-      {activeTab === "leads" && (
-        <div className="space-y-3">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {leads
-              .filter(
-                (l) =>
-                  (searchQuery === "" ||
-                  l.source.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                  l.notes.toLowerCase().includes(searchQuery.toLowerCase())) &&
-                  (l.status !== 'lost' && l.status !== 'qualified')
-              )
-              .map((lead) => (
-                <LeadCard key={lead.id} lead={lead} client={clients.find((c) => c.id === lead.clientId)} />
-              ))}
-          </div>
-        </div>
-      )}
-
-      {/* Tasks Tab */}
-      {activeTab === "tasks" && (
-        <div className="space-y-3">
-          <div className="flex justify-between items-center mb-2">
-            <div className="flex gap-2">
-              <div className="relative max-w-xs">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#88888C]" />
-                <Input
-                  placeholder="Search tasks..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-8 h-8 bg-[#1A1A20] border-white/10 text-[#EAEAEA] text-xs placeholder:text-[#88888C]/50"
-                />
-              </div>
-            </div>
-            <Button onClick={() => setTaskModalOpen(true)} className="h-8 bg-[#F2A900] hover:bg-[#F2A900]/80 text-[#050505] text-xs font-bold">
-              <Plus className="w-3 h-3 mr-2" />
-              Add Task
-            </Button>
-          </div>
-
-          {overdueTasks.length > 0 && (
-            <div className="mb-3 p-3 rounded border border-[#EF4444]/20 bg-[#EF4444]/5">
-              <div className="flex items-center gap-2 mb-2">
-                <AlertTriangle className="w-4 h-4 text-[#EF4444]" />
-                <span className="text-sm font-semibold text-[#EF4444]">Overdue Tasks ({overdueTasks.length})</span>
-              </div>
-              <div className="space-y-1">
-                {overdueTasks.map((task) => (
-                  <TaskItem key={task.id} task={task} onComplete={completeTask} overdue />
-                ))}
+                    <div className="space-y-2 p-1">
+                      {stageDeals.map((deal) => (
+                        <DealCard
+                          key={deal.id}
+                          deal={deal}
+                          client={clients.find((c) => c.id === deal.clientId)}
+                          draggable
+                          onDragStart={() => handleDragStart(deal.id)}
+                        />
+                      ))}
+                      {stageDeals.length === 0 && draggingDeal !== null && (
+                        <div className="h-20 rounded border-2 border-dashed border-white/5 flex items-center justify-center text-[10px] text-[#88888C]">
+                          Drop here
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
               </div>
             </div>
           )}
 
-          <div className="space-y-1">
-            {tasks
-              .filter((t) => t.status !== "completed")
-              .filter(
-                (t) =>
-                  searchQuery === "" || t.title.toLowerCase().includes(searchQuery.toLowerCase())
-              )
-              .map((task) => (
-                <TaskItem key={task.id} task={task} onComplete={completeTask} />
-              ))}
-          </div>
-        </div>
+          {/* Clients Tab */}
+          {activeTab === "clients" && (
+            <div className="space-y-3">
+              <div className="data-card overflow-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="bg-[#0A0A0C]">
+                      <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Company</th>
+                      <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Contact</th>
+                      <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Status</th>
+                      <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Value</th>
+                      <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Last Contact</th>
+                      <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredClients.map((client) => (
+                      <ClientRow 
+                        key={client.id} 
+                        client={client} 
+                        onClick={() => setSelectedClientId(client.id)}
+                      />
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Leads Tab */}
+          {activeTab === "leads" && (
+            <div className="space-y-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {leads
+                  .filter(
+                    (l) =>
+                      (searchQuery === "" ||
+                      l.source.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                      l.notes.toLowerCase().includes(searchQuery.toLowerCase())) &&
+                      (l.status !== 'lost' && l.status !== 'qualified')
+                  )
+                  .map((lead) => (
+                    <LeadCard key={lead.id} lead={lead} client={clients.find((c) => c.id === lead.clientId)} />
+                  ))}
+              </div>
+            </div>
+          )}
+
+          {/* Tasks Tab */}
+          {activeTab === "tasks" && (
+            <div className="space-y-3">
+              <div className="flex justify-between items-center mb-2">
+                <div className="flex gap-2">
+                  <div className="relative max-w-xs">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#88888C]" />
+                    <Input
+                      placeholder="Search tasks..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="pl-8 h-8 bg-[#1A1A20] border-white/10 text-[#EAEAEA] text-xs placeholder:text-[#88888C]/50"
+                    />
+                  </div>
+                </div>
+                <Button onClick={() => setTaskModalOpen(true)} className="h-8 bg-[#F2A900] hover:bg-[#F2A900]/80 text-[#050505] text-xs font-bold">
+                  <Plus className="w-3 h-3 mr-2" />
+                  Add Task
+                </Button>
+              </div>
+
+              {overdueTasks.length > 0 && (
+                <div className="mb-3 p-3 rounded border border-[#EF4444]/20 bg-[#EF4444]/5">
+                  <div className="flex items-center gap-2 mb-2">
+                    <AlertTriangle className="w-4 h-4 text-[#EF4444]" />
+                    <span className="text-sm font-semibold text-[#EF4444]">Overdue Tasks ({overdueTasks.length})</span>
+                  </div>
+                  <div className="space-y-1">
+                    {overdueTasks.map((task) => (
+                      <TaskItem key={task.id} task={task} onComplete={completeTask} overdue />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-1">
+                {tasks
+                  .filter((t) => t.status !== "completed")
+                  .filter(
+                    (t) =>
+                      searchQuery === "" || t.title.toLowerCase().includes(searchQuery.toLowerCase())
+                  )
+                  .map((task) => (
+                    <TaskItem key={task.id} task={task} onComplete={completeTask} />
+                  ))}
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       {/* Deal Modal */}
@@ -503,6 +532,65 @@ export default function CRM() {
           </div>
         </div>
       )}
+
+      {/* Equipment Modal */}
+      {equipmentModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/60" onClick={() => setEquipmentModalOpen(false)} />
+          <div className="relative z-10 w-full max-w-md mx-4">
+            <div className="bg-[#0A0A0C] rounded p-5">
+              <button onClick={() => setEquipmentModalOpen(false)} className="absolute top-3 right-3 text-[#88888C]"><X className="w-4 h-4" /></button>
+              <h3 className="text-sm font-semibold text-[#EAEAEA] mb-3">Add Equipment</h3>
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <Input placeholder="Unit ID (e.g. GPS-001)" value={eqUnitId} onChange={(e) => setEqUnitId(e.target.value)} className="bg-[#1A1A20]" />
+                  <Input placeholder="Type (e.g. GPS Tracker)" value={eqType} onChange={(e) => setEqType(e.target.value)} className="bg-[#1A1A20]" />
+                </div>
+                <Input placeholder="Serial Number" value={eqSerial} onChange={(e) => setEqSerial(e.target.value)} className="bg-[#1A1A20]" />
+                <Input placeholder="Model" value={eqModel} onChange={(e) => setEqModel(e.target.value)} className="bg-[#1A1A20]" />
+                <Input placeholder="Location" value={eqLocation} onChange={(e) => setEqLocation(e.target.value)} className="bg-[#1A1A20]" />
+                <Input placeholder="Current Hours" type="number" value={eqHours} onChange={(e) => setEqHours(e.target.value)} className="bg-[#1A1A20]" />
+                
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={() => setEquipmentModalOpen(false)} className="flex-1">Cancel</Button>
+                  <Button
+                    className="flex-1 bg-[#F2A900]"
+                    onClick={() => {
+                      useOperationsStore.getState().addEquipment({
+                        clientId: selectedClientId!,
+                        unitId: eqUnitId,
+                        type: eqType,
+                        serialNumber: eqSerial,
+                        manufacturer: "TBD",
+                        model: eqModel,
+                        installDate: new Date().toISOString(),
+                        warrantyExpiry: new Date(Date.now() + 365 * 86400000).toISOString(),
+                        status: "active",
+                        lastService: new Date().toISOString(),
+                        nextServiceDue: 5000,
+                        currentHours: Number(eqHours) || 0,
+                        location: eqLocation,
+                        notes: "",
+                      });
+                      setTimeout(() => {
+                        setEquipmentModalOpen(false);
+                        setEqUnitId("");
+                        setEqType("");
+                        setEqSerial("");
+                        setEqModel("");
+                        setEqLocation("");
+                        setEqHours("");
+                      }, 1200);
+                    }}
+                  >
+                    Add Unit
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -510,11 +598,13 @@ export default function CRM() {
 function ClientProfile({ 
   client, 
   data, 
-  onBack 
+  onBack,
+  onAddEquipment
 }: { 
   client: Client; 
   data: any; 
-  onBack: () => void 
+  onBack: () => void;
+  onAddEquipment: () => void;
 }) {
   const [profileTab, setProfileTab] = useState<"overview" | "assets" | "billing" | "history">("overview");
 
@@ -688,7 +778,17 @@ function ClientProfile({
         )}
 
         {profileTab === "assets" && (
-          <div className="col-span-12">
+          <div className="col-span-12 space-y-4">
+            <div className="flex justify-between items-center">
+              <h3 className="text-sm font-bold text-[#EAEAEA]">Equipment Fleet</h3>
+              <Button 
+                onClick={onAddEquipment}
+                className="h-8 text-xs bg-[#F2A900] text-[#050505] font-bold"
+              >
+                <Plus className="w-3.5 h-3.5 mr-1.5" />
+                Add Equipment
+              </Button>
+            </div>
             <div className="data-card overflow-auto">
               <table className="w-full text-xs">
                 <thead>
@@ -698,19 +798,28 @@ function ClientProfile({
                     <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Serial</th>
                     <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Location</th>
                     <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Status</th>
+                    <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Hours</th>
+                    <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {data.equipment.map((eq: Equipment) => (
-                    <tr key={eq.id} className="border-b border-white/5">
+                    <tr key={eq.id} className="border-b border-white/5 group hover:bg-white/[0.02]">
                       <td className="py-2.5 px-3 text-[#EAEAEA] font-bold">{eq.unitId}</td>
                       <td className="py-2.5 px-3 text-[#EAEAEA]">{eq.type}</td>
                       <td className="py-2.5 px-3 text-[#88888C] font-mono-tech">{eq.serialNumber}</td>
                       <td className="py-2.5 px-3 text-[#EAEAEA]">{eq.location}</td>
                       <td className="py-2.5 px-3">
-                        <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-[#10B981]/10 text-[#10B981] uppercase">
-                          {eq.status}
-                        </span>
+                        <StatusBadge status={eq.status} />
+                      </td>
+                      <td className="py-2.5 px-3 text-[#EAEAEA] font-mono-tech">{eq.currentHours}h</td>
+                      <td className="py-2.5 px-3">
+                        <div className="flex items-center gap-1">
+                          <QRButton serial={eq.serialNumber} unitId={eq.unitId} />
+                          <button className="p-1 rounded hover:bg-white/10 text-[#88888C] hover:text-[#EAEAEA]">
+                            <Wrench className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -814,6 +923,87 @@ function ClientProfile({
         )}
       </div>
     </div>
+  );
+}
+
+function StatusBadge({ status }: { status: Equipment["status"] }) {
+  const configs: Record<Equipment["status"], { label: string; color: string }> = {
+    active: { label: "Active", color: "bg-[#10B981]/10 text-[#10B981]" },
+    inactive: { label: "Inactive", color: "bg-[#88888C]/10 text-[#88888C]" },
+    maintenance: { label: "Maintenance", color: "bg-[#F2A900]/10 text-[#F2A900]" },
+    retired: { label: "Retired", color: "bg-[#EF4444]/10 text-[#EF4444]" },
+    under_service: { label: "Under Service", color: "bg-[#8B5CF6]/10 text-[#8B5CF6]" },
+    broken: { label: "Broken", color: "bg-[#EF4444]/20 text-[#EF4444] border border-[#EF4444]/30" },
+    service_due: { label: "Service Due", color: "bg-[#F2A900]/20 text-[#F2A900] animate-pulse" },
+  };
+
+  const config = configs[status];
+  return (
+    <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${config.color}`}>
+      {config.label}
+    </span>
+  );
+}
+
+function QRButton({ serial, unitId }: { serial: string; unitId: string }) {
+  const [open, setOpen] = useState(false);
+  const scanUrl = `${window.location.origin}/asset/${serial}`;
+
+  return (
+    <>
+      <button 
+        onClick={() => setOpen(true)}
+        className="p-1 rounded hover:bg-white/10 text-[#88888C] hover:text-[#F2A900] transition-colors"
+        title="View QR Code"
+      >
+        <QrCode className="w-3.5 h-3.5" />
+      </button>
+
+      {open && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setOpen(false)} />
+          <div className="relative bg-[#0A0A0C] border border-white/10 rounded-lg p-6 max-w-sm w-full animate-in zoom-in-95 duration-200">
+            <button 
+              onClick={() => setOpen(false)}
+              className="absolute top-4 right-4 text-[#88888C] hover:text-[#EAEAEA]"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="text-center space-y-4">
+              <div className="space-y-1">
+                <h3 className="text-lg font-bold text-[#EAEAEA]">{unitId}</h3>
+                <p className="text-xs text-[#88888C] font-mono-tech">S/N: {serial}</p>
+              </div>
+
+              <div className="bg-white p-4 rounded-lg inline-block mx-auto">
+                <QRCodeSVG 
+                  value={scanUrl}
+                  size={200}
+                  level="H"
+                  includeMargin={false}
+                />
+              </div>
+
+              <p className="text-[10px] text-[#88888C] leading-relaxed">
+                Scan this code to view service history or log a new maintenance record.
+              </p>
+
+              <div className="flex gap-2 pt-2">
+                <Button 
+                  variant="outline" 
+                  className="flex-1 h-9 text-xs border-white/10 hover:bg-white/5"
+                  onClick={() => window.print()}
+                >
+                  <Download className="w-3.5 h-3.5 mr-2" />
+                  Print Label
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -981,6 +1171,97 @@ function TaskItem({
           {new Date(task.dueDate).toLocaleDateString()}
         </span>
         <span className="text-[10px] text-[#88888C]">{task.assignedTo}</span>
+      </div>
+    </div>
+  );
+}
+
+function SalesPerformance({ leads, deals, tasks }: { leads: Lead[]; deals: Deal[]; tasks: Task[] }) {
+  const salespeople = ["Sarah Blake", "James Rodriguez", "Marcus Chen", "Marketing System"];
+
+  const stats = salespeople.map(person => {
+    const assignedLeads = leads.filter(l => l.assignedTo === person).length;
+    const contactedLeads = leads.filter(l => l.assignedTo === person && l.status !== "new").length;
+    const wonDeals = deals.filter(d => d.assignedTo === person && d.stage === "closed_won").length;
+    const overdueTasks = tasks.filter(t => t.assignedTo === person && t.status === "overdue").length;
+    const conversion = assignedLeads > 0 ? Math.round((wonDeals / assignedLeads) * 100) : 0;
+    
+    return {
+      name: person,
+      assigned: assignedLeads,
+      contacted: contactedLeads,
+      won: wonDeals,
+      overdue: overdueTasks,
+      conversion
+    };
+  });
+
+  return (
+    <div className="space-y-4 animate-in fade-in duration-500">
+      <div className="grid grid-cols-4 gap-3">
+        <div className="data-card p-4">
+          <div className="text-[10px] text-[#88888C] uppercase font-bold mb-1">Top Performer</div>
+          <div className="text-xl font-bold text-[#10B981]">{stats.sort((a,b) => b.won - a.won)[0].name}</div>
+          <div className="text-[10px] text-[#88888C] mt-1">Most deals closed</div>
+        </div>
+        <div className="data-card p-4">
+          <div className="text-[10px] text-[#88888C] uppercase font-bold mb-1">Team Avg Conversion</div>
+          <div className="text-xl font-bold text-[#F2A900]">
+            {Math.round(stats.reduce((s, a) => s + a.conversion, 0) / stats.length)}%
+          </div>
+          <div className="text-[10px] text-[#88888C] mt-1">Across all channels</div>
+        </div>
+        <div className="data-card p-4">
+          <div className="text-[10px] text-[#88888C] uppercase font-bold mb-1">Total Active Leads</div>
+          <div className="text-xl font-bold text-[#EAEAEA]">{leads.filter(l => l.status !== 'lost').length}</div>
+          <div className="text-[10px] text-[#88888C] mt-1">In current pipeline</div>
+        </div>
+        <div className="data-card p-4 border border-[#EF4444]/20 bg-[#EF4444]/5">
+          <div className="text-[10px] text-[#EF4444] uppercase font-bold mb-1">Critical Follow-ups</div>
+          <div className="text-xl font-bold text-[#EF4444]">{tasks.filter(t => t.status === 'overdue').length}</div>
+          <div className="text-[10px] text-[#EF4444]/70 mt-1">Immediate action required</div>
+        </div>
+      </div>
+
+      <div className="data-card overflow-hidden">
+        <div className="p-4 border-b border-white/5 bg-white/[0.02]">
+          <h3 className="text-sm font-bold text-[#EAEAEA]">Salesperson Performance Matrix</h3>
+        </div>
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="bg-[#0A0A0C]">
+              <th className="text-left py-3 px-4 text-[#88888C] font-medium uppercase tracking-wider text-[10px]">Salesperson</th>
+              <th className="text-left py-3 px-4 text-[#88888C] font-medium uppercase tracking-wider text-[10px]">Assigned Leads</th>
+              <th className="text-left py-3 px-4 text-[#88888C] font-medium uppercase tracking-wider text-[10px]">Contacted</th>
+              <th className="text-left py-3 px-4 text-[#88888C] font-medium uppercase tracking-wider text-[10px]">Closed Deals</th>
+              <th className="text-left py-3 px-4 text-[#88888C] font-medium uppercase tracking-wider text-[10px]">Conversion %</th>
+              <th className="text-left py-3 px-4 text-[#88888C] font-medium uppercase tracking-wider text-[10px]">Overdue</th>
+            </tr>
+          </thead>
+          <tbody>
+            {stats.map((s, i) => (
+              <tr key={i} className="border-b border-white/5 hover:bg-white/[0.02] transition-colors">
+                <td className="py-3 px-4 font-bold text-[#EAEAEA]">{s.name}</td>
+                <td className="py-3 px-4 text-[#88888C] font-mono-tech">{s.assigned}</td>
+                <td className="py-3 px-4 text-[#88888C] font-mono-tech">{s.contacted}</td>
+                <td className="py-3 px-4 text-[#10B981] font-bold font-mono-tech">{s.won}</td>
+                <td className="py-3 px-4">
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-[#F2A900] w-8">{s.conversion}%</span>
+                    <div className="flex-1 h-1.5 w-20 bg-white/5 rounded-full overflow-hidden">
+                      <div className="h-full bg-[#F2A900]" style={{ width: `${s.conversion}%` }} />
+                    </div>
+                  </div>
+                </td>
+                <td className="py-3 px-4">
+                  <span className={`font-bold ${s.overdue > 0 ? 'text-[#EF4444]' : 'text-[#88888C]'}`}>
+                    {s.overdue}
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );

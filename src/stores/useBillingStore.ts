@@ -9,6 +9,7 @@ interface BillingState {
   addInvoice: (invoice: Omit<Invoice, "id" | "createdAt">) => void;
   _addInvoice: (invoice: Invoice) => void;
   markInvoicePaid: (invoiceId: number) => void;
+  decrementPackageVisits: (clientId: number, serviceType: string) => void;
   getClientInvoices: (clientId: number) => Invoice[];
   getClientPackages: (clientId: number) => Package[];
   getTotalRevenue: () => number;
@@ -17,24 +18,86 @@ interface BillingState {
 
 const lastMonth = new Date(Date.now() - 30 * 86400000).toISOString();
 const nextMonth = new Date(Date.now() + 30 * 86400000).toISOString();
+const nextYear = new Date(Date.now() + 365 * 86400000).toISOString();
 
 const mockPackages: Package[] = [
-  { id: 1, clientId: 1, name: "Enterprise Security", tier: "enterprise", price: 4500, billingCycle: "monthly", includedServices: ["24/7 Monitoring", "Quarterly PMS", "Priority Support", "Fleet Tracking"], startDate: lastMonth, endDate: nextMonth, status: "active", createdAt: lastMonth },
-  { id: 2, clientId: 2, name: "Professional Suite", tier: "professional", price: 2800, billingCycle: "monthly", includedServices: ["Business Hours Monitoring", "Bi-annual PMS", "Standard Support"], startDate: lastMonth, endDate: nextMonth, status: "active", createdAt: lastMonth },
-  { id: 3, clientId: 5, name: "Enterprise Security", tier: "enterprise", price: 5500, billingCycle: "monthly", includedServices: ["24/7 Monitoring", "Monthly PMS", "Dedicated Account Manager", "Global Fleet Tracking"], startDate: lastMonth, endDate: nextMonth, status: "active", createdAt: lastMonth },
-  { id: 4, clientId: 4, name: "Fleet Pro", tier: "professional", price: 3200, billingCycle: "monthly", includedServices: ["Real-time GPS Tracking", "Monthly PMS", "Route Optimization"], startDate: lastMonth, endDate: nextMonth, status: "active", createdAt: lastMonth },
-  { id: 5, clientId: 8, name: "Basic Security", tier: "basic", price: 1800, billingCycle: "monthly", includedServices: ["Business Hours Monitoring", "Annual PMS", "Email Support"], startDate: lastMonth, endDate: nextMonth, status: "active", createdAt: lastMonth },
+  { 
+    id: 1, 
+    clientId: 1, 
+    name: "Enterprise Security", 
+    description: "Full-scale security and fleet monitoring for large operations.",
+    tier: "enterprise", 
+    price: 4500, 
+    billingCycle: "monthly", 
+    includedServices: ["24/7 Monitoring", "Quarterly PMS", "Priority Support", "Fleet Tracking"], 
+    totalVisits: 4,
+    visitsRemaining: 3,
+    durationMonths: 12,
+    terms: "Standard enterprise service level agreement applies.",
+    startDate: lastMonth, 
+    endDate: nextMonth, 
+    status: "active", 
+    createdAt: lastMonth 
+  },
+  { 
+    id: 2, 
+    clientId: 2, 
+    name: "Professional Suite", 
+    description: "Optimized for medium-sized businesses needing regular maintenance.",
+    tier: "professional", 
+    price: 2800, 
+    billingCycle: "monthly", 
+    includedServices: ["Business Hours Monitoring", "Bi-annual PMS", "Standard Support"], 
+    totalVisits: 2,
+    visitsRemaining: 1,
+    durationMonths: 12,
+    terms: "Includes two preventative maintenance visits per year.",
+    startDate: lastMonth, 
+    endDate: nextMonth, 
+    status: "active", 
+    createdAt: lastMonth 
+  },
+  { 
+    id: 3, 
+    clientId: 5, 
+    name: "Annual Calibration Package", 
+    description: "Certified calibration services for precision equipment.",
+    tier: "professional", 
+    price: 1500, 
+    billingCycle: "annual", 
+    includedServices: ["Calibration", "Certification", "Reporting"], 
+    totalVisits: 1,
+    visitsRemaining: 1,
+    durationMonths: 12,
+    terms: "Ensures equipment compliance with international standards.",
+    startDate: lastMonth, 
+    endDate: nextYear, 
+    status: "active", 
+    createdAt: lastMonth 
+  },
+  { 
+    id: 4, 
+    clientId: 4, 
+    name: "4x PMS Package", 
+    description: "Discounted quarterly preventative maintenance plan.",
+    tier: "basic", 
+    price: 3200, 
+    billingCycle: "quarterly", 
+    includedServices: ["Quarterly PMS", "Oil Change", "Filter Replacement"], 
+    totalVisits: 4,
+    visitsRemaining: 4,
+    durationMonths: 12,
+    terms: "Visits must be scheduled at least 2 weeks in advance.",
+    startDate: lastMonth, 
+    endDate: nextYear, 
+    status: "active", 
+    createdAt: lastMonth 
+  },
 ];
 
 const mockInvoices: Invoice[] = [
   { id: 1, clientId: 1, packageId: null, serviceRecordId: 1, invoiceNumber: "INV-2024-0001", amount: 450.00, tax: 45.00, total: 495.00, status: "paid", dueDate: nextMonth, paidDate: lastMonth, createdAt: lastMonth },
   { id: 2, clientId: 1, packageId: null, serviceRecordId: 2, invoiceNumber: "INV-2024-0002", amount: 1200.00, tax: 120.00, total: 1320.00, status: "paid", dueDate: nextMonth, paidDate: lastMonth, createdAt: lastMonth },
-  { id: 3, clientId: 2, packageId: null, serviceRecordId: 3, invoiceNumber: "INV-2024-0003", amount: 320.00, tax: 32.00, total: 352.00, status: "sent", dueDate: nextMonth, paidDate: null, createdAt: lastMonth },
-  { id: 4, clientId: 4, packageId: null, serviceRecordId: 4, invoiceNumber: "INV-2024-0004", amount: 680.00, tax: 68.00, total: 748.00, status: "sent", dueDate: nextMonth, paidDate: null, createdAt: lastMonth },
-  { id: 5, clientId: 5, packageId: null, serviceRecordId: 5, invoiceNumber: "INV-2024-0005", amount: 250.00, tax: 25.00, total: 275.00, status: "paid", dueDate: nextMonth, paidDate: lastMonth, createdAt: lastMonth },
-  { id: 6, clientId: 5, packageId: null, serviceRecordId: 7, invoiceNumber: "INV-2024-0006", amount: 180.00, tax: 18.00, total: 198.00, status: "sent", dueDate: nextMonth, paidDate: null, createdAt: lastMonth },
-  { id: 7, clientId: 2, packageId: null, serviceRecordId: 8, invoiceNumber: "INV-2024-0007", amount: 950.00, tax: 95.00, total: 1045.00, status: "paid", dueDate: nextMonth, paidDate: lastMonth, createdAt: lastMonth },
-  { id: 8, clientId: 4, packageId: null, serviceRecordId: 9, invoiceNumber: "INV-2024-0008", amount: 290.00, tax: 29.00, total: 319.00, status: "sent", dueDate: nextMonth, paidDate: null, createdAt: lastMonth },
 ];
 
 export const useBillingStore = create<BillingState>()(
@@ -64,6 +127,22 @@ export const useBillingStore = create<BillingState>()(
               ? { ...inv, status: "paid" as const, paidDate: new Date().toISOString() }
               : inv
           ),
+        }));
+      },
+
+      decrementPackageVisits: (clientId, serviceType) => {
+        set((state) => ({
+          packages: state.packages.map((pkg) => {
+            // Check if package belongs to client, is active, and includes the service type
+            const matchesService = pkg.includedServices.some(s => 
+              s.toLowerCase().includes(serviceType.toLowerCase())
+            );
+            
+            if (pkg.clientId === clientId && pkg.status === "active" && matchesService && pkg.visitsRemaining > 0) {
+              return { ...pkg, visitsRemaining: pkg.visitsRemaining - 1 };
+            }
+            return pkg;
+          })
         }));
       },
 

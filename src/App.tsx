@@ -16,6 +16,8 @@ import ClientReports from '@/pages/client/Reports'
 import Billing from '@/pages/Billing'
 import Reports from '@/pages/Reports'
 import ClientBookings from '@/pages/client/Bookings'
+import Landing from '@/pages/Landing'
+import Marketing from '@/pages/Marketing'
 import Settings from '@/pages/Settings'
 import AssetScanner from '@/pages/AssetScanner'
 import NotFound from '@/pages/NotFound'
@@ -49,6 +51,7 @@ function AuthenticatedRoutes() {
         <Route path="/fleet" element={<Fleet />} />
         <Route path="/portal" element={<ClientPortal />} />
         <Route path="/billing" element={<Billing />} />
+        <Route path="/marketing" element={<Marketing />} />
         <Route path="/reports" element={<Reports />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/scan/:serial" element={<AssetScanner />} />
@@ -64,6 +67,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/landing" element={<Landing />} />
       <Route
         path="/*"
         element={
@@ -73,5 +77,5 @@ export default function App() {
         }
       />
     </Routes>
-  )
+  );
 }

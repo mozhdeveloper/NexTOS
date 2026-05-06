@@ -19,6 +19,7 @@ import {
   Package,
   ChevronDown,
   ChevronUp,
+  PenTool,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -61,19 +62,23 @@ export default function Services() {
   const [formType, setFormType] = useState<ServiceType>("pms");
   const [formTechnician, setFormTechnician] = useState(user?.name || "");
   const [formDescription, setFormDescription] = useState("");
+  const [formFindings, setFormFindings] = useState("");
+  const [formWorkDone, setFormWorkDone] = useState("");
+  const [formRecommendation, setFormRecommendation] = useState("");
   const [formParts, setFormParts] = useState("");
+  const [formClientSign, setFormClientSign] = useState("");
+  const [formTechSign, setFormTechSign] = useState("");
   const [beforePhotos, setBeforePhotos] = useState<string[]>([]);
   const [afterPhotos, setAfterPhotos] = useState<string[]>([]);
   const [showReport, setShowReport] = useState<ServiceRecord | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const location = useLocation();
 
   useEffect(() => {
-    // Check if we arrived here via a scan redirect
     const state = location.state as { selectedUnitId?: number };
     if (state?.selectedUnitId) {
       setSelectedEquipment(state.selectedUnitId);
-      // Optional: Clear the state so it doesn't re-select on refresh
       window.history.replaceState({}, document.title);
     }
   }, [location]);
@@ -107,28 +112,78 @@ export default function Services() {
   );
 
   const handleSubmitReport = () => {
-    if (!formClientId || !formEquipmentId || !formDescription) return;
+    setError(null);
+    
+    // Rule: Must have before and after photos to complete
+    if (beforePhotos.length === 0 || afterPhotos.length === 0) {
+      setError("Technician Rule: You must upload at least one BEFORE and one AFTER photo to complete this service.");
+      return;
+    }
+
+    if (!formClientId || !formEquipmentId || !formDescription || !formClientSign || !formTechSign) {
+      setError("Please fill all required fields, including signatures.");
+      return;
+    }
+
+    const newRecordId = Date.now();
     const record = {
       equipmentId: parseInt(formEquipmentId),
       clientId: parseInt(formClientId),
       technician: formTechnician,
       serviceType: formType,
       description: formDescription,
+      findings: formFindings,
+      workDone: formWorkDone,
+      recommendation: formRecommendation,
       hoursAtService: equipment.find((e) => e.id === parseInt(formEquipmentId))?.currentHours || 0,
       partsUsed: formParts,
       status: "completed" as const,
       scheduledDate: new Date().toISOString(),
       completedDate: new Date().toISOString(),
       cost: Math.floor(Math.random() * 800) + 150,
+      clientSignature: formClientSign,
+      techSignature: formTechSign,
     };
-    addServiceRecord(record);
+    
+    // 1. Add the record
+    addServiceRecord({ ...record });
+    
+    // 2. Add the photos associated with this record
+    beforePhotos.forEach(url => {
+      useOperationsStore.getState().addServicePhoto({
+        serviceRecordId: newRecordId,
+        type: "before",
+        url,
+        caption: "Before service photo",
+      });
+    });
+
+    afterPhotos.forEach(url => {
+      useOperationsStore.getState().addServicePhoto({
+        serviceRecordId: newRecordId,
+        type: "after",
+        url,
+        caption: "After service photo",
+      });
+    });
+
+    // 3. Automated Visit Tracking (Module 8 Connection)
+    // Decrement the visits remaining for the client's package
+    useBillingStore.getState().decrementPackageVisits(parseInt(formClientId), formType);
+    
     // Reset form
     setFormClientId("");
     setFormEquipmentId("");
     setFormDescription("");
+    setFormFindings("");
+    setFormWorkDone("");
+    setFormRecommendation("");
     setFormParts("");
+    setFormClientSign("");
+    setFormTechSign("");
     setBeforePhotos([]);
     setAfterPhotos([]);
+    setError(null);
     setActiveTab("reports");
   };
 
@@ -188,83 +243,6 @@ export default function Services() {
                 className="pl-8 h-8 bg-[#1A1A20] border-white/10 text-[#EAEAEA] text-xs"
               />
             </div>
-            <Dialog open={showQR} onOpenChange={setShowQR}>
-              <DialogTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    if (selectedEquipment) {
-                      const eq = equipment.find(e => e.id === selectedEquipment);
-                      if (eq) setQrSerial(eq.serialNumber);
-                    }
-                  }}
-                  className="h-8 border-[#F2A900]/30 text-[#F2A900] hover:bg-[#F2A900]/10 text-xs"
-                >
-                  <QrCode className="w-3.5 h-3.5 mr-1" />
-                  QR Generator
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="bg-[#121214] border-[#F2A900]/20 max-w-sm">
-                <DialogHeader>
-                  <DialogTitle className="text-[#EAEAEA] text-base">Smart Asset QR Generator</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-3">
-                  <div className="space-y-1">
-                    <label className="text-[10px] text-[#88888C] uppercase tracking-wider">Asset Serial Number</label>
-                    <Input
-                      placeholder="Enter serial number"
-                      value={qrSerial}
-                      onChange={(e) => setQrSerial(e.target.value)}
-                      className="bg-[#1A1A20] border-white/10 text-[#EAEAEA] text-xs"
-                    />
-                  </div>
-                  {qrSerial && (
-                    <div className="flex flex-col items-center gap-3 p-4 bg-white rounded qr-container">
-                      <QRCodeSVG value={`${window.location.origin}/scan/${qrSerial}`} size={200} />
-                      <div className="text-center">
-                        <div className="text-[10px] text-[#050505] font-bold uppercase tracking-widest">NexTOS Smart Asset</div>
-                        <div className="text-xs text-[#050505] font-mono-tech font-bold">{qrSerial}</div>
-                      </div>
-                    </div>
-                  )}
-                  <Button
-                    onClick={() => {
-                      const printWindow = window.open('', '_blank');
-                      if (printWindow) {
-                        printWindow.document.write(`
-                          <html>
-                            <head>
-                              <title>Print QR Label</title>
-                              <style>
-                                body { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; font-family: monospace; }
-                                .serial { margin-top: 10px; font-size: 20px; font-weight: bold; }
-                              </style>
-                            </head>
-                            <body>
-                              ${document.querySelector('.qr-container')?.innerHTML || ''}
-                              <script>
-                                window.onload = () => {
-                                  window.print();
-                                  window.close();
-                                };
-                              </script>
-                            </body>
-                          </html>
-                        `);
-                        printWindow.document.close();
-                      }
-                    }}
-                    variant="outline"
-                    size="sm"
-                    className="w-full border-white/10 text-[#88888C] text-xs"
-                  >
-                    <Printer className="w-3 h-3 mr-1" />
-                    Print Label
-                  </Button>
-                </div>
-              </DialogContent>
-            </Dialog>
           </div>
 
           <div className="data-card overflow-auto">
@@ -317,7 +295,6 @@ export default function Services() {
             </table>
           </div>
 
-          {/* Equipment Detail */}
           {selectedEquipment && (
             <EquipmentDetail
               equipment={equipment.find((eqItem: Equipment) => eqItem.id === selectedEquipment)!}
@@ -343,7 +320,6 @@ export default function Services() {
                   <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Technician</th>
                   <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Date</th>
                   <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Status</th>
-                  <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Cost</th>
                   <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Actions</th>
                 </tr>
               </thead>
@@ -364,19 +340,10 @@ export default function Services() {
                         {record.completedDate ? new Date(record.completedDate).toLocaleDateString() : "—"}
                       </td>
                       <td className="py-2.5 px-3">
-                        <span
-                          className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
-                            record.status === "completed"
-                              ? "bg-[#10B981]/20 text-[#10B981]"
-                              : record.status === "in_progress"
-                              ? "bg-[#F2A900]/20 text-[#F2A900]"
-                              : "bg-[#005F73]/20 text-[#005F73]"
-                          }`}
-                        >
+                        <span className="bg-[#10B981]/20 text-[#10B981] px-1.5 py-0.5 rounded text-[10px] font-medium uppercase">
                           {record.status}
                         </span>
                       </td>
-                      <td className="py-2.5 px-3 text-[#F2A900] font-mono-tech">${record.cost.toFixed(2)}</td>
                       <td className="py-2.5 px-3">
                         <Button
                           variant="ghost"
@@ -399,92 +366,142 @@ export default function Services() {
 
       {/* New Report Tab */}
       {activeTab === "new" && (
-        <div className="max-w-3xl space-y-4">
-          <div className="data-card p-4 space-y-4">
-            <h3 className="text-base font-semibold text-[#EAEAEA]">New Service Report</h3>
+        <div className="max-w-4xl space-y-4">
+          {error && (
+            <div className="p-3 rounded bg-[#EF4444]/10 border border-[#EF4444]/20 flex items-center gap-2 text-[#EF4444] text-xs font-bold">
+              <AlertTriangle className="w-4 h-4" />
+              {error}
+            </div>
+          )}
 
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-[10px] text-[#88888C] uppercase tracking-wider mb-1 block">Client</label>
-                <Select value={formClientId} onValueChange={setFormClientId}>
-                  <SelectTrigger className="h-8 bg-[#1A1A20] border-white/10 text-[#EAEAEA] text-xs">
-                    <SelectValue placeholder="Select client" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-[#1A1A20] border-white/10">
-                    {clients.map((c) => (
-                      <SelectItem key={c.id} value={c.id.toString()} className="text-xs text-[#EAEAEA]">
-                        {c.companyName}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <label className="text-[10px] text-[#88888C] uppercase tracking-wider mb-1 block">Equipment</label>
-                <Select value={formEquipmentId} onValueChange={setFormEquipmentId}>
-                  <SelectTrigger className="h-8 bg-[#1A1A20] border-white/10 text-[#EAEAEA] text-xs">
-                    <SelectValue placeholder="Select unit" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-[#1A1A20] border-white/10">
-                    {equipment
-                      .filter((eqItem: Equipment) => !formClientId || eqItem.clientId === parseInt(formClientId))
-                      .map((eqItem: Equipment) => (
-                        <SelectItem key={eqItem.id} value={eqItem.id.toString()} className="text-xs text-[#EAEAEA]">
-                          {eqItem.unitId} — {eqItem.type}
+          <div className="data-card p-5 space-y-6">
+            <h3 className="text-base font-bold text-[#EAEAEA] flex items-center gap-2">
+              <Wrench className="w-4 h-4 text-[#F2A900]" />
+              Technician Service Logging
+            </h3>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-4">
+                <div>
+                  <label className="text-[10px] text-[#88888C] uppercase tracking-wider mb-1 block font-bold">Client</label>
+                  <Select value={formClientId} onValueChange={setFormClientId}>
+                    <SelectTrigger className="h-9 bg-[#1A1A20] border-white/10 text-[#EAEAEA] text-xs">
+                      <SelectValue placeholder="Select client" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-[#1A1A20] border-white/10">
+                      {clients.map((c) => (
+                        <SelectItem key={c.id} value={c.id.toString()} className="text-xs text-[#EAEAEA]">
+                          {c.companyName}
                         </SelectItem>
                       ))}
-                  </SelectContent>
-                </Select>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="text-[10px] text-[#88888C] uppercase tracking-wider mb-1 block font-bold">Equipment</label>
+                  <Select value={formEquipmentId} onValueChange={setFormEquipmentId}>
+                    <SelectTrigger className="h-9 bg-[#1A1A20] border-white/10 text-[#EAEAEA] text-xs">
+                      <SelectValue placeholder="Select unit" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-[#1A1A20] border-white/10">
+                      {equipment
+                        .filter((eqItem: Equipment) => !formClientId || eqItem.clientId === parseInt(formClientId))
+                        .map((eqItem: Equipment) => (
+                          <SelectItem key={eqItem.id} value={eqItem.id.toString()} className="text-xs text-[#EAEAEA]">
+                            {eqItem.unitId} — {eqItem.type}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="space-y-4">
+                <div>
+                  <label className="text-[10px] text-[#88888C] uppercase tracking-wider mb-1 block font-bold">Service Type</label>
+                  <Select value={formType} onValueChange={(v) => setFormType(v as ServiceType)}>
+                    <SelectTrigger className="h-9 bg-[#1A1A20] border-white/10 text-[#EAEAEA] text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="bg-[#1A1A20] border-white/10">
+                      <SelectItem value="pms" className="text-xs text-[#EAEAEA]">PMS (Preventative Maintenance)</SelectItem>
+                      <SelectItem value="calibration" className="text-xs text-[#EAEAEA]">Calibration</SelectItem>
+                      <SelectItem value="repair" className="text-xs text-[#EAEAEA]">Repair</SelectItem>
+                      <SelectItem value="inspection" className="text-xs text-[#EAEAEA]">Inspection</SelectItem>
+                      <SelectItem value="installation" className="text-xs text-[#EAEAEA]">Installation</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="text-[10px] text-[#88888C] uppercase tracking-wider mb-1 block font-bold">Technician</label>
+                  <Input
+                    value={formTechnician}
+                    onChange={(e) => setFormTechnician(e.target.value)}
+                    className="h-9 bg-[#1A1A20] border-white/10 text-[#EAEAEA] text-xs"
+                  />
+                </div>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-4">
+              <div className="col-span-1 space-y-4">
+                <div>
+                  <label className="text-[10px] text-[#88888C] uppercase tracking-wider mb-1 block font-bold">Findings</label>
+                  <textarea
+                    value={formFindings}
+                    onChange={(e) => setFormFindings(e.target.value)}
+                    rows={4}
+                    className="w-full px-3 py-2 rounded bg-[#1A1A20] border border-white/10 text-[#EAEAEA] text-xs focus:outline-none focus:border-[#F2A900]/50 resize-none"
+                    placeholder="Describe initial state & faults..."
+                  />
+                </div>
+              </div>
+              <div className="col-span-1 space-y-4">
+                <div>
+                  <label className="text-[10px] text-[#88888C] uppercase tracking-wider mb-1 block font-bold">Work Performed</label>
+                  <textarea
+                    value={formWorkDone}
+                    onChange={(e) => setFormWorkDone(e.target.value)}
+                    rows={4}
+                    className="w-full px-3 py-2 rounded bg-[#1A1A20] border border-white/10 text-[#EAEAEA] text-xs focus:outline-none focus:border-[#F2A900]/50 resize-none"
+                    placeholder="List all actions taken..."
+                  />
+                </div>
+              </div>
+              <div className="col-span-1 space-y-4">
+                <div>
+                  <label className="text-[10px] text-[#88888C] uppercase tracking-wider mb-1 block font-bold">Recommendation</label>
+                  <textarea
+                    value={formRecommendation}
+                    onChange={(e) => setFormRecommendation(e.target.value)}
+                    rows={4}
+                    className="w-full px-3 py-2 rounded bg-[#1A1A20] border border-white/10 text-[#EAEAEA] text-xs focus:outline-none focus:border-[#F2A900]/50 resize-none"
+                    placeholder="Advise on future maintenance..."
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4">
               <div>
-                <label className="text-[10px] text-[#88888C] uppercase tracking-wider mb-1 block">Service Type</label>
-                <Select value={formType} onValueChange={(v) => setFormType(v as ServiceType)}>
-                  <SelectTrigger className="h-8 bg-[#1A1A20] border-white/10 text-[#EAEAEA] text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="bg-[#1A1A20] border-white/10">
-                    <SelectItem value="pms" className="text-xs text-[#EAEAEA]">Preventative Maintenance</SelectItem>
-                    <SelectItem value="installation" className="text-xs text-[#EAEAEA]">Installation</SelectItem>
-                    <SelectItem value="repair" className="text-xs text-[#EAEAEA]">Repair</SelectItem>
-                    <SelectItem value="inspection" className="text-xs text-[#EAEAEA]">Inspection</SelectItem>
-                  </SelectContent>
-                </Select>
+                <label className="text-[10px] text-[#88888C] uppercase tracking-wider mb-1 block font-bold">Overall Summary</label>
+                <Input
+                  value={formDescription}
+                  onChange={(e) => setFormDescription(e.target.value)}
+                  placeholder="General summary of the service visit"
+                  className="h-9 bg-[#1A1A20] border-white/10 text-[#EAEAEA] text-xs"
+                />
               </div>
               <div>
-                <label className="text-[10px] text-[#88888C] uppercase tracking-wider mb-1 block">Technician</label>
+                <label className="text-[10px] text-[#88888C] uppercase tracking-wider mb-1 block font-bold">Parts Used</label>
                 <Input
-                  value={formTechnician}
-                  onChange={(e) => setFormTechnician(e.target.value)}
-                  className="h-8 bg-[#1A1A20] border-white/10 text-[#EAEAEA] text-xs"
+                  value={formParts}
+                  onChange={(e) => setFormParts(e.target.value)}
+                  placeholder="Serial numbers or names of replaced parts"
+                  className="h-9 bg-[#1A1A20] border-white/10 text-[#EAEAEA] text-xs"
                 />
               </div>
             </div>
 
-            <div>
-              <label className="text-[10px] text-[#88888C] uppercase tracking-wider mb-1 block">Description</label>
-              <textarea
-                value={formDescription}
-                onChange={(e) => setFormDescription(e.target.value)}
-                rows={3}
-                className="w-full px-3 py-2 rounded bg-[#1A1A20] border border-white/10 text-[#EAEAEA] text-xs focus:outline-none focus:border-[#F2A900]/50 resize-none"
-                placeholder="Describe the work performed..."
-              />
-            </div>
-
-            <div>
-              <label className="text-[10px] text-[#88888C] uppercase tracking-wider mb-1 block">Parts Used</label>
-              <Input
-                value={formParts}
-                onChange={(e) => setFormParts(e.target.value)}
-                placeholder="List parts and materials..."
-                className="h-8 bg-[#1A1A20] border-white/10 text-[#EAEAEA] text-xs"
-              />
-            </div>
-
-            {/* Photo Uploads */}
             <div className="grid grid-cols-2 gap-4">
               <PhotoDropzone
                 label="BEFORE"
@@ -496,17 +513,43 @@ export default function Services() {
                 label="AFTER"
                 photos={afterPhotos}
                 onUpload={(e) => handlePhotoUpload("after", e)}
-                onRemove={(idx) => setAfterPhotos((prev) => prev.filter((_, i) => i !== idx))}
+                onRemove={(idx) => setBeforePhotos((prev) => prev.filter((_, i) => i !== idx))}
               />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4 border-t border-white/5 pt-6">
+              <div className="space-y-2">
+                <label className="text-[10px] text-[#88888C] uppercase tracking-wider block font-bold">Technician Signature</label>
+                <div className="relative group">
+                  <Input
+                    placeholder="Type name to sign"
+                    value={formTechSign}
+                    onChange={(e) => setFormTechSign(e.target.value)}
+                    className="h-10 bg-[#1A1A20] border-white/10 text-[#EAEAEA] font-mono-tech italic"
+                  />
+                  <PenTool className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#88888C]/30" />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] text-[#88888C] uppercase tracking-wider block font-bold">Client Confirmation Signature</label>
+                <div className="relative group">
+                  <Input
+                    placeholder="Type name to sign"
+                    value={formClientSign}
+                    onChange={(e) => setFormClientSign(e.target.value)}
+                    className="h-10 bg-[#1A1A20] border-white/10 text-[#EAEAEA] font-mono-tech italic"
+                  />
+                  <PenTool className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#88888C]/30" />
+                </div>
+              </div>
             </div>
 
             <Button
               onClick={handleSubmitReport}
-              disabled={!formClientId || !formEquipmentId || !formDescription}
-              className="w-full h-9 bg-[#F2A900] hover:bg-[#F2A900]/80 text-[#050505] font-bold text-sm disabled:opacity-50"
+              className="w-full h-12 bg-[#F2A900] hover:bg-[#F2A900]/80 text-[#050505] font-bold text-base shadow-[0_4px_20px_-5px_rgba(242,169,0,0.3)] transition-all"
             >
-              <CheckCircle2 className="w-4 h-4 mr-1.5" />
-              Submit Report
+              <CheckCircle2 className="w-5 h-5 mr-2" />
+              Finalize & Complete Service
             </Button>
           </div>
         </div>
@@ -514,7 +557,7 @@ export default function Services() {
 
       {/* Service Report Dialog */}
       <Dialog open={!!showReport} onOpenChange={() => setShowReport(null)}>
-        <DialogContent className="bg-[#121214] border-white/10 max-w-2xl max-h-[90vh] overflow-auto">
+        <DialogContent className="bg-[#0A0A0C] border-white/10 max-w-4xl max-h-[95vh] overflow-auto scrollbar-hide">
           {showReport && (
             <ServiceReportView
               record={showReport}
@@ -544,37 +587,37 @@ function PhotoDropzone({
   const color = label === "BEFORE" ? "#F2A900" : "#10B981";
   return (
     <div
-      className="border-2 border-dashed rounded p-3"
+      className="border-2 border-dashed rounded p-3 bg-white/5"
       style={{ borderColor: photos.length > 0 ? `${color}40` : "#88888C40" }}
     >
       <div className="flex items-center justify-between mb-2">
         <span className="text-[10px] font-bold tracking-wider" style={{ color }}>
           {label} PHOTOS
         </span>
-        <span className="text-[10px] text-[#88888C]">{photos.length} uploaded</span>
+        <span className="text-[10px] text-[#88888C] font-mono-tech">{photos.length} uploaded</span>
       </div>
       {photos.length === 0 ? (
-        <label className="flex flex-col items-center justify-center py-6 cursor-pointer hover:bg-white/5 rounded transition-colors">
-          <Camera className="w-6 h-6 text-[#88888C] mb-1" />
-          <span className="text-[10px] text-[#88888C]">Click to upload photos</span>
+        <label className="flex flex-col items-center justify-center py-8 cursor-pointer hover:bg-white/5 rounded transition-colors group">
+          <Camera className="w-8 h-8 text-[#88888C] mb-2 group-hover:text-[#EAEAEA] transition-colors" />
+          <span className="text-[10px] text-[#88888C] group-hover:text-[#EAEAEA]">Required: Tap to upload</span>
           <input type="file" accept="image/*" multiple className="hidden" onChange={onUpload} />
         </label>
       ) : (
         <div className="space-y-1.5">
           <div className="grid grid-cols-3 gap-1.5">
             {photos.map((photo, idx) => (
-              <div key={idx} className="relative group">
-                <img src={photo} alt={`${label} ${idx}`} className="w-full h-16 object-cover rounded" />
+              <div key={idx} className="relative group aspect-square">
+                <img src={photo} alt={`${label} ${idx}`} className="w-full h-full object-cover rounded" />
                 <button
                   onClick={() => onRemove(idx)}
-                  className="absolute top-0.5 right-0.5 w-4 h-4 bg-[#EF4444] rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                  className="absolute top-1 right-1 w-5 h-5 bg-[#EF4444] rounded flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                 >
-                  <X className="w-2.5 h-2.5 text-white" />
+                  <X className="w-3 h-3 text-white" />
                 </button>
               </div>
             ))}
           </div>
-          <label className="flex items-center justify-center py-2 cursor-pointer hover:bg-white/5 rounded transition-colors">
+          <label className="flex items-center justify-center py-2 cursor-pointer hover:bg-white/10 rounded transition-colors">
             <Upload className="w-3 h-3 text-[#88888C] mr-1" />
             <span className="text-[10px] text-[#88888C]">Add more</span>
             <input type="file" accept="image/*" multiple className="hidden" onChange={onUpload} />
@@ -615,64 +658,49 @@ function EquipmentDetail({
       </button>
 
       {expanded && (
-        <div className="mt-3 space-y-3">
-          <div className="grid grid-cols-3 gap-3 text-xs">
+        <div className="mt-4 space-y-4">
+          <div className="grid grid-cols-4 gap-4 text-xs">
             <div>
-              <div className="text-[10px] text-[#88888C] uppercase">Manufacturer</div>
+              <div className="text-[10px] text-[#88888C] uppercase font-bold mb-0.5">Manufacturer</div>
               <div className="text-[#EAEAEA]">{equipment.manufacturer}</div>
             </div>
             <div>
-              <div className="text-[10px] text-[#88888C] uppercase">Model</div>
+              <div className="text-[10px] text-[#88888C] uppercase font-bold mb-0.5">Model</div>
               <div className="text-[#EAEAEA]">{equipment.model}</div>
             </div>
             <div>
-              <div className="text-[10px] text-[#88888C] uppercase">Serial</div>
+              <div className="text-[10px] text-[#88888C] uppercase font-bold mb-0.5">Serial</div>
               <div className="text-[#EAEAEA] font-mono-tech">{equipment.serialNumber}</div>
             </div>
             <div>
-              <div className="text-[10px] text-[#88888C] uppercase">Client</div>
-              <div className="text-[#EAEAEA]">{client?.companyName || "—"}</div>
-            </div>
-            <div>
-              <div className="text-[10px] text-[#88888C] uppercase">Location</div>
-              <div className="text-[#EAEAEA]">{equipment.location}</div>
-            </div>
-            <div>
-              <div className="text-[10px] text-[#88888C] uppercase">Install Date</div>
-              <div className="text-[#EAEAEA]">{new Date(equipment.installDate).toLocaleDateString()}</div>
+              <div className="text-[10px] text-[#88888C] uppercase font-bold mb-0.5">Status</div>
+              <span className="px-1.5 py-0.5 rounded bg-[#10B981]/20 text-[#10B981] text-[9px] font-bold uppercase">
+                {equipment.status}
+              </span>
             </div>
           </div>
 
-          {eqPhotos.length > 0 && (
-            <div>
-              <div className="text-[10px] text-[#88888C] uppercase mb-1">Service Photos</div>
-              <div className="grid grid-cols-6 gap-1.5">
-                {eqPhotos.slice(0, 6).map((photo, idx) => (
-                  <img key={idx} src={photo.url} alt="" className="w-full h-12 object-cover rounded" />
-                ))}
-              </div>
-            </div>
-          )}
-
           <div>
-            <div className="text-[10px] text-[#88888C] uppercase mb-1">Service History ({serviceHistory.length})</div>
-            <div className="space-y-1">
-              {serviceHistory.slice(0, 5).map((record) => (
+            <div className="text-[10px] text-[#88888C] uppercase font-bold mb-2">Service History ({serviceHistory.length})</div>
+            <div className="space-y-1.5">
+              {serviceHistory.map((record) => (
                 <div
                   key={record.id}
-                  className="flex items-center justify-between p-2 rounded bg-[#121214] hover:bg-[#1A1A20] cursor-pointer"
+                  className="flex items-center justify-between p-2.5 rounded bg-[#1A1A20] hover:bg-[#2A2A30] cursor-pointer transition-colors border border-white/5"
                   onClick={() => onViewReport(record)}
                 >
-                  <div className="flex items-center gap-2">
-                    <Wrench className="w-3 h-3 text-[#005F73]" />
-                    <span className="text-xs text-[#EAEAEA] capitalize">{record.serviceType}</span>
-                    <span className="text-[10px] text-[#88888C]">{record.technician}</span>
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded bg-[#F2A900]/10 flex items-center justify-center">
+                      <Wrench className="w-4 h-4 text-[#F2A900]" />
+                    </div>
+                    <div>
+                      <div className="text-xs text-[#EAEAEA] font-bold capitalize">{record.serviceType}</div>
+                      <div className="text-[10px] text-[#88888C]">{record.technician} • {record.completedDate ? new Date(record.completedDate).toLocaleDateString() : "—"}</div>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] text-[#F2A900] font-mono-tech">${record.cost.toFixed(2)}</span>
-                    <span className="text-[10px] text-[#88888C]">
-                      {record.completedDate ? new Date(record.completedDate).toLocaleDateString() : "—"}
-                    </span>
+                  <div className="text-right">
+                    <div className="text-[10px] text-[#F2A900] font-mono-tech font-bold">${record.cost.toFixed(2)}</div>
+                    <span className="text-[9px] text-[#10B981] font-bold uppercase tracking-wider">Completed</span>
                   </div>
                 </div>
               ))}
@@ -698,113 +726,116 @@ function ServiceReportView({
   onPrint: () => void;
 }) {
   return (
-    <div className="space-y-4">
-      <DialogHeader>
-        <DialogTitle className="text-[#EAEAEA] flex items-center justify-between">
-          <span>Service Report #{record.id}</span>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onPrint}
-            className="h-7 border-white/10 text-[#88888C] hover:text-[#F2A900] text-xs"
-          >
-            <Printer className="w-3 h-3 mr-1" />
-            Print
-          </Button>
-        </DialogTitle>
-      </DialogHeader>
-
-      <div className="border border-white/10 rounded p-4 space-y-4 bg-[#0A0A0C]">
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-white/5 pb-3">
-          <div>
-            <div className="text-lg font-bold text-[#F2A900]">NexTOS</div>
-            <div className="text-[10px] text-[#88888C]">Service Report</div>
-          </div>
-          <div className="text-right">
-            <div className="text-xs text-[#EAEAEA] font-mono-tech">Report #{record.id}</div>
-            <div className="text-[10px] text-[#88888C]">
-              {record.completedDate ? new Date(record.completedDate).toLocaleDateString() : "—"}
-            </div>
-          </div>
-        </div>
-
-        {/* Details */}
-        <div className="grid grid-cols-2 gap-3 text-xs">
-          <div>
-            <div className="text-[10px] text-[#88888C] uppercase">Client</div>
-            <div className="text-[#EAEAEA] font-medium">{client?.companyName || "—"}</div>
-          </div>
-          <div>
-            <div className="text-[10px] text-[#88888C] uppercase">Equipment</div>
-            <div className="text-[#EAEAEA] font-medium font-mono-tech">
-              {equipment?.unitId || "—"} — {equipment?.type || "—"}
-            </div>
-          </div>
-          <div>
-            <div className="text-[10px] text-[#88888C] uppercase">Technician</div>
-            <div className="text-[#EAEAEA]">{record.technician}</div>
-          </div>
-          <div>
-            <div className="text-[10px] text-[#88888C] uppercase">Service Type</div>
-            <div className="text-[#EAEAEA] capitalize">{record.serviceType}</div>
-          </div>
-          <div>
-            <div className="text-[10px] text-[#88888C] uppercase">Hours at Service</div>
-            <div className="text-[#EAEAEA] font-mono-tech">{record.hoursAtService}</div>
-          </div>
-          <div>
-            <div className="text-[10px] text-[#88888C] uppercase">Cost</div>
-            <div className="text-[#F2A900] font-mono-tech font-bold">${record.cost.toFixed(2)}</div>
-          </div>
-        </div>
-
-        {/* Description */}
+    <div className="space-y-6">
+      <div className="flex items-center justify-between border-b border-white/5 pb-4">
         <div>
-          <div className="text-[10px] text-[#88888C] uppercase mb-1">Work Description</div>
-          <div className="text-xs text-[#EAEAEA] bg-[#1A1A20] p-3 rounded leading-relaxed">{record.description}</div>
+          <h2 className="text-xl font-bold text-[#EAEAEA]">Digital Service Report</h2>
+          <p className="text-xs text-[#88888C] mt-1">Generated by NexTOS Enterprise</p>
+        </div>
+        <Button
+          onClick={onPrint}
+          className="bg-white/5 hover:bg-white/10 text-white h-9 px-4 border border-white/10"
+        >
+          <Printer className="w-4 h-4 mr-2" />
+          Print Report
+        </Button>
+      </div>
+
+      <div className="grid grid-cols-2 gap-8">
+        <div className="space-y-4">
+          <section>
+            <h4 className="text-[10px] font-bold text-[#F2A900] uppercase tracking-widest mb-2">Customer & Asset</h4>
+            <div className="data-card p-4 space-y-3">
+              <div className="flex justify-between">
+                <span className="text-[11px] text-[#88888C]">Client:</span>
+                <span className="text-[11px] text-[#EAEAEA] font-bold">{client?.companyName}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[11px] text-[#88888C]">Equipment:</span>
+                <span className="text-[11px] text-[#EAEAEA]">{equipment?.unitId} ({equipment?.type})</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[11px] text-[#88888C]">Serial:</span>
+                <span className="text-[11px] text-[#EAEAEA] font-mono-tech">{equipment?.serialNumber}</span>
+              </div>
+            </div>
+          </section>
+
+          <section>
+            <h4 className="text-[10px] font-bold text-[#F2A900] uppercase tracking-widest mb-2">Service Details</h4>
+            <div className="data-card p-4 space-y-3">
+              <div className="flex justify-between">
+                <span className="text-[11px] text-[#88888C]">Type:</span>
+                <span className="text-[11px] text-[#EAEAEA] font-bold uppercase">{record.serviceType}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[11px] text-[#88888C]">Technician:</span>
+                <span className="text-[11px] text-[#EAEAEA]">{record.technician}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[11px] text-[#88888C]">Date:</span>
+                <span className="text-[11px] text-[#EAEAEA]">{record.completedDate ? new Date(record.completedDate).toLocaleDateString() : "—"}</span>
+              </div>
+            </div>
+          </section>
         </div>
 
-        {/* Parts */}
-        {record.partsUsed && (
-          <div>
-            <div className="text-[10px] text-[#88888C] uppercase mb-1">Parts &amp; Materials</div>
-            <div className="text-xs text-[#EAEAEA] font-mono-tech">{record.partsUsed}</div>
-          </div>
-        )}
+        <div className="space-y-4">
+          <section>
+            <h4 className="text-[10px] font-bold text-[#F2A900] uppercase tracking-widest mb-2">Technical Summary</h4>
+            <div className="data-card p-4 space-y-4">
+              <div>
+                <span className="text-[10px] text-[#88888C] uppercase font-bold mb-1 block">Findings:</span>
+                <p className="text-xs text-[#EAEAEA] leading-relaxed">{record.findings || "No findings recorded."}</p>
+              </div>
+              <div>
+                <span className="text-[10px] text-[#88888C] uppercase font-bold mb-1 block">Work Performed:</span>
+                <p className="text-xs text-[#EAEAEA] leading-relaxed">{record.workDone || record.description}</p>
+              </div>
+              <div>
+                <span className="text-[10px] text-[#88888C] uppercase font-bold mb-1 block">Recommendation:</span>
+                <p className="text-xs text-[#EAEAEA] leading-relaxed italic">{record.recommendation || "Maintain regular schedule."}</p>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
 
-        {/* Photos */}
-        {photos.length > 0 && (
-          <div>
-            <div className="text-[10px] text-[#88888C] uppercase mb-2">Documentation Photos</div>
-            <div className="grid grid-cols-2 gap-3">
-              {photos.map((photo, idx) => (
-                <div key={idx}>
-                  <img src={photo.url} alt={photo.caption} className="w-full h-32 object-cover rounded mb-1" />
-                  <div className="flex items-center gap-1">
-                    <span
-                      className={`text-[9px] px-1 py-0.5 rounded font-medium ${
-                        photo.type === "before"
-                          ? "bg-[#F2A900]/20 text-[#F2A900]"
-                          : "bg-[#10B981]/20 text-[#10B981]"
-                      }`}
-                    >
-                      {photo.type.toUpperCase()}
-                    </span>
-                    <span className="text-[9px] text-[#88888C]">{photo.caption}</span>
-                  </div>
-                </div>
+      <section>
+        <h4 className="text-[10px] font-bold text-[#F2A900] uppercase tracking-widest mb-3">Documentation Photos</h4>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <span className="text-[9px] font-bold text-[#F2A900] tracking-widest">BEFORE PHOTOS</span>
+            <div className="grid grid-cols-2 gap-2">
+              {photos.filter(p => p.type === 'before').map((p, i) => (
+                <img key={i} src={p.url} className="w-full h-32 object-cover rounded border border-white/5" alt="Before" />
               ))}
             </div>
           </div>
-        )}
+          <div className="space-y-2">
+            <span className="text-[9px] font-bold text-[#10B981] tracking-widest">AFTER PHOTOS</span>
+            <div className="grid grid-cols-2 gap-2">
+              {photos.filter(p => p.type === 'after').map((p, i) => (
+                <img key={i} src={p.url} className="w-full h-32 object-cover rounded border border-white/5" alt="After" />
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
 
-        {/* Footer */}
-        <div className="border-t border-white/5 pt-3 flex items-center justify-between">
-          <div className="text-[10px] text-[#88888C]">Generated by NexTOS Service Management</div>
-          <div className="flex items-center gap-1">
-            <CheckCircle2 className="w-3 h-3 text-[#10B981]" />
-            <span className="text-[10px] text-[#10B981]">Completed</span>
+      <div className="grid grid-cols-2 gap-8 border-t border-white/5 pt-6">
+        <div className="space-y-2">
+          <span className="text-[10px] text-[#88888C] uppercase font-bold block">Technician E-Signature</span>
+          <div className="p-4 bg-[#1A1A20] rounded border border-white/5">
+            <div className="text-xl font-mono-tech italic text-[#EAEAEA] tracking-wide">{record.techSignature}</div>
+            <div className="text-[9px] text-[#88888C] mt-2 border-t border-white/5 pt-1 uppercase">Digitally Verified Technician</div>
+          </div>
+        </div>
+        <div className="space-y-2">
+          <span className="text-[10px] text-[#88888C] uppercase font-bold block">Client Approval Signature</span>
+          <div className="p-4 bg-[#1A1A20] rounded border border-white/5">
+            <div className="text-xl font-mono-tech italic text-[#EAEAEA] tracking-wide">{record.clientSignature}</div>
+            <div className="text-[9px] text-[#88888C] mt-2 border-t border-white/5 pt-1 uppercase">Confirmed by Client Representative</div>
           </div>
         </div>
       </div>
