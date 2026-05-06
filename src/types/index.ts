@@ -42,6 +42,13 @@ export interface Contact {
 export interface Lead {
   id: number;
   clientId: number | null;
+  name?: string;
+  company?: string;
+  email?: string;
+  phone?: string;
+  inquiryType?: "sales" | "quote" | "pms" | "equipment" | "general";
+  department?: Department;
+  message?: string;
   source: string;
   status: "new" | "contacted" | "qualified" | "lost";
   priority: "low" | "medium" | "high";
@@ -88,7 +95,7 @@ export interface Equipment {
   model: string;
   installDate: string;
   warrantyExpiry: string;
-  status: "active" | "inactive" | "maintenance" | "retired";
+  status: "active" | "inactive" | "maintenance" | "retired" | "under_service" | "broken" | "service_due";
   lastService: string;
   nextServiceDue: number;
   currentHours: number;
@@ -97,7 +104,7 @@ export interface Equipment {
   createdAt: string;
 }
 
-export type ServiceType = "pms" | "installation" | "repair" | "inspection";
+export type ServiceType = "pms" | "installation" | "repair" | "inspection" | "calibration";
 
 export interface ServiceRecord {
   id: number;
@@ -106,6 +113,9 @@ export interface ServiceRecord {
   technician: string;
   serviceType: ServiceType;
   description: string;
+  findings?: string;
+  workDone?: string;
+  recommendation?: string;
   hoursAtService: number;
   partsUsed: string;
   status: "scheduled" | "in_progress" | "completed" | "cancelled";
@@ -113,6 +123,8 @@ export interface ServiceRecord {
   completedDate: string | null;
   cost: number;
   invoiceId: number | null;
+  clientSignature?: string;
+  techSignature?: string;
   createdAt: string;
 }
 
@@ -143,10 +155,15 @@ export interface Package {
   id: number;
   clientId: number;
   name: string;
+  description: string;
   tier: PackageTier;
   price: number;
   billingCycle: "monthly" | "quarterly" | "annual";
   includedServices: string[];
+  totalVisits: number;
+  visitsRemaining: number;
+  durationMonths: number;
+  terms: string;
   startDate: string;
   endDate: string;
   status: "active" | "expired" | "cancelled";
@@ -186,4 +203,20 @@ export interface FleetUnit {
   unitName: string;
   telemetry: GPSTelemetry;
   serviceDue: boolean;
+}
+
+export type CampaignStatus = "draft" | "scheduled" | "sending" | "completed";
+export type CampaignType = "email" | "sms";
+
+export interface MarketingCampaign {
+  id: number;
+  name: string;
+  type: CampaignType;
+  status: CampaignStatus;
+  sentCount: number;
+  openCount: number;
+  clickCount: number;
+  leadsGenerated: number;
+  scheduledDate: string;
+  createdAt: string;
 }

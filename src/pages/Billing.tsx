@@ -1,6 +1,8 @@
 import { useCRMStore } from "@/stores/useCRMStore";
 import { useBillingStore } from "@/stores/useBillingStore";
 import { useAuthStore } from "@/stores/useAuthStore";
+import { useState } from "react";
+import type { PackageTier, Package } from "@/types";
 import {
   BarChart,
   Bar,
@@ -20,13 +22,44 @@ import {
   CreditCard,
   CheckCircle2,
   Clock,
+  Plus,
+  Package as PackageIcon,
+  X,
+  Calendar,
+  Layers,
+  Wrench,
+  ChevronRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 
 export default function Billing() {
   const { user } = useAuthStore();
   const { clients } = useCRMStore();
-  const { invoices, packages, markInvoicePaid } = useBillingStore();
+  const { invoices, packages, markInvoicePaid, addPackage } = useBillingStore();
+
+  const [activeTab, setActiveTab] = useState<"dashboard" | "packages">("dashboard");
+  const [showCreator, setShowCreator] = useState(false);
+
+  // Form State
+  const [pkgName, setPkgName] = useState("");
+  const [pkgDesc, setPkgDesc] = useState("");
+  const [pkgPrice, setPkgPrice] = useState("");
+  const [pkgTier, setPkgTier] = useState<PackageTier>("professional");
+  const [pkgCycle, setPkgCycle] = useState<"monthly" | "quarterly" | "annual">("monthly");
+  const [pkgVisits, setPkgVisits] = useState("");
+  const [pkgDuration, setPkgDuration] = useState("12");
+  const [pkgTerms, setPkgTerms] = useState("");
+  const [pkgServices, setPkgServices] = useState("");
+  const [targetClientId, setTargetClientId] = useState(clients[0]?.id.toString() || "");
 
   const isClient = user?.role === "client";
   const clientId = user?.clientId;
@@ -61,6 +94,37 @@ export default function Billing() {
     { name: "Overdue", value: invoices.filter((i) => i.status === "overdue").length, color: "#EF4444" },
   ];
 
+  const handleSubmitPackage = () => {
+    const totalVisits = parseInt(pkgVisits) || 0;
+    const duration = parseInt(pkgDuration) || 12;
+    const price = parseFloat(pkgPrice) || 0;
+
+    addPackage({
+      clientId: parseInt(targetClientId),
+      name: pkgName,
+      description: pkgDesc,
+      tier: pkgTier,
+      price,
+      billingCycle: pkgCycle,
+      includedServices: pkgServices.split(",").map(s => s.trim()),
+      totalVisits,
+      visitsRemaining: totalVisits,
+      durationMonths: duration,
+      terms: pkgTerms,
+      startDate: new Date().toISOString(),
+      endDate: new Date(Date.now() + duration * 30 * 86400000).toISOString(),
+      status: "active",
+    });
+
+    setShowCreator(false);
+    setPkgName("");
+    setPkgDesc("");
+    setPkgPrice("");
+    setPkgVisits("");
+    setPkgTerms("");
+    setPkgServices("");
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -68,9 +132,43 @@ export default function Billing() {
           <h1 className="text-[32px] font-bold text-[#EAEAEA] tracking-[-0.02em]">Billing</h1>
           <p className="text-sm text-[#88888C] mt-0.5">Invoices, packages &amp; revenue analytics</p>
         </div>
+        {!isClient && (
+          <Button onClick={() => setShowCreator(true)} className="bg-[#F2A900] text-[#050505] font-bold h-9">
+            <Plus className="w-4 h-4 mr-2" />
+            Create Package
+          </Button>
+        )}
       </div>
 
-      {/* KPI Cards */}
+      {/* Tabs */}
+      <div className="flex gap-1 border-b border-white/5">
+        <button
+          onClick={() => setActiveTab("dashboard")}
+          className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium transition-all border-b-2 ${
+            activeTab === "dashboard"
+              ? "border-[#F2A900] text-[#F2A900] bg-[#F2A900]/5"
+              : "border-transparent text-[#88888C] hover:text-[#EAEAEA]"
+          }`}
+        >
+          <TrendingUp className="w-3.5 h-3.5" />
+          Dashboard
+        </button>
+        <button
+          onClick={() => setActiveTab("packages")}
+          className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium transition-all border-b-2 ${
+            activeTab === "packages"
+              ? "border-[#F2A900] text-[#F2A900] bg-[#F2A900]/5"
+              : "border-transparent text-[#88888C] hover:text-[#EAEAEA]"
+          }`}
+        >
+          <PackageIcon className="w-3.5 h-3.5" />
+          Active Packages
+        </button>
+      </div>
+
+      {activeTab === "dashboard" ? (
+        <>
+          {/* KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <div className="data-card p-4 laser-scan">
           <div className="flex items-center justify-between mb-2">
@@ -219,6 +317,146 @@ export default function Billing() {
           </tbody>
         </table>
       </div>
+        </>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filteredPackages.map((pkg) => {
+            const client = clients.find(c => c.id === pkg.clientId);
+            return (
+              <div key={pkg.id} className="data-card p-5 border-t-4 border-[#F2A900] flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-[10px] bg-[#F2A900]/10 text-[#F2A900] px-2 py-0.5 rounded font-bold uppercase tracking-wider">
+                      {pkg.tier}
+                    </span>
+                    <span className="text-[10px] text-[#88888C] font-mono-tech">ID: {pkg.id}</span>
+                  </div>
+                  <h4 className="text-lg font-bold text-[#EAEAEA] mb-1">{pkg.name}</h4>
+                  <p className="text-xs text-[#88888C] line-clamp-2 mb-4">{pkg.description}</p>
+                  
+                  <div className="space-y-2.5 mb-6">
+                    <div className="flex items-center gap-2 text-xs text-[#EAEAEA]">
+                      <PackageIcon className="w-3.5 h-3.5 text-[#88888C]" />
+                      <span>{client?.companyName || "Unknown Client"}</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs text-[#EAEAEA]">
+                      <Wrench className="w-3.5 h-3.5 text-[#88888C]" />
+                      <span>{pkg.visitsRemaining} / {pkg.totalVisits} Visits Remaining</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs text-[#EAEAEA]">
+                      <Calendar className="w-3.5 h-3.5 text-[#88888C]" />
+                      <span>Valid until {new Date(pkg.endDate).toLocaleDateString()}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="pt-4 border-t border-white/5 flex items-center justify-between">
+                  <div>
+                    <div className="text-[10px] text-[#88888C] uppercase">Monthly Price</div>
+                    <div className="text-xl font-bold text-[#F2A900] font-mono-tech">${pkg.price.toLocaleString()}</div>
+                  </div>
+                  <Button variant="ghost" size="sm" className="text-[#88888C] hover:text-[#EAEAEA]">
+                    Details <ChevronRight className="w-3 h-3 ml-1" />
+                  </Button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Package Creator Modal */}
+      {showCreator && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowCreator(false)} />
+          <div className="relative z-10 w-full max-w-2xl bg-[#0A0A0C] border border-white/10 rounded-lg shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="p-6 space-y-6">
+              <div className="flex items-center justify-between border-b border-white/5 pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded bg-[#F2A900]/10 flex items-center justify-center">
+                    <PackageIcon className="w-6 h-6 text-[#F2A900]" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-[#EAEAEA]">Create Service Package</h3>
+                    <p className="text-xs text-[#88888C]">Define a new maintenance or subscription plan</p>
+                  </div>
+                </div>
+                <button onClick={() => setShowCreator(false)} className="text-[#88888C] hover:text-[#EAEAEA]">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-2 gap-6">
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-[10px] text-[#88888C] uppercase font-bold mb-1.5 block">Package Name</label>
+                    <Input value={pkgName} onChange={(e) => setPkgName(e.target.value)} placeholder="e.g. Annual Calibration" className="bg-[#1A1A20]" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-[#88888C] uppercase font-bold mb-1.5 block">Description</label>
+                    <Textarea value={pkgDesc} onChange={(e) => setPkgDesc(e.target.value)} placeholder="What's included in this plan?" className="bg-[#1A1A20] h-20 resize-none" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-[10px] text-[#88888C] uppercase font-bold mb-1.5 block">Price ($)</label>
+                      <Input value={pkgPrice} onChange={(e) => setPkgPrice(e.target.value)} type="number" placeholder="0.00" className="bg-[#1A1A20]" />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-[#88888C] uppercase font-bold mb-1.5 block">Tier</label>
+                      <Select value={pkgTier} onValueChange={(v) => setPkgTier(v as any)}>
+                        <SelectTrigger className="bg-[#1A1A20]"><SelectValue /></SelectTrigger>
+                        <SelectContent className="bg-[#1A1A20] border-white/10">
+                          <SelectItem value="basic">Basic</SelectItem>
+                          <SelectItem value="professional">Professional</SelectItem>
+                          <SelectItem value="enterprise">Enterprise</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-[10px] text-[#88888C] uppercase font-bold mb-1.5 block">Target Client</label>
+                    <Select value={targetClientId} onValueChange={setTargetClientId}>
+                      <SelectTrigger className="bg-[#1A1A20]"><SelectValue /></SelectTrigger>
+                      <SelectContent className="bg-[#1A1A20] border-white/10">
+                        {clients.map(c => (
+                          <SelectItem key={c.id} value={c.id.toString()}>{c.companyName}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-[10px] text-[#88888C] uppercase font-bold mb-1.5 block">Max Visits</label>
+                      <Input value={pkgVisits} onChange={(e) => setPkgVisits(e.target.value)} type="number" placeholder="4" className="bg-[#1A1A20]" />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-[#88888C] uppercase font-bold mb-1.5 block">Duration (Mo)</label>
+                      <Input value={pkgDuration} onChange={(e) => setPkgDuration(e.target.value)} type="number" placeholder="12" className="bg-[#1A1A20]" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-[#88888C] uppercase font-bold mb-1.5 block">Included Services (Comma separated)</label>
+                    <Input value={pkgServices} onChange={(e) => setPkgServices(e.target.value)} placeholder="PMS, Calibration, Tech Support" className="bg-[#1A1A20]" />
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[10px] text-[#88888C] uppercase font-bold mb-1.5 block">Terms & Conditions</label>
+                <Textarea value={pkgTerms} onChange={(e) => setPkgTerms(e.target.value)} placeholder="Legal terms or SLA details..." className="bg-[#1A1A20] h-16 resize-none" />
+              </div>
+
+              <div className="flex gap-3 pt-4 border-t border-white/5">
+                <Button variant="outline" onClick={() => setShowCreator(false)} className="flex-1">Cancel</Button>
+                <Button onClick={handleSubmitPackage} className="flex-1 bg-[#F2A900] text-[#050505] font-bold">Create Package</Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

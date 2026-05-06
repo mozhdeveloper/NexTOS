@@ -15,6 +15,7 @@ import {
   Zap,
   ClipboardList,
   CreditCard,
+  Megaphone,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -39,6 +40,7 @@ const navItems: NavItem[] = [
   { label: "Fleet", path: "/fleet", icon: MapPin, roles: ["admin", "tech", "client"] },
   { label: "Client Portal", path: "/portal", icon: Shield, roles: ["admin", "client"] },
   { label: "Billing", path: "/billing", icon: CreditCard, roles: ["admin", "client"] },
+  { label: "Marketing", path: "/marketing", icon: Megaphone, roles: ["admin", "sales"] },
   { label: "Reports", path: "/reports", icon: ClipboardList, roles: ["admin", "sales", "tech"] },
   { label: "Settings", path: "/settings", icon: Settings, roles: ["admin", "sales", "tech", "client"] },
 ];
