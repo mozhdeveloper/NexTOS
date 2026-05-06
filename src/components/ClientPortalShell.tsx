@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate, useLocation } from "react-router";
 import { useAuthStore } from "@/stores/useAuthStore";
 import { useCRMStore } from "@/stores/useCRMStore";
+import type { UserRole } from "@/types";
 import {
   LayoutDashboard,
   Monitor,
@@ -17,6 +18,13 @@ import {
   Building2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface NavItem {
   label: string;
@@ -35,7 +43,7 @@ const navItems: NavItem[] = [
 ];
 
 export default function ClientPortalShell({ children }: { children: React.ReactNode }) {
-  const { user, logout } = useAuthStore();
+  const { user, switchRole, logout } = useAuthStore();
   const { clients } = useCRMStore();
   const navigate = useNavigate();
   const location = useLocation();
@@ -43,6 +51,16 @@ export default function ClientPortalShell({ children }: { children: React.ReactN
 
   const client = clients.find((c) => c.id === user?.clientId);
   const companyName = client?.companyName ?? "Client Portal";
+
+  const handleRoleChange = (role: UserRole) => {
+    switchRole(role);
+    navigate("/");
+  };
+
+  const handleLogout = () => {
+    logout();
+    navigate("/");
+  };
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-[#050505]">
@@ -66,6 +84,34 @@ export default function ClientPortalShell({ children }: { children: React.ReactN
             </div>
           )}
         </div>
+
+        {/* Role Selector */}
+        {!collapsed && (
+          <div className="px-3 py-3 border-b border-white/5">
+            <label className="text-[10px] text-[#88888C] uppercase tracking-[0.1em] font-medium mb-1 block">
+              Switch Role
+            </label>
+            <Select value={user?.role} onValueChange={(v) => handleRoleChange(v as UserRole)}>
+              <SelectTrigger className="h-8 bg-[#1A1A20] border-white/10 text-[#EAEAEA] text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="bg-[#1A1A20] border-white/10">
+                <SelectItem value="admin" className="text-xs text-[#EAEAEA]">
+                  Administrator
+                </SelectItem>
+                <SelectItem value="sales" className="text-xs text-[#EAEAEA]">
+                  Sales
+                </SelectItem>
+                <SelectItem value="tech" className="text-xs text-[#EAEAEA]">
+                  Technician
+                </SelectItem>
+                <SelectItem value="client" className="text-xs text-[#EAEAEA]">
+                  Client
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        )}
 
         {/* Client Company Badge */}
         {!collapsed && (
@@ -134,7 +180,7 @@ export default function ClientPortalShell({ children }: { children: React.ReactN
           </div>
           {!collapsed && (
             <Button
-              onClick={logout}
+              onClick={handleLogout}
               variant="ghost"
               size="sm"
               className="w-full mt-2 h-6 text-[10px] text-[#88888C] hover:text-[#EF4444] hover:bg-[#EF4444]/10"

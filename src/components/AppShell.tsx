@@ -44,7 +44,7 @@ const navItems: NavItem[] = [
 ];
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
-  const { user, login, logout, isAuthenticated } = useAuthStore();
+  const { user, switchRole, logout, isAuthenticated } = useAuthStore();
   const navigate = useNavigate();
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(false);
@@ -52,7 +52,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [magicLinkGenerated, setMagicLinkGenerated] = useState("");
 
   const handleRoleChange = (role: UserRole) => {
-    login(role);
+    switchRole(role);
     navigate("/");
   };
 
@@ -62,6 +62,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       setMagicLinkGenerated(link);
       setTimeout(() => setMagicLinkGenerated(""), 5000);
     }
+  };
+
+  const handleLogout = () => {
+    logout();
+    navigate("/");
   };
 
   const filteredNav = navItems.filter((item) =>
@@ -187,7 +192,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           </div>
           {!collapsed && (
             <Button
-              onClick={logout}
+              onClick={handleLogout}
               variant="ghost"
               size="sm"
               className="w-full mt-2 h-6 text-[10px] text-[#88888C] hover:text-[#EF4444] hover:bg-[#EF4444]/10"
