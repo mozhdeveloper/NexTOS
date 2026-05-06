@@ -176,10 +176,10 @@ function buildHistoryRowFromSummary(name: string, summary: GPS51DailyHistorySumm
 
   return {
     name,
-    mileage: `${metersToKm(summary.mileageMeters).toFixed(1)} km`,
+    mileage: `${metersToKm(summary.mileageMeters).toFixed(2)} km`,
     maxSpeed: `${Math.round(normalizeSpeedToKph(summary.maxSpeedMps))} km/h`,
     avgSpeed: `${Math.round(normalizeSpeedToKph(summary.avgSpeedMps))} km/h`,
-    driving: formatDurationFromMs(summary.drivingMs),
+    driving: summary.drivingMs > 0 ? formatDurationFromMs(summary.drivingMs) : "-",
     parkingDuration,
     working: formatDurationFromMs(summary.workingMs),
     idle: formatDurationFromMs(summary.idleMs),
@@ -255,6 +255,9 @@ export default function Fleet() {
   const idleCount = units.filter((u) => getEffectiveStatus(u.id, u.telemetry.status) === "idle").length;
   const parkingCount = units.filter((u) => getEffectiveStatus(u.id, u.telemetry.status) === "parking").length;
   const offlineCount = units.filter((u) => getEffectiveStatus(u.id, u.telemetry.status) === "offline").length;
+  const gps001Unit = units.find((u) => u.id === 1);
+  const gps001LiveStatus = gps001Unit ? toDisplayStatus(gps001Unit.telemetry.status) : "offline";
+  const workingCount = gps001LiveStatus === "driving" || gps001LiveStatus === "idle" ? 1 : 0;
   const today = new Date();
   const isCurrentMonthView =
     historyMonth.getFullYear() === today.getFullYear() && historyMonth.getMonth() === today.getMonth();
@@ -282,6 +285,7 @@ export default function Fleet() {
     if (viewMode !== "history" || !selectedUnitId) return;
 
     let ignore = false;
+    let refreshInterval: ReturnType<typeof setInterval> | null = null;
 
     const loadHistory = async () => {
       setHistoryLoading(true);
@@ -325,8 +329,18 @@ export default function Fleet() {
 
     loadHistory();
 
+    const isTodaySelection = selectedHistoryDay === toYmd(new Date());
+    if (isGps51UnitSelected && isTodaySelection) {
+      refreshInterval = setInterval(() => {
+        void loadHistory();
+      }, 30000);
+    }
+
     return () => {
       ignore = true;
+      if (refreshInterval) {
+        clearInterval(refreshInterval);
+      }
     };
   }, [viewMode, selectedUnitId, selectedHistoryDay, isGps51UnitSelected, selectedUnitLabel, selectedHistoryDate]);
 
@@ -374,6 +388,12 @@ export default function Fleet() {
             <WifiOff className="w-3 h-3 text-[#EF4444]" />
             <span className="text-xs text-[#EF4444] font-medium">
               {offlineCount} offline
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded bg-[#14B8A6]/10 border border-[#14B8A6]/20">
+            <Radio className="w-3 h-3 text-[#14B8A6]" />
+            <span className="text-xs text-[#14B8A6] font-medium">
+              {workingCount} working
             </span>
           </div>
         </div>
@@ -659,8 +679,8 @@ export default function Fleet() {
                   <div className="text-[10px] text-[#88888C] ml-3.5 space-y-0.5">
                     <div>{client?.companyName || "—"}</div>
                     <div className="flex items-center gap-2">
-                      <span>Speed: {unit.telemetry.speed} mph</span>
-                      <span>Hours: {formatHoursMinutes(unit.telemetry)}</span>
+                      <span>Hours Today: —</span>
+                      <span>Hours in Total: —</span>
                     </div>
                     {unit.serviceDue && (
                       <div className="flex items-center gap-1 text-[#EF4444]">

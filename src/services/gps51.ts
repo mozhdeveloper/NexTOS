@@ -193,6 +193,16 @@ function toOptionalTimestamp(value: unknown): number | undefined {
   return undefined;
 }
 
+function pickFirstNonNegative(...values: unknown[]): number | undefined {
+  for (const value of values) {
+    const numeric = Number(value);
+    if (Number.isFinite(numeric) && numeric >= 0) {
+      return numeric;
+    }
+  }
+  return undefined;
+}
+
   const geocodeCache = new Map<string, string>();
 
   async function reverseGeocode(lat: number, lng: number): Promise<string> {
@@ -252,6 +262,21 @@ function parseDurationTextToMs(value: string): number | undefined {
   }
 
   return undefined;
+}
+
+function parseDurationFromRecordStrings(record: Record<string, unknown> | null, keyPattern: RegExp): number {
+  if (!record) return 0;
+
+  let best = 0;
+  for (const [key, value] of Object.entries(record)) {
+    if (!keyPattern.test(key)) continue;
+    if (typeof value !== "string") continue;
+    const parsed = parseDurationTextToMs(value);
+    if (Number.isFinite(parsed ?? NaN) && Number(parsed) > best) {
+      best = Number(parsed);
+    }
+  }
+  return best;
 }
 
 
@@ -619,23 +644,29 @@ export async function fetchDailyHistorySummary(
   const starterMeters = mileageRecord ? toFiniteNumber(mileageRecord.starter, 0) : 0;
   const endDistanceMeters = mileageRecord ? toFiniteNumber(mileageRecord.enddis, 0) : 0;
   const totalDistanceFromEdges = endDistanceMeters - starterMeters;
-  const totalDistanceFromRecord = mileageRecord ? toFiniteNumber(mileageRecord.totaldistance, 0) : 0;
-  const mileageMeters =
-    totalDistanceFromRecord !== 0
-      ? totalDistanceFromRecord
-      : (totalDistanceFromEdges !== 0
-        ? totalDistanceFromEdges
-        : toFiniteNumber(tripsData?.totaldistance, 0));
+  const mileageMeters = pickFirstNonNegative(
+    mileageRecord?.totaldistance,
+    mileageRecord?.distance,
+    mileageRecord?.allmile,
+    totalDistanceFromEdges > 0 ? totalDistanceFromEdges : undefined,
+    additionalDetailReport?.totaldistance,
+    tripsData?.totaldistance
+  ) ?? 0;
 
   const maxSpeedMps = toFiniteNumber(tripsData?.totalmaxspeed, 0);
   const avgSpeedMps = mileageRecord
     ? toFiniteNumber(mileageRecord.avgspeed, toFiniteNumber(tripsData?.totalaveragespeed, 0))
     : toFiniteNumber(tripsData?.totalaveragespeed, 0);
 
-  const drivingMs = toFiniteNumber(
-    tripsData?.totaltriptime,
-    mileageRecord ? toFiniteNumber(mileageRecord.totalacc, 0) : 0
-  );
+  const drivingMs = pickFirstNonNegative(
+    mileageRecord?.totaltriptime,
+    mileageRecord?.drivingduration,
+    mileageRecord?.drivingtime,
+    additionalDetailReport?.totaltriptime,
+    additionalDetailReport?.drivingduration,
+    additionalDetailReport?.drivingtime,
+    tripsData?.totaltriptime
+  ) ?? 0;
 
   const hasCoreActivityEvidence =
     Math.abs(mileageMeters) > 0 ||
@@ -664,9 +695,29 @@ export async function fetchDailyHistorySummary(
         toFiniteNumber(additionalDetailReport.parkingduration, 0),
         toFiniteNumber(additionalDetailReport.parkduration, 0),
         toFiniteNumber(additionalDetailReport.parkingtime, 0),
-        toFiniteNumber(additionalDetailReport.totalpark, 0)
+        toFiniteNumber(additionalDetailReport.totalpark, 0),
+        toFiniteNumber(additionalDetailReport.totalparking, 0),
+        toFiniteNumber(additionalDetailReport.parktime, 0),
+        toFiniteNumber(additionalDetailReport.stopduration, 0)
       )
     : 0;
+
+  const parksExplicitParkingMs = additionalParkRecords.reduce(
+    (sum: number, park: Record<string, unknown>) => {
+      const explicit = Math.max(
+        0,
+        toFiniteNumber(park.duration, 0),
+        toFiniteNumber(park.parkingduration, 0),
+        toFiniteNumber(park.parkduration, 0),
+        toFiniteNumber(park.parkingtime, 0),
+        toFiniteNumber(park.parktime, 0),
+        toFiniteNumber(park.stopduration, 0),
+        toFiniteNumber(park.durationidle, 0)
+      );
+      return sum + explicit;
+    },
+    0
+  );
 
   const additionalParksParkingMs = additionalParkRecords.reduce(
     (sum: number, park: Record<string, unknown>) => {
@@ -728,6 +779,11 @@ export async function fetchDailyHistorySummary(
     ? parseDurationTextToMs(additionalParkingText) ?? 0
     : 0;
 
+  const parsedDynamicParkingTextMs = Math.max(
+    parseDurationFromRecordStrings(mileageRecord, /(park|parking|stop).*(str|text|duration)/i),
+    parseDurationFromRecordStrings(additionalDetailReport, /(park|parking|stop).*(str|text|duration)/i)
+  );
+
   const dynamicParkingTextMs = mileageRecord
     ? Object.entries(mileageRecord)
       .filter(([key, value]) =>
@@ -743,16 +799,42 @@ export async function fetchDailyHistorySummary(
     tripParkingMs,
     recordParkingMs,
     additionalDetailParkingMs,
+    parksExplicitParkingMs,
     additionalParksParkingMs,
     parsedParkingTextMs,
     parsedAdditionalParkingTextMs,
-    dynamicParkingTextMs
+    dynamicParkingTextMs,
+    parsedDynamicParkingTextMs
   );
 
   const parkIdleMs = parks.reduce(
-    (sum: number, park: Record<string, unknown>) => sum + toFiniteNumber(park?.durationidle, 0),
+    (sum: number, park: Record<string, unknown>) => sum + Math.max(
+      0,
+      toFiniteNumber(park?.durationidle, 0),
+      toFiniteNumber(park?.idleduration, 0),
+      toFiniteNumber(park?.idletime, 0)
+    ),
     0
   );
+  const detailIdleMs = additionalDetailReport
+    ? Math.max(
+        0,
+        toFiniteNumber(additionalDetailReport.totalidle, 0),
+        toFiniteNumber(additionalDetailReport.idleduration, 0),
+        toFiniteNumber(additionalDetailReport.idletime, 0),
+        toFiniteNumber(additionalDetailReport.totalstop, 0)
+      )
+    : 0;
+
+  const parsedIdleTextMs = parseDurationFromRecordStrings(
+    mileageRecord,
+    /(idle|stop).*(str|text|duration)/i
+  );
+  const parsedDetailIdleTextMs = parseDurationFromRecordStrings(
+    additionalDetailReport,
+    /(idle|stop).*(str|text|duration)/i
+  );
+
   const recordIdleMs = mileageRecord
     ? Math.max(
         0,
@@ -761,7 +843,13 @@ export async function fetchDailyHistorySummary(
         toFiniteNumber(mileageRecord.idletime, 0)
       )
     : 0;
-  const idleMs = Math.max(recordIdleMs, parkIdleMs);
+  const idleMs = Math.max(
+    recordIdleMs,
+    detailIdleMs,
+    parkIdleMs,
+    parsedIdleTextMs,
+    parsedDetailIdleTextMs
+  );
 
   const firstTrackTime = trackPoints.length
     ? trackPoints.reduce(
@@ -775,22 +863,18 @@ export async function fetchDailyHistorySummary(
         0
       )
     : 0;
-  const trackTotalMs =
-    firstTrackTime !== Number.MAX_SAFE_INTEGER && lastTrackTime > firstTrackTime
-      ? lastTrackTime - firstTrackTime
-      : 0;
-
-  const movingTrackCount = trackPoints.filter((point) => point.speed > 0).length;
-  const inferredDrivingMs =
-    drivingMs > 0
-      ? drivingMs
-      : (trackTotalMs > 0 && movingTrackCount > 0)
-        ? Math.round(trackTotalMs * (movingTrackCount / trackPoints.length))
-        : 0;
-  const inferredIdleMs = idleMs;
-  const workingMs = drivingMs > 0 || idleMs > 0
-    ? drivingMs + idleMs
-    : toFiniteNumber(mileageRecord?.totalacc, 0);
+  const explicitWorkingMs = pickFirstNonNegative(
+    mileageRecord?.totalacc,
+    mileageRecord?.workingduration,
+    mileageRecord?.workingtime,
+    mileageRecord?.accontime,
+    additionalDetailReport?.totalacc,
+    additionalDetailReport?.workingduration,
+    additionalDetailReport?.workingtime,
+    additionalDetailReport?.accontime,
+    tripsData?.totalacctime
+  ) ?? 0;
+  const workingMs = explicitWorkingMs > 0 ? explicitWorkingMs : drivingMs + idleMs;
 
   const maxTrackSpeed = trackPoints.reduce((max, point) => Math.max(max, point.speed), 0);
   const avgTrackSpeed = trackPoints.length
@@ -950,7 +1034,7 @@ export async function fetchDailyHistorySummary(
     Math.abs(mileageMeters) > 0 ||
     Math.abs(resolvedMaxSpeed) > 0 ||
     Math.abs(resolvedAvgSpeed) > 0 ||
-    inferredDrivingMs > 0 ||
+    drivingMs > 0 ||
     toFiniteNumber(mileageRecord?.totalacc, 0) > 0 ||
     toFiniteNumber(mileageRecord?.totalidle, 0) > 0 ||
     tripParkingMs > 0 ||
@@ -971,15 +1055,67 @@ export async function fetchDailyHistorySummary(
     Math.abs(mileageMeters) > 0 ||
     Math.abs(resolvedMaxSpeed) > 0 ||
     Math.abs(resolvedAvgSpeed) > 0 ||
-    inferredDrivingMs > 0;
+    drivingMs > 0;
   const hasSupportedStationaryEvidence =
-    hasPresenceEvidence && (workingMs > 0 || inferredIdleMs > 0 || resolvedParkingMs > 0);
+    hasPresenceEvidence && (workingMs > 0 || idleMs > 0 || resolvedParkingMs > 0);
 
   const hasSummaryData = hasMovementEvidence || hasSupportedStationaryEvidence;
 
   if (!hasSummaryData) {
     return null;
   }
+
+  logGPS51("daily.summary.raw.fields", {
+    day,
+    mileage: {
+      totaldistance: mileageRecord?.totaldistance,
+      distance: mileageRecord?.distance,
+      allmile: mileageRecord?.allmile,
+      starter: mileageRecord?.starter,
+      enddis: mileageRecord?.enddis,
+      selectedMeters: mileageMeters,
+    },
+    driving: {
+      recordTotalTripTime: mileageRecord?.totaltriptime,
+      recordDrivingDuration: mileageRecord?.drivingduration,
+      recordDrivingTime: mileageRecord?.drivingtime,
+      detailTotalTripTime: additionalDetailReport?.totaltriptime,
+      tripsTotalTripTime: tripsData?.totaltriptime,
+      selectedMs: drivingMs,
+    },
+    working: {
+      recordTotalAcc: mileageRecord?.totalacc,
+      recordWorkingDuration: mileageRecord?.workingduration,
+      recordWorkingTime: mileageRecord?.workingtime,
+      detailTotalAcc: additionalDetailReport?.totalacc,
+      selectedMs: workingMs,
+    },
+    idle: {
+      recordTotalIdle: mileageRecord?.totalidle,
+      recordIdleDuration: mileageRecord?.idleduration,
+      recordIdleTime: mileageRecord?.idletime,
+      detailTotalIdle: additionalDetailReport?.totalidle,
+      detailIdleDuration: additionalDetailReport?.idleduration,
+      detailIdleTime: additionalDetailReport?.idletime,
+      parksIdleTotal: parkIdleMs,
+      parsedRecordIdleTextMs: parsedIdleTextMs,
+      parsedDetailIdleTextMs: parsedDetailIdleTextMs,
+      selectedMs: idleMs,
+    },
+    parking: {
+      recordParkingDuration: mileageRecord?.parkingduration,
+      recordParkDuration: mileageRecord?.parkduration,
+      recordParkingTime: mileageRecord?.parkingtime,
+      detailParkingDuration: additionalDetailReport?.parkingduration,
+      detailTotalPark: additionalDetailReport?.totalpark,
+      detailTotalParking: additionalDetailReport?.totalparking,
+      parksExplicitParkingMs,
+      tripParkingMs,
+      selectedMs: resolvedParkingMs,
+      parkingText,
+      additionalParkingText,
+    },
+  });
 
   const finalStartAddress = resolvedStartAddress || (
     startLat !== undefined && startLng !== undefined
@@ -996,9 +1132,9 @@ export async function fetchDailyHistorySummary(
     mileageMeters,
     maxSpeedMps: resolvedMaxSpeed,
     avgSpeedMps: resolvedAvgSpeed,
-    drivingMs: inferredDrivingMs,
+    drivingMs,
     workingMs,
-    idleMs: inferredIdleMs,
+    idleMs,
     parkingMs: resolvedParkingMs,
     parkingText: parkingText || additionalParkingText,
     startTime: startTimeValue,
