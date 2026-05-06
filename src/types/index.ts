@@ -174,7 +174,7 @@ export interface GPSTelemetry {
   lat: number;
   lng: number;
   hours: number;
-  status: "online" | "idle" | "offline";
+  status: "driving" | "idle" | "parking" | "offline" | "online";
   speed: number;
   heading: number;
   lastUpdated: string;

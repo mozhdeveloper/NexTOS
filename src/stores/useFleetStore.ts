@@ -36,6 +36,33 @@ interface FleetState {
 // Your real tracker unit — ID 1 maps to the KS199D-4G device
 const GPS51_UNIT_ID = 1;
 
+function mapGps51Status(position: {
+  moving: number;
+  status: string;
+  speed: number;
+}): GPSTelemetry["status"] {
+  const statusText = String(position.status ?? "").toLowerCase();
+  const hasOfflineText =
+    statusText.includes("offline") ||
+    statusText.includes("disconnect") ||
+    statusText.includes("sleep");
+
+  if (hasOfflineText) {
+    return "offline";
+  }
+
+  const hasParkingText = statusText.includes("acc off") || statusText.includes("acc关");
+  if (hasParkingText) {
+    return "parking";
+  }
+
+  if (position.moving === 1 || Number(position.speed ?? 0) > 0) {
+    return "driving";
+  }
+
+  return "idle";
+}
+
 // Placeholder for initial render before first fetch
 const initialUnit: FleetUnit = {
   id: GPS51_UNIT_ID,
@@ -75,9 +102,7 @@ export const useFleetStore = create<FleetState>()(
             return;
           }
 
-          // Map GPS51 status string to our status type
-          const status: GPSTelemetry["status"] =
-            position.moving === 1 ? "online" : "idle";
+          const status = mapGps51Status(position);
 
           set((state) => ({
             fetchError: null,

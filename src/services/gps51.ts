@@ -102,6 +102,17 @@ export interface GPS51Session {
   serverid: number;
 }
 
+function parseServerId(data: Record<string, unknown>): number {
+  const candidates = [data.serverid, data.servers, data.server];
+  for (const candidate of candidates) {
+    const value = Number(candidate);
+    if (Number.isFinite(value)) {
+      return value;
+    }
+  }
+  return 0;
+}
+
 export interface GPS51Position {
   deviceid: string;
   lat: number;
@@ -121,6 +132,170 @@ export interface GPS51HistoryPoint {
   speed: number;
   course: number;
   devicetime: number;
+  mileageKm?: number;
+  maxSpeedKph?: number;
+  avgSpeedKph?: number;
+  drivingMinutes?: number;
+  workingMinutes?: number;
+  idleMinutes?: number;
+  startAddress?: string;
+  endAddress?: string;
+  startTime?: number;
+  endTime?: number;
+  raw?: Record<string, unknown>;
+}
+
+export interface GPS51DailyHistorySummary {
+  mileageMeters: number;
+  maxSpeedMps: number;
+  avgSpeedMps: number;
+  drivingMs: number;
+  workingMs: number;
+  idleMs: number;
+  parkingMs: number;
+  parkingText?: string;
+  startTime?: number;
+  endTime?: number;
+  startAddress?: string;
+  endAddress?: string;
+  startLat?: number;
+  startLng?: number;
+  endLat?: number;
+  endLng?: number;
+}
+
+interface GPS51TrackPoint {
+  lat?: number;
+  lng?: number;
+  speed: number;
+  starttime?: number;
+  endtime?: number;
+  updatetime?: number;
+  raw?: Record<string, unknown>;
+}
+
+function toFiniteNumber(value: unknown, fallback = 0): number {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : fallback;
+}
+
+function toOptionalTimestamp(value: unknown): number | undefined {
+  const numeric = Number(value);
+  if (Number.isFinite(numeric) && numeric > 0) {
+    return numeric;
+  }
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Date.parse(value);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+  return undefined;
+}
+
+  const geocodeCache = new Map<string, string>();
+
+  async function reverseGeocode(lat: number, lng: number): Promise<string> {
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return "";
+
+    const cacheKey = `${lat.toFixed(6)},${lng.toFixed(6)}`;
+    const cached = geocodeCache.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    try {
+      const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`;
+      const response = await fetch(url, {
+        headers: {
+          Accept: "application/json",
+        },
+      });
+      if (!response.ok) return "";
+
+      const data = await response.json();
+      const address = typeof data?.display_name === "string" ? data.display_name.trim() : "";
+      if (address) {
+        geocodeCache.set(cacheKey, address);
+      }
+      return address;
+    } catch {
+      return "";
+    }
+  }
+
+function parseDurationTextToMs(value: string): number | undefined {
+  const text = value.trim();
+  if (!text) return undefined;
+
+  const hm = text.match(/(\d+)\s*H\s*(\d+)\s*M(?:\s*(\d+)\s*S)?/i);
+  if (hm) {
+    const hours = Number(hm[1] ?? 0);
+    const minutes = Number(hm[2] ?? 0);
+    const seconds = Number(hm[3] ?? 0);
+    return ((hours * 60 + minutes) * 60 + seconds) * 1000;
+  }
+
+  const ms = text.match(/(\d+)\s*M(?:\s*(\d+)\s*S)?/i);
+  if (ms) {
+    const minutes = Number(ms[1] ?? 0);
+    const seconds = Number(ms[2] ?? 0);
+    return (minutes * 60 + seconds) * 1000;
+  }
+
+  const zh = text.match(/(\d+)\s*时\s*(\d+)\s*分(?:\s*(\d+)\s*秒)?/);
+  if (zh) {
+    const hours = Number(zh[1] ?? 0);
+    const minutes = Number(zh[2] ?? 0);
+    const seconds = Number(zh[3] ?? 0);
+    return ((hours * 60 + minutes) * 60 + seconds) * 1000;
+  }
+
+  return undefined;
+}
+
+
+function pickReadableAddress(
+  record: Record<string, unknown> | null,
+  keys: string[],
+  dynamicKeyPattern: RegExp
+): string {
+  if (!record) return "";
+
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+
+  for (const [key, value] of Object.entries(record)) {
+    if (!dynamicKeyPattern.test(key)) continue;
+    if (typeof value !== "string") continue;
+    const text = value.trim();
+    if (!text) continue;
+    return text;
+  }
+
+  return "";
+}
+
+async function postGps51Action(
+  action: string,
+  username: string,
+  password: string,
+  body: Record<string, unknown>
+): Promise<any> {
+  const { token, serverid } = await getSession(username, password);
+  const response = await fetch(
+    `${BASE_URL}?action=${action}&token=${token}&serverid=${serverid}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }
+  );
+  return response.json();
 }
 
 function parseOnlineHoursFromStatus(record: Record<string, unknown>): number | null {
@@ -176,7 +351,7 @@ export async function gps51Login(username: string, password: string): Promise<GP
     throw new Error(`GPS51 login failed: ${data.cause}`);
   }
 
-  session = { token: data.token, serverid: data.servers };
+  session = { token: data.token, serverid: parseServerId(data as Record<string, unknown>) };
   logGPS51("login.session", session);
   lastLoginTime = Date.now();
   return session;
@@ -277,17 +452,526 @@ export async function fetchRouteHistory(
 
   const data = await response.json();
   logGPS51("history.response", data);
+  logGPS51("history.response.summary", {
+    startDate,
+    endDate,
+    status: data?.status,
+    recordCount: Array.isArray(data?.records) ? data.records.length : 0,
+  });
 
   if (data.status !== 0 || !data.records?.length) return [];
 
+  const getFirstDefined = (record: Record<string, unknown>, keys: string[]): unknown => {
+    for (const key of keys) {
+      const value = record[key];
+      if (value !== undefined && value !== null && value !== "") {
+        return value;
+      }
+    }
+    return undefined;
+  };
+
+  const toNumber = (value: unknown): number | undefined => {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric : undefined;
+  };
+
+  const toTimestamp = (value: unknown): number | undefined => {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value;
+    }
+    if (typeof value === "string" && value.trim()) {
+      const asNumber = Number(value);
+      if (Number.isFinite(asNumber)) {
+        return asNumber;
+      }
+      const parsed = Date.parse(value);
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+    return undefined;
+  };
+
   // Map history records to lat/lng points
-  const mappedHistory = data.records.map((r: any) => ({
-    lat: r.callat ?? r.lat ?? r.latitude ?? r.silent ?? r.y,
-    lng: r.callon ?? r.lng ?? r.longitude ?? r.x,
-    speed: r.speed,
-    course: r.course,
-    devicetime: r.devicetime,
-  }));
+  const mappedHistory = data.records.map((r: any) => {
+    const record = (r ?? {}) as Record<string, unknown>;
+
+    return {
+      lat: record.callat ?? record.lat ?? record.latitude ?? record.silent ?? record.y,
+      lng: record.callon ?? record.lng ?? record.longitude ?? record.x,
+      speed: record.speed,
+      course: record.course,
+      devicetime: record.devicetime,
+      mileageKm: toNumber(getFirstDefined(record, ["mileage", "mile", "miles", "distance", "totaldistance", "allmile"])),
+      maxSpeedKph: toNumber(getFirstDefined(record, ["maxspeed", "maxSpeed", "topspeed"])),
+      avgSpeedKph: toNumber(getFirstDefined(record, ["avgspeed", "avgSpeed", "meanspeed"])),
+      drivingMinutes: toNumber(getFirstDefined(record, ["drivingminute", "drivingminutes", "drivingtime", "runningtime", "drivetime"])),
+      workingMinutes: toNumber(getFirstDefined(record, ["workminute", "workingminute", "workingtime", "accontime", "onlinetime"])),
+      idleMinutes: toNumber(getFirstDefined(record, ["idletime", "parkingminute", "parkminute", "stopminute"])),
+      startAddress: String(getFirstDefined(record, ["startaddress", "startaddr", "fromaddress", "fromaddr"]) ?? ""),
+      endAddress: String(getFirstDefined(record, ["endaddress", "endaddr", "toaddress", "toaddr"]) ?? ""),
+      startTime: toTimestamp(getFirstDefined(record, ["starttime", "begintime", "fromtime"])),
+      endTime: toTimestamp(getFirstDefined(record, ["endtime", "stoptime", "totime"])),
+      raw: record,
+    };
+  });
+  logGPS51(
+    "history.reportmileagedetail.debug",
+    mappedHistory.map((point: GPS51HistoryPoint) => ({
+      devicetime: point.devicetime,
+      mileageKm: point.mileageKm ?? 0,
+      maxSpeedKph: point.maxSpeedKph ?? 0,
+      avgSpeedKph: point.avgSpeedKph ?? 0,
+      drivingMinutes: point.drivingMinutes ?? 0,
+      workingMinutes: point.workingMinutes ?? 0,
+      idleMinutes: point.idleMinutes ?? 0,
+      startTime: point.startTime,
+      endTime: point.endTime,
+      startAddress: point.startAddress,
+      endAddress: point.endAddress,
+      rawParkingFields: point.raw
+        ? {
+            idletime: point.raw.idletime,
+            parkingminute: point.raw.parkingminute,
+            parkminute: point.raw.parkminute,
+            stopminute: point.raw.stopminute,
+            workingtime: point.raw.workingtime,
+            accontime: point.raw.accontime,
+            onlinetime: point.raw.onlinetime,
+          }
+        : null,
+    }))
+  );
   logGPS51("history.mapped", mappedHistory);
   return mappedHistory;
+}
+
+export async function fetchDailyHistorySummary(
+  username: string,
+  password: string,
+  day: string
+): Promise<GPS51DailyHistorySummary | null> {
+  const startTime = `${day} 00:00:00`;
+  const endTime = `${day} 23:59:59`;
+
+  const [tripsData, mileageData, tracksAdditionalData] = await Promise.all([
+    postGps51Action("querytrips", username, password, {
+      deviceid: DEVICE_ID,
+      starttime: startTime,
+      endtime: endTime,
+      timezone: 8,
+    }),
+    postGps51Action("reportmileagedetail", username, password, {
+      deviceid: DEVICE_ID,
+      startday: day,
+      endday: day,
+      offset: 8,
+    }),
+    postGps51Action("querytrackswithadditionals", username, password, {
+      deviceid: DEVICE_ID,
+      starttime: startTime,
+      endtime: endTime,
+      timezone: 8,
+    }),
+  ]);
+
+  logGPS51("daily.querytrips.response", tripsData);
+  logGPS51("daily.reportmileagedetail.response", mileageData);
+  logGPS51("daily.querytrackswithadditionals.response", tracksAdditionalData);
+
+  if (tripsData?.status !== 0 && mileageData?.status !== 0 && tracksAdditionalData?.status !== 0) {
+    return null;
+  }
+
+  const trips = Array.isArray(tripsData?.totaltrips) ? tripsData.totaltrips : [];
+  const mileageRecords = Array.isArray(mileageData?.records) ? mileageData.records : [];
+  const mileageRecord = mileageRecords.length ? mileageRecords[0] as Record<string, unknown> : null;
+  logGPS51("daily.reportmileagedetail.record0", mileageRecord);
+
+  const additionalTrackRecords = Array.isArray(tracksAdditionalData?.tracks)
+    ? tracksAdditionalData.tracks
+    : [];
+  const additionalParkRecords = Array.isArray(tracksAdditionalData?.parks)
+    ? tracksAdditionalData.parks
+    : [];
+  const parks = additionalParkRecords;
+  const additionalDetailReport =
+    tracksAdditionalData && typeof tracksAdditionalData.detailreport === "object"
+      ? tracksAdditionalData.detailreport as Record<string, unknown>
+      : null;
+  const trackPoints: GPS51TrackPoint[] = additionalTrackRecords
+    .map((record: Record<string, unknown>) => ({
+      lat: Number(record.silent ?? record.callat ?? record.lat),
+      lng: Number(record.callon ?? record.lng ?? record.lon),
+      speed: toFiniteNumber(record.speed, 0),
+      starttime: toOptionalTimestamp(record.starttime),
+      endtime: toOptionalTimestamp(record.endtime),
+      updatetime: toOptionalTimestamp(record.updatetime),
+      raw: record,
+    }))
+    .filter((point: GPS51TrackPoint) => Number.isFinite(point.speed));
+
+  logGPS51("daily.querytrackswithadditionals.record0", additionalTrackRecords[0]);
+  logGPS51("daily.querytrackswithadditionals.park0", additionalParkRecords[0]);
+  logGPS51("daily.querytrackswithadditionals.detailreport", additionalDetailReport);
+
+  const starterMeters = mileageRecord ? toFiniteNumber(mileageRecord.starter, 0) : 0;
+  const endDistanceMeters = mileageRecord ? toFiniteNumber(mileageRecord.enddis, 0) : 0;
+  const totalDistanceFromEdges = endDistanceMeters - starterMeters;
+  const totalDistanceFromRecord = mileageRecord ? toFiniteNumber(mileageRecord.totaldistance, 0) : 0;
+  const mileageMeters =
+    totalDistanceFromRecord !== 0
+      ? totalDistanceFromRecord
+      : (totalDistanceFromEdges !== 0
+        ? totalDistanceFromEdges
+        : toFiniteNumber(tripsData?.totaldistance, 0));
+
+  const maxSpeedMps = toFiniteNumber(tripsData?.totalmaxspeed, 0);
+  const avgSpeedMps = mileageRecord
+    ? toFiniteNumber(mileageRecord.avgspeed, toFiniteNumber(tripsData?.totalaveragespeed, 0))
+    : toFiniteNumber(tripsData?.totalaveragespeed, 0);
+
+  const drivingMs = toFiniteNumber(
+    tripsData?.totaltriptime,
+    mileageRecord ? toFiniteNumber(mileageRecord.totalacc, 0) : 0
+  );
+
+  const tripParkingMs = trips.reduce(
+    (sum: number, trip: Record<string, unknown>) => sum + toFiniteNumber(trip?.parking, 0),
+    0
+  );
+  const recordParkingMs = mileageRecord
+    ? Math.max(
+        0,
+        toFiniteNumber(mileageRecord.parkingduration, 0),
+        toFiniteNumber(mileageRecord.parkduration, 0),
+        toFiniteNumber(mileageRecord.parkingtime, 0)
+      )
+    : 0;
+
+  const additionalDetailParkingMs = additionalDetailReport
+    ? Math.max(
+        0,
+        toFiniteNumber(additionalDetailReport.parkingduration, 0),
+        toFiniteNumber(additionalDetailReport.parkduration, 0),
+        toFiniteNumber(additionalDetailReport.parkingtime, 0),
+        toFiniteNumber(additionalDetailReport.totalpark, 0)
+      )
+    : 0;
+
+  // Do not infer parking from start/end span; GPS51 can return day-boundary parks on offline days.
+  const additionalParksParkingMs = additionalParkRecords.reduce(
+    (sum: number, park: Record<string, unknown>) => sum + toFiniteNumber(park.durationidle, 0),
+    0
+  );
+
+  const parkingText = mileageRecord
+    ? String(
+        mileageRecord.parkingdurationstr ??
+        mileageRecord.parkdurationstr ??
+        mileageRecord.parkingstr ??
+        mileageRecord.parkstr ??
+        mileageRecord.parkingdurationtext ??
+        ""
+      ).trim()
+    : "";
+
+  const additionalParkingText = additionalDetailReport
+    ? String(
+        additionalDetailReport.parkingdurationstr ??
+        additionalDetailReport.parkdurationstr ??
+        additionalDetailReport.parkingstr ??
+        additionalDetailReport.parkstr ??
+        ""
+      ).trim()
+    : "";
+
+  const parsedParkingTextMs = parkingText ? parseDurationTextToMs(parkingText) ?? 0 : 0;
+  const parsedAdditionalParkingTextMs = additionalParkingText
+    ? parseDurationTextToMs(additionalParkingText) ?? 0
+    : 0;
+
+  const dynamicParkingTextMs = mileageRecord
+    ? Object.entries(mileageRecord)
+      .filter(([key, value]) =>
+        /(park|idle)/i.test(key) &&
+        /(str|text|duration)/i.test(key) &&
+        typeof value === "string"
+      )
+      .map(([, value]) => parseDurationTextToMs(String(value)))
+      .find((value) => Number.isFinite(value ?? NaN) && Number(value) > 0) ?? 0
+    : 0;
+
+  const resolvedParkingMs = Math.max(
+    tripParkingMs,
+    recordParkingMs,
+    additionalDetailParkingMs,
+    additionalParksParkingMs,
+    parsedParkingTextMs,
+    parsedAdditionalParkingTextMs,
+    dynamicParkingTextMs
+  );
+
+  const parkIdleMs = parks.reduce(
+    (sum: number, park: Record<string, unknown>) => sum + toFiniteNumber(park?.durationidle, 0),
+    0
+  );
+  const recordIdleMs = mileageRecord
+    ? Math.max(
+        0,
+        toFiniteNumber(mileageRecord.totalidle, 0),
+        toFiniteNumber(mileageRecord.idleduration, 0),
+        toFiniteNumber(mileageRecord.idletime, 0)
+      )
+    : 0;
+  const idleMs = Math.max(recordIdleMs, parkIdleMs);
+
+  const firstTrackTime = trackPoints.length
+    ? trackPoints.reduce(
+        (min, point) => Math.min(min, point.starttime ?? point.updatetime ?? Number.MAX_SAFE_INTEGER),
+        Number.MAX_SAFE_INTEGER
+      )
+    : Number.MAX_SAFE_INTEGER;
+  const lastTrackTime = trackPoints.length
+    ? trackPoints.reduce(
+        (max, point) => Math.max(max, point.endtime ?? point.updatetime ?? 0),
+        0
+      )
+    : 0;
+  const trackTotalMs =
+    firstTrackTime !== Number.MAX_SAFE_INTEGER && lastTrackTime > firstTrackTime
+      ? lastTrackTime - firstTrackTime
+      : 0;
+
+  const movingTrackCount = trackPoints.filter((point) => point.speed > 0).length;
+  const inferredDrivingMs =
+    drivingMs > 0
+      ? drivingMs
+      : (trackTotalMs > 0 && movingTrackCount > 0)
+        ? Math.round(trackTotalMs * (movingTrackCount / trackPoints.length))
+        : 0;
+  const inferredIdleMs = idleMs;
+  const workingMs = drivingMs > 0 || idleMs > 0
+    ? drivingMs + idleMs
+    : toFiniteNumber(mileageRecord?.totalacc, 0);
+
+  const maxTrackSpeed = trackPoints.reduce((max, point) => Math.max(max, point.speed), 0);
+  const avgTrackSpeed = trackPoints.length
+    ? trackPoints.reduce((sum, point) => sum + point.speed, 0) / trackPoints.length
+    : 0;
+
+  const resolvedMaxSpeed = maxSpeedMps !== 0 ? maxSpeedMps : maxTrackSpeed;
+  const resolvedAvgSpeed = avgSpeedMps !== 0 ? avgSpeedMps : avgTrackSpeed;
+
+  const tripStartTime = trips.length
+    ? trips.reduce(
+        (min: number, trip: Record<string, unknown>) => Math.min(min, toFiniteNumber(trip?.starttime, Number.MAX_SAFE_INTEGER)),
+        Number.MAX_SAFE_INTEGER
+      )
+    : Number.MAX_SAFE_INTEGER;
+  const tripEndTime = trips.length
+    ? trips.reduce(
+        (max: number, trip: Record<string, unknown>) => Math.max(max, toFiniteNumber(trip?.endtime, 0)),
+        0
+      )
+    : 0;
+
+  const firstPark = parks.length ? parks[0] : null;
+  const lastPark = parks.length ? parks[parks.length - 1] : null;
+
+  const startTimeValue = mileageRecord
+    ? toOptionalTimestamp(mileageRecord.starttime) ?? (
+        tripStartTime !== Number.MAX_SAFE_INTEGER
+          ? tripStartTime
+          : (firstTrackTime !== Number.MAX_SAFE_INTEGER
+            ? firstTrackTime
+            : toOptionalTimestamp(firstPark?.starttime))
+      )
+    : (tripStartTime !== Number.MAX_SAFE_INTEGER
+      ? tripStartTime
+      : (firstTrackTime !== Number.MAX_SAFE_INTEGER
+        ? firstTrackTime
+        : toOptionalTimestamp(firstPark?.starttime)));
+
+  const endTimeValue = mileageRecord
+    ? toOptionalTimestamp(mileageRecord.endtime) ?? (
+        tripEndTime > 0
+          ? tripEndTime
+          : (lastTrackTime > 0 ? lastTrackTime : toOptionalTimestamp(lastPark?.endtime))
+      )
+    : (tripEndTime > 0
+      ? tripEndTime
+      : (lastTrackTime > 0 ? lastTrackTime : toOptionalTimestamp(lastPark?.endtime)));
+
+  const firstTrackRaw = trackPoints.find((point) => point.raw)?.raw ?? null;
+  const lastTrackRaw = [...trackPoints].reverse().find((point) => point.raw)?.raw ?? null;
+  const firstAdditionalRaw = additionalParkRecords.length
+    ? (additionalParkRecords[0] as Record<string, unknown>)
+    : additionalTrackRecords.length
+      ? (additionalTrackRecords[0] as Record<string, unknown>)
+      : null;
+  const lastAdditionalRaw = additionalParkRecords.length
+    ? (additionalParkRecords[additionalParkRecords.length - 1] as Record<string, unknown>)
+    : additionalTrackRecords.length
+      ? (additionalTrackRecords[additionalTrackRecords.length - 1] as Record<string, unknown>)
+      : null;
+
+  const startAddress = pickReadableAddress(
+    mileageRecord,
+    [
+      "startaddress",
+      "startadd",
+      "startaddr",
+      "fromaddress",
+      "fromaddr",
+      "begaddress",
+      "beginaddress",
+    ],
+    /(start|from|begin|beg).*(address|addr|add)/i
+  ) || pickReadableAddress(
+    firstAdditionalRaw,
+    [
+      "address",
+      "straddress",
+      "addr",
+      "positionaddress",
+      "location",
+      "startaddress",
+      "from",
+      "fromaddress",
+    ],
+    /(start|from|address|addr|location)/i
+  ) || pickReadableAddress(
+    firstTrackRaw,
+    [
+      "address",
+      "straddress",
+      "addr",
+      "positionaddress",
+      "location",
+    ],
+    /(address|addr|location)/i
+  ) || (typeof firstPark?.address === "string" ? firstPark.address : "");
+
+  const endAddress = pickReadableAddress(
+    mileageRecord,
+    [
+      "endaddress",
+      "endadd",
+      "endaddr",
+      "toaddress",
+      "toaddr",
+      "stopaddress",
+    ],
+    /(end|to|stop).*(address|addr|add)/i
+  ) || pickReadableAddress(
+    lastAdditionalRaw,
+    [
+      "address",
+      "straddress",
+      "addr",
+      "positionaddress",
+      "location",
+      "endaddress",
+      "to",
+      "toaddress",
+      "stopaddress",
+    ],
+    /(end|to|stop|address|addr|location)/i
+  ) || pickReadableAddress(
+    lastTrackRaw,
+    [
+      "address",
+      "straddress",
+      "addr",
+      "positionaddress",
+      "location",
+    ],
+    /(address|addr|location)/i
+  ) || (typeof lastPark?.address === "string" ? lastPark.address : "");
+
+  const resolvedStartAddress = String(startAddress).trim();
+  const resolvedEndAddress = String(endAddress).trim();
+
+  // Extract coordinates for address fallback when API returns null addresses
+  const coordLatKeys = ["callat", "silent", "lat", "latitude"];
+  const coordLngKeys = ["callon", "lng", "lon", "longitude"];
+  const pickCoordNum = (rec: Record<string, unknown> | null, keys: string[]): number | undefined => {
+    if (!rec) return undefined;
+    for (const key of keys) {
+      const v = Number(rec[key]);
+      if (Number.isFinite(v) && v !== 0) return v;
+    }
+    return undefined;
+  };
+  const startLat = pickCoordNum(firstAdditionalRaw, coordLatKeys) ?? pickCoordNum(firstTrackRaw, coordLatKeys);
+  const startLng = pickCoordNum(firstAdditionalRaw, coordLngKeys) ?? pickCoordNum(firstTrackRaw, coordLngKeys);
+  const endLat = pickCoordNum(lastAdditionalRaw, coordLatKeys) ?? pickCoordNum(lastTrackRaw, coordLatKeys);
+  const endLng = pickCoordNum(lastAdditionalRaw, coordLngKeys) ?? pickCoordNum(lastTrackRaw, coordLngKeys);
+
+  const hasExplicitTelemetryEvidence =
+    Math.abs(mileageMeters) > 0 ||
+    Math.abs(resolvedMaxSpeed) > 0 ||
+    Math.abs(resolvedAvgSpeed) > 0 ||
+    inferredDrivingMs > 0 ||
+    toFiniteNumber(mileageRecord?.totalacc, 0) > 0 ||
+    toFiniteNumber(mileageRecord?.totalidle, 0) > 0 ||
+    tripParkingMs > 0 ||
+    recordParkingMs > 0 ||
+    additionalDetailParkingMs > 0 ||
+    parkIdleMs > 0 ||
+    trackPoints.some((point) => point.speed > 0);
+
+  if (!hasExplicitTelemetryEvidence) {
+    return null;
+  }
+
+  const hasPresenceEvidence =
+    trips.length > 0 ||
+    additionalTrackRecords.length > 0 ||
+    additionalParkRecords.length > 0;
+  const hasMovementEvidence =
+    Math.abs(mileageMeters) > 0 ||
+    Math.abs(resolvedMaxSpeed) > 0 ||
+    Math.abs(resolvedAvgSpeed) > 0 ||
+    inferredDrivingMs > 0;
+  const hasSupportedStationaryEvidence =
+    hasPresenceEvidence && (workingMs > 0 || inferredIdleMs > 0 || resolvedParkingMs > 0);
+
+  const hasSummaryData = hasMovementEvidence || hasSupportedStationaryEvidence;
+
+  if (!hasSummaryData) {
+    return null;
+  }
+
+  const finalStartAddress = resolvedStartAddress || (
+    startLat !== undefined && startLng !== undefined
+      ? await reverseGeocode(startLat, startLng)
+      : ""
+  );
+  const finalEndAddress = resolvedEndAddress || (
+    endLat !== undefined && endLng !== undefined
+      ? await reverseGeocode(endLat, endLng)
+      : ""
+  );
+
+  return {
+    mileageMeters,
+    maxSpeedMps: resolvedMaxSpeed,
+    avgSpeedMps: resolvedAvgSpeed,
+    drivingMs: inferredDrivingMs,
+    workingMs,
+    idleMs: inferredIdleMs,
+    parkingMs: resolvedParkingMs,
+    parkingText: parkingText || additionalParkingText,
+    startTime: startTimeValue,
+    endTime: endTimeValue,
+    startAddress: finalStartAddress,
+    endAddress: finalEndAddress,
+    startLat,
+    startLng,
+    endLat,
+    endLng,
+  };
 }
