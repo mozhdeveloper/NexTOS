@@ -637,6 +637,14 @@ export async function fetchDailyHistorySummary(
     mileageRecord ? toFiniteNumber(mileageRecord.totalacc, 0) : 0
   );
 
+  const hasCoreActivityEvidence =
+    Math.abs(mileageMeters) > 0 ||
+    Math.abs(maxSpeedMps) > 0 ||
+    Math.abs(avgSpeedMps) > 0 ||
+    drivingMs > 0 ||
+    trips.length > 0 ||
+    trackPoints.some((point) => point.speed > 0);
+
   const tripParkingMs = trips.reduce(
     (sum: number, trip: Record<string, unknown>) => sum + toFiniteNumber(trip?.parking, 0),
     0
@@ -660,9 +668,37 @@ export async function fetchDailyHistorySummary(
       )
     : 0;
 
-  // Do not infer parking from start/end span; GPS51 can return day-boundary parks on offline days.
   const additionalParksParkingMs = additionalParkRecords.reduce(
-    (sum: number, park: Record<string, unknown>) => sum + toFiniteNumber(park.durationidle, 0),
+    (sum: number, park: Record<string, unknown>) => {
+      const explicitIdleDuration = toFiniteNumber(park.durationidle, 0);
+      if (explicitIdleDuration > 0) {
+        return sum + explicitIdleDuration;
+      }
+
+      // Use start/end span only when the day has real movement/activity evidence.
+      // This avoids offline placeholder rows that span nearly the whole day.
+      if (!hasCoreActivityEvidence) {
+        return sum;
+      }
+
+      const start = toOptionalTimestamp(park.starttime);
+      const end = toOptionalTimestamp(park.endtime);
+      if (!Number.isFinite(Number(start)) || !Number.isFinite(Number(end))) {
+        return sum;
+      }
+
+      const spanMs = Number(end) - Number(start);
+      if (spanMs <= 0) {
+        return sum;
+      }
+
+      // Ignore near full-day spans; these are usually boundary placeholders, not real park sessions.
+      if (spanMs >= 23 * 60 * 60 * 1000) {
+        return sum;
+      }
+
+      return sum + spanMs;
+    },
     0
   );
 
