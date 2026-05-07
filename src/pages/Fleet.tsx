@@ -5,6 +5,7 @@ import { useOperationsStore } from "@/stores/useOperationsStore";
 import { useCRMStore } from "@/stores/useCRMStore";
 import { useAuthStore } from "@/stores/useAuthStore";
 import {
+  fetchAllTimeWorkingMs,
   fetchDailyHistorySummary,
   type GPS51DailyHistorySummary,
 } from "@/services/gps51";
@@ -128,6 +129,13 @@ function formatDurationFromMs(totalMs: number): string {
   return formatDuration(totalMs / (1000 * 60));
 }
 
+function formatHoursFromMsForSidebar(totalMs: number): string {
+  if (!Number.isFinite(totalMs) || totalMs <= 0) {
+    return "0";
+  }
+  return formatDurationFromMs(totalMs);
+}
+
 function toDisplayStatus(status: string): UnitDisplayStatus {
   if (status === "driving" || status === "idle" || status === "parking" || status === "offline") {
     return status;
@@ -238,6 +246,8 @@ export default function Fleet() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [historyDateStatus, setHistoryDateStatus] = useState<"parking" | "offline" | null>(null);
+  const [gps001HoursTodayMs, setGps001HoursTodayMs] = useState(0);
+  const [gps001HoursTotalMs, setGps001HoursTotalMs] = useState(0);
 
   const selectedUnit = units.find((u) => u.id === selectedUnitId);
   const selectedEquipment = equipment.find((e) => e.id === selectedUnit?.equipmentId);
@@ -282,6 +292,76 @@ export default function Fleet() {
   }, [selectedUnit]);
 
   useEffect(() => {
+    let ignore = false;
+    let refreshInterval: ReturnType<typeof setInterval> | null = null;
+
+    const loadGps001HoursToday = async () => {
+      if (!GPS51_USERNAME || !GPS51_PASSWORD) {
+        if (!ignore) setGps001HoursTodayMs(0);
+        return;
+      }
+      try {
+        const summary = await fetchDailyHistorySummary(GPS51_USERNAME, GPS51_PASSWORD, selectedHistoryDay);
+        if (!ignore) {
+          setGps001HoursTodayMs(summary ? summary.workingMs : 0);
+        }
+      } catch {
+        if (!ignore) {
+          setGps001HoursTodayMs(0);
+        }
+      }
+    };
+
+    void loadGps001HoursToday();
+
+    const isTodaySelection = selectedHistoryDay === toYmd(new Date());
+    if (isTodaySelection) {
+      refreshInterval = setInterval(() => {
+        void loadGps001HoursToday();
+      }, 30000);
+    }
+
+    return () => {
+      ignore = true;
+      if (refreshInterval) {
+        clearInterval(refreshInterval);
+      }
+    };
+  }, [selectedHistoryDay]);
+
+  useEffect(() => {
+    let ignore = false;
+
+    const loadGps001HoursTotal = async () => {
+      if (!GPS51_USERNAME || !GPS51_PASSWORD) {
+        if (!ignore) setGps001HoursTotalMs(0);
+        return;
+      }
+      try {
+        const totalMs = await fetchAllTimeWorkingMs(
+          GPS51_USERNAME,
+          GPS51_PASSWORD,
+          "2000-01-01",
+          toYmd(new Date())
+        );
+        if (!ignore) {
+          setGps001HoursTotalMs(totalMs);
+        }
+      } catch {
+        if (!ignore) {
+          setGps001HoursTotalMs(0);
+        }
+      }
+    };
+
+    void loadGps001HoursTotal();
+
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
+  useEffect(() => {
     if (viewMode !== "history" || !selectedUnitId) return;
 
     let ignore = false;
@@ -298,6 +378,21 @@ export default function Fleet() {
           const summary = await fetchDailyHistorySummary(GPS51_USERNAME, GPS51_PASSWORD, selectedHistoryDay);
           if (!ignore) {
             if (summary) {
+              const isTodaySelection = selectedHistoryDay === toYmd(new Date());
+              if (isTodaySelection) {
+                if (
+                  typeof selectedUnit?.telemetry.lat === "number" &&
+                  typeof selectedUnit?.telemetry.lng === "number"
+                ) {
+                  setMapCenter([selectedUnit.telemetry.lat, selectedUnit.telemetry.lng]);
+                }
+              } else {
+                const historyLat = summary.endLat ?? summary.startLat;
+                const historyLng = summary.endLng ?? summary.startLng;
+                if (typeof historyLat === "number" && typeof historyLng === "number") {
+                  setMapCenter([historyLat, historyLng]);
+                }
+              }
               setHistoryDateStatus("parking");
               setHistoryRows([buildHistoryRowFromSummary(selectedUnitLabel, summary)]);
             } else {
@@ -661,6 +756,24 @@ export default function Fleet() {
               const eq = equipment.find((e) => e.id === unit.equipmentId);
               const client = clients.find((c) => c.id === eq?.clientId);
               const isSelected = selectedUnitId === unit.id;
+              const unitLabel = (eq?.unitId || unit.unitName || "").toUpperCase();
+              const isGps001 = unit.id === 1 || unitLabel === "GPS-001";
+
+              const staticHoursByUnit: Record<string, { today: string; total: string }> = {
+                "GPS-003": { today: "4h 20m", total: "3890h 40m" },
+                "GPS-004": { today: "6h 15m", total: "2100h 40m" },
+                "GPS-010": { today: "3h 50m", total: "3450h 40m" },
+                "GPS-007": { today: "7h 10m", total: "5200h 40m" },
+              };
+
+              const hoursTodayText = isGps001
+                ? formatHoursFromMsForSidebar(gps001HoursTodayMs)
+                : (staticHoursByUnit[unitLabel]?.today ?? "0");
+
+              const hoursTotalText = isGps001
+                ? formatHoursFromMsForSidebar(gps001HoursTotalMs)
+                : (staticHoursByUnit[unitLabel]?.total ?? "0");
+
               return (
                 <button
                   key={unit.id}
@@ -679,8 +792,8 @@ export default function Fleet() {
                   <div className="text-[10px] text-[#88888C] ml-3.5 space-y-0.5">
                     <div>{client?.companyName || "—"}</div>
                     <div className="flex items-center gap-2">
-                      <span>Hours Today: —</span>
-                      <span>Hours in Total: —</span>
+                      <span>Hours Today: {hoursTodayText}</span>
+                      <span>Hours in Total: {hoursTotalText}</span>
                     </div>
                     {unit.serviceDue && (
                       <div className="flex items-center gap-1 text-[#EF4444]">

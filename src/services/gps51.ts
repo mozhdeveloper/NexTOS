@@ -1147,3 +1147,51 @@ export async function fetchDailyHistorySummary(
     endLng,
   };
 }
+
+export async function fetchAllTimeWorkingMs(
+  username: string,
+  password: string,
+  startDay = "2000-01-01",
+  endDay?: string
+): Promise<number> {
+  const finalEndDay = endDay ?? new Date().toISOString().slice(0, 10);
+  const data = await postGps51Action("reportmileagedetail", username, password, {
+    deviceid: DEVICE_ID,
+    startday: startDay,
+    endday: finalEndDay,
+    offset: 8,
+  });
+
+  if (data?.status !== 0) {
+    return 0;
+  }
+
+  const records = Array.isArray(data?.records) ? data.records : [];
+  if (!records.length) {
+    return 0;
+  }
+
+  const resolveRecordMetricMs = (record: Record<string, unknown>, keys: string[]): number => {
+    for (const key of keys) {
+      const value = Number(record[key]);
+      if (Number.isFinite(value) && value >= 0) {
+        return value;
+      }
+    }
+    return 0;
+  };
+
+  const totalWorkingMs = records.reduce((sum: number, record: Record<string, unknown>) => {
+    const workingMs = resolveRecordMetricMs(record, ["totalacc", "workingduration", "workingtime", "accontime"]);
+    return sum + workingMs;
+  }, 0);
+
+  logGPS51("alltime.working.ms", {
+    startDay,
+    endDay: finalEndDay,
+    days: records.length,
+    totalWorkingMs,
+  });
+
+  return totalWorkingMs;
+}
