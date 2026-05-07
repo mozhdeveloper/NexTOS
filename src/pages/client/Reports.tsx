@@ -13,7 +13,7 @@ import {
   LineChart,
   Line,
 } from "recharts";
-import { Calendar, FileText, Wrench, DollarSign } from "lucide-react";
+import { Calendar, FileText, Wrench, DollarSign, Activity, FlaskConical, ClipboardList } from "lucide-react";
 
 function monthKey(dateISO: string) {
   const d = new Date(dateISO);
@@ -97,6 +97,46 @@ export default function ClientReports() {
     return months.map((m) => ({ month: m.label, bookings: m.bookings, services: m.services }));
   }, [clientBookings, clientServices]);
 
+  const pmsReport = useMemo(() => {
+    return clientEquipment.filter(e => e.equipmentType === "Heavy Equipment").map(e => {
+        const remaining = e.nextPMSHours - e.currentHours;
+        return {
+            unit: e.unitId,
+            current: e.currentHours,
+            next: e.nextPMSHours,
+            remaining: remaining,
+            status: remaining <= 0 ? "Overdue" : remaining <= 50 ? "Near Service" : "OK"
+        };
+    });
+  }, [clientEquipment]);
+
+  const calibrationReport = useMemo(() => {
+    return clientEquipment.filter(e => e.equipmentType === "Lab Equipment" || e.equipmentType === "Testing Equipment").map(e => {
+        const nextDate = e.nextCalibrationDate ? new Date(e.nextCalibrationDate) : null;
+        const diffDays = nextDate ? Math.ceil((nextDate.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)) : null;
+        return {
+            unit: e.unitId,
+            last: e.lastCalibrationDate ? new Date(e.lastCalibrationDate).toLocaleDateString() : "—",
+            next: e.nextCalibrationDate ? new Date(e.nextCalibrationDate).toLocaleDateString() : "—",
+            remaining: diffDays,
+            status: diffDays === null ? "—" : diffDays <= 0 ? "Overdue" : diffDays <= 15 ? "Due Soon" : "OK"
+        };
+    });
+  }, [clientEquipment]);
+
+  const testingReport = useMemo(() => {
+    return clientServices.filter(s => s.serviceCategory === "Lab Testing Service").map(s => {
+        return {
+            type: s.testType || "—",
+            project: s.projectName || "—",
+            sample: s.sampleName || "—",
+            requested: new Date(s.scheduledDate).toLocaleDateString(),
+            status: s.labStatus || "—",
+            result: s.reportAttachment ? "View Report" : "Pending"
+        };
+    });
+  }, [clientServices]);
+
   return (
     <div className="space-y-4 px-8 pt-8">
       <div className="flex items-center justify-between">
@@ -164,45 +204,115 @@ export default function ClientReports() {
         </div>
       </div>
 
+      {/* Equipment PMS Hours Report */}
       <div className="data-card overflow-auto">
-        <div className="p-3 border-b border-white/5">
-          <h3 className="text-sm font-semibold text-[#EAEAEA]">Invoice Breakdown</h3>
+        <div className="p-3 border-b border-white/5 flex items-center gap-2">
+          <Activity className="w-4 h-4 text-[#005F73]" />
+          <h3 className="text-sm font-semibold text-[#EAEAEA]">Equipment PMS Hours Report</h3>
         </div>
         <table className="w-full text-xs">
           <thead>
             <tr className="bg-[#0A0A0C]">
-              <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Invoice #</th>
-              <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Created</th>
-              <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Due Date</th>
+              <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Equipment</th>
+              <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Current Hours</th>
+              <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Next PMS</th>
+              <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Remaining</th>
               <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Status</th>
-              <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Total</th>
             </tr>
           </thead>
           <tbody>
-            {clientInvoices
-              .slice()
-              .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-              .map((invoice) => (
-                <tr key={invoice.id} className="grid-table-row border-b border-[#2A2A30]">
-                  <td className="py-2.5 px-3 text-[#EAEAEA] font-mono-tech">{invoice.invoiceNumber}</td>
-                  <td className="py-2.5 px-3 text-[#88888C]">{new Date(invoice.createdAt).toLocaleDateString()}</td>
-                  <td className="py-2.5 px-3 text-[#88888C]">{new Date(invoice.dueDate).toLocaleDateString()}</td>
+            {pmsReport.map((row, idx) => (
+                <tr key={idx} className="border-b border-[#2A2A30]">
+                  <td className="py-2.5 px-3 text-[#EAEAEA] font-mono-tech">{row.unit}</td>
+                  <td className="py-2.5 px-3 text-[#88888C]">{row.current}h</td>
+                  <td className="py-2.5 px-3 text-[#88888C]">{row.next}h</td>
+                  <td className={`py-2.5 px-3 font-mono-tech ${row.remaining <= 0 ? "text-[#EF4444]" : "text-[#88888C]"}`}>{row.remaining}h</td>
                   <td className="py-2.5 px-3">
-                    <span
-                      className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
-                        invoice.status === "paid"
-                          ? "bg-[#10B981]/20 text-[#10B981]"
-                          : invoice.status === "overdue"
-                          ? "bg-[#EF4444]/20 text-[#EF4444]"
-                          : "bg-[#F2A900]/20 text-[#F2A900]"
-                      }`}
-                    >
-                      {invoice.status}
+                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${row.status === "OK" ? "bg-[#10B981]/20 text-[#10B981]" : row.status === "Near Service" ? "bg-[#F2A900]/20 text-[#F2A900]" : "bg-[#EF4444]/20 text-[#EF4444]"}`}>
+                        {row.status}
                     </span>
                   </td>
-                  <td className="py-2.5 px-3 text-[#F2A900] font-mono-tech font-bold">${invoice.total.toFixed(2)}</td>
                 </tr>
-              ))}
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Calibration PMS Report */}
+      <div className="data-card overflow-auto">
+        <div className="p-3 border-b border-white/5 flex items-center gap-2">
+          <FlaskConical className="w-4 h-4 text-[#F2A900]" />
+          <h3 className="text-sm font-semibold text-[#EAEAEA]">Calibration PMS Report</h3>
+        </div>
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="bg-[#0A0A0C]">
+              <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Lab Equipment</th>
+              <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Last Calibration</th>
+              <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Next Calibration</th>
+              <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Days Remaining</th>
+              <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {calibrationReport.map((row, idx) => (
+                <tr key={idx} className="border-b border-[#2A2A30]">
+                  <td className="py-2.5 px-3 text-[#EAEAEA] font-mono-tech">{row.unit}</td>
+                  <td className="py-2.5 px-3 text-[#88888C]">{row.last}</td>
+                  <td className="py-2.5 px-3 text-[#88888C]">{row.next}</td>
+                  <td className={`py-2.5 px-3 font-mono-tech ${(row.remaining ?? 1) <= 0 ? "text-[#EF4444]" : "text-[#88888C]"}`}>{row.remaining ?? "—"}</td>
+                  <td className="py-2.5 px-3">
+                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${row.status === "OK" ? "bg-[#10B981]/20 text-[#10B981]" : row.status === "Due Soon" ? "bg-[#F2A900]/20 text-[#F2A900]" : "bg-[#EF4444]/20 text-[#EF4444]"}`}>
+                        {row.status}
+                    </span>
+                  </td>
+                </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Lab Testing Report */}
+      <div className="data-card overflow-auto">
+        <div className="p-3 border-b border-white/5 flex items-center gap-2">
+          <ClipboardList className="w-4 h-4 text-[#005F73]" />
+          <h3 className="text-sm font-semibold text-[#EAEAEA]">Lab Testing Report</h3>
+        </div>
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="bg-[#0A0A0C]">
+              <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Test Type</th>
+              <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Project / Sample</th>
+              <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Date Requested</th>
+              <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Status</th>
+              <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Result / Report</th>
+            </tr>
+          </thead>
+          <tbody>
+            {testingReport.map((row, idx) => (
+                <tr key={idx} className="border-b border-[#2A2A30]">
+                  <td className="py-2.5 px-3 text-[#EAEAEA] font-bold">{row.type}</td>
+                  <td className="py-2.5 px-3">
+                    <div className="text-[#EAEAEA]">{row.project}</div>
+                    <div className="text-[10px] text-[#88888C]">Sample: {row.sample}</div>
+                  </td>
+                  <td className="py-2.5 px-3 text-[#88888C]">{row.requested}</td>
+                  <td className="py-2.5 px-3">
+                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${row.status === "Released" ? "bg-[#10B981]/20 text-[#10B981]" : "bg-[#F2A900]/20 text-[#F2A900]"}`}>
+                        {row.status}
+                    </span>
+                  </td>
+                  <td className="py-2.5 px-3">
+                    {row.result === "View Report" ? (
+                        <button className="flex items-center gap-1 text-[#005F73] hover:underline font-bold">
+                            <FileText className="w-3 h-3" /> View Report
+                        </button>
+                    ) : (
+                        <span className="text-[#88888C] italic">{row.result}</span>
+                    )}
+                  </td>
+                </tr>
+            ))}
           </tbody>
         </table>
       </div>

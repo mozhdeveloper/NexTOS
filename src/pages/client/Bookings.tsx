@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useAuthStore } from "@/stores/useAuthStore";
 import { useOperationsStore } from "@/stores/useOperationsStore";
-import type { ServiceType } from "@/types";
+import type { ServiceCategory } from "@/types";
 import { Calendar, Clock, Package, ArrowRight, X, CheckCircle2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -15,7 +15,7 @@ import {
 
 export default function ClientBookings() {
   const { user } = useAuthStore();
-  const { bookings, equipment, addBooking, updateBooking } = useOperationsStore();
+  const { bookings, equipment, addBooking } = useOperationsStore();
   const clientId = user?.clientId || 1;
 
   const clientEquipment = equipment.filter((e) => e.clientId === clientId);
@@ -40,10 +40,12 @@ export default function ClientBookings() {
 
   const [bookingStep, setBookingStep] = useState(0);
   const [bookingEquipment, setBookingEquipment] = useState("");
-  const [bookingType, setBookingType] = useState<ServiceType>("pms");
+  const [bookingCategory, setBookingCategory] = useState<ServiceCategory>("Heavy Equipment PMS");
   const [bookingDate, setBookingDate] = useState("");
   const [bookingTime, setBookingTime] = useState("");
   const [bookingNotes, setBookingNotes] = useState("");
+  const [bookingProjectName, setBookingProjectName] = useState("");
+  const [bookingSampleName, setBookingSampleName] = useState("");
   const [bookingComplete, setBookingComplete] = useState(false);
   const [bookingModalOpen, setBookingModalOpen] = useState(false);
 
@@ -53,11 +55,13 @@ export default function ClientBookings() {
     addBooking({
       clientId,
       equipmentId: parseInt(bookingEquipment),
-      serviceType: bookingType,
+      serviceCategory: bookingCategory,
       requestedDate: bookingDate,
       preferredTime: bookingTime,
       status: "pending",
       notes: bookingNotes,
+      projectName: bookingCategory === "Lab Testing Service" ? bookingProjectName : undefined,
+      sampleName: bookingCategory === "Lab Testing Service" ? bookingSampleName : undefined,
     });
 
     setBookingComplete(true);
@@ -69,6 +73,8 @@ export default function ClientBookings() {
       setBookingDate("");
       setBookingTime("");
       setBookingNotes("");
+      setBookingProjectName("");
+      setBookingSampleName("");
     }, 3000);
   };
 
@@ -155,25 +161,51 @@ export default function ClientBookings() {
                           <SelectContent className="bg-[#1A1A20] border-white/10">
                             {clientEquipment.map((eq) => (
                               <SelectItem key={eq.id} value={eq.id.toString()} className="text-xs text-[#EAEAEA]">
-                                {eq.unitId} — {eq.type}
+                                {eq.unitId} — {eq.equipmentType}
                               </SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
                       </div>
                       <div>
-                        <label className="text-[10px] text-[#88888C] uppercase tracking-wider mb-1 block">Service Type</label>
-                        <Select value={bookingType} onValueChange={(v) => setBookingType(v as ServiceType)}>
+                        <label className="text-[10px] text-[#88888C] uppercase tracking-wider mb-1 block">Service Category</label>
+                        <Select value={bookingCategory} onValueChange={(v) => setBookingCategory(v as ServiceCategory)}>
                           <SelectTrigger className="h-9 bg-[#1A1A20] border-white/10 text-[#EAEAEA] text-xs">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent className="bg-[#1A1A20] border-white/10">
-                            <SelectItem value="pms" className="text-xs text-[#EAEAEA]">Preventative Maintenance</SelectItem>
-                            <SelectItem value="repair" className="text-xs text-[#EAEAEA]">Repair</SelectItem>
-                            <SelectItem value="inspection" className="text-xs text-[#EAEAEA]">Inspection</SelectItem>
+                            <SelectItem value="Heavy Equipment PMS" className="text-xs text-[#EAEAEA]">Heavy Equipment PMS</SelectItem>
+                            <SelectItem value="Calibration PMS" className="text-xs text-[#EAEAEA]">Calibration PMS</SelectItem>
+                            <SelectItem value="Lab Testing Service" className="text-xs text-[#EAEAEA]">Lab Testing Service</SelectItem>
+                            <SelectItem value="Repair" className="text-xs text-[#EAEAEA]">Repair</SelectItem>
+                            <SelectItem value="Inspection" className="text-xs text-[#EAEAEA]">Inspection</SelectItem>
+                            <SelectItem value="Installation" className="text-xs text-[#EAEAEA]">Installation</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
+
+                      {bookingCategory === "Lab Testing Service" && (
+                        <div className="grid grid-cols-2 gap-2 animate-in fade-in slide-in-from-top-2 duration-300">
+                          <div>
+                            <label className="text-[10px] text-[#88888C] uppercase tracking-wider mb-1 block">Project Name</label>
+                            <Input 
+                              value={bookingProjectName} 
+                              onChange={(e) => setBookingProjectName(e.target.value)}
+                              placeholder="e.g. Skyline Tower"
+                              className="h-9 bg-[#1A1A20] border-white/10 text-[#EAEAEA] text-xs" 
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[10px] text-[#88888C] uppercase tracking-wider mb-1 block">Sample ID</label>
+                            <Input 
+                              value={bookingSampleName} 
+                              onChange={(e) => setBookingSampleName(e.target.value)}
+                              placeholder="e.g. S-101"
+                              className="h-9 bg-[#1A1A20] border-white/10 text-[#EAEAEA] text-xs" 
+                            />
+                          </div>
+                        </div>
+                      )}
                       <Button
                         onClick={() => setBookingStep(1)}
                         disabled={!bookingEquipment}
@@ -235,8 +267,8 @@ export default function ClientBookings() {
                           </span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-[#88888C]">Service Type</span>
-                          <span className="text-[#EAEAEA] capitalize">{bookingType}</span>
+                          <span className="text-[#88888C]">Category</span>
+                          <span className="text-[#EAEAEA]">{bookingCategory}</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-[#88888C]">Date</span>
@@ -246,6 +278,18 @@ export default function ClientBookings() {
                           <span className="text-[#88888C]">Time</span>
                           <span className="text-[#EAEAEA]">{bookingTime}</span>
                         </div>
+                        {bookingCategory === "Lab Testing Service" && (
+                          <>
+                            <div className="flex justify-between">
+                              <span className="text-[#88888C]">Project</span>
+                              <span className="text-[#EAEAEA]">{bookingProjectName}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-[#88888C]">Sample ID</span>
+                              <span className="text-[#EAEAEA]">{bookingSampleName}</span>
+                            </div>
+                          </>
+                        )}
                       </div>
                       <div>
                         <label className="text-[10px] text-[#88888C] uppercase tracking-wider mb-1 block">Additional Notes</label>
@@ -290,7 +334,7 @@ export default function ClientBookings() {
                     <div className="text-left">
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-semibold text-[#EAEAEA] font-mono-tech">{clientEquipment.find((e) => e.id === b.equipmentId)?.unitId || "—"}</span>
-                        <span className="text-xs text-[#88888C]">{b.serviceType}</span>
+                        <span className="text-[10px] text-[#88888C]">{b.serviceCategory}</span>
                       </div>
                       <div className="text-[10px] text-[#88888C]">{new Date(b.requestedDate).toLocaleDateString()} · {b.preferredTime}</div>
                     </div>
@@ -320,7 +364,7 @@ export default function ClientBookings() {
                     <div className="text-left">
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-semibold text-[#EAEAEA] font-mono-tech">{clientEquipment.find((e) => e.id === b.equipmentId)?.unitId || "—"}</span>
-                        <span className="text-xs text-[#88888C]">{b.serviceType}</span>
+                        <span className="text-[10px] text-[#88888C]">{b.serviceCategory}</span>
                       </div>
                       <div className="text-[10px] text-[#88888C]">{new Date(b.requestedDate).toLocaleDateString()} · {b.preferredTime}</div>
                     </div>
