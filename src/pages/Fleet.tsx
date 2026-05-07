@@ -85,8 +85,6 @@ interface HistoryRow {
   endTime: string;
 }
 
-const GPS51_USERNAME = import.meta.env.VITE_GPS51_USERNAME ?? "";
-const GPS51_PASSWORD = import.meta.env.VITE_GPS51_PASSWORD ?? "";
 const FLEET_HISTORY_DEBUG = true;
 
 function logFleetHistory(label: string, payload: unknown): void {
@@ -296,12 +294,8 @@ export default function Fleet() {
     let refreshInterval: ReturnType<typeof setInterval> | null = null;
 
     const loadGps001HoursToday = async () => {
-      if (!GPS51_USERNAME || !GPS51_PASSWORD) {
-        if (!ignore) setGps001HoursTodayMs(0);
-        return;
-      }
       try {
-        const summary = await fetchDailyHistorySummary(GPS51_USERNAME, GPS51_PASSWORD, selectedHistoryDay);
+        const summary = await fetchDailyHistorySummary(undefined, undefined, selectedHistoryDay);
         if (!ignore) {
           setGps001HoursTodayMs(summary ? summary.workingMs : 0);
         }
@@ -333,14 +327,10 @@ export default function Fleet() {
     let ignore = false;
 
     const loadGps001HoursTotal = async () => {
-      if (!GPS51_USERNAME || !GPS51_PASSWORD) {
-        if (!ignore) setGps001HoursTotalMs(0);
-        return;
-      }
       try {
         const totalMs = await fetchAllTimeWorkingMs(
-          GPS51_USERNAME,
-          GPS51_PASSWORD,
+          undefined,
+          undefined,
           "2000-01-01",
           toYmd(new Date())
         );
@@ -365,17 +355,13 @@ export default function Fleet() {
     if (viewMode !== "history" || !selectedUnitId) return;
 
     let ignore = false;
-    let refreshInterval: ReturnType<typeof setInterval> | null = null;
 
     const loadHistory = async () => {
       setHistoryLoading(true);
       setHistoryError(null);
       try {
         if (isGps51UnitSelected) {
-          if (!GPS51_USERNAME || !GPS51_PASSWORD) {
-            throw new Error("GPS51 credentials are missing");
-          }
-          const summary = await fetchDailyHistorySummary(GPS51_USERNAME, GPS51_PASSWORD, selectedHistoryDay);
+          const summary = await fetchDailyHistorySummary(undefined, undefined, selectedHistoryDay);
           if (!ignore) {
             if (summary) {
               const isTodaySelection = selectedHistoryDay === toYmd(new Date());
@@ -424,18 +410,8 @@ export default function Fleet() {
 
     loadHistory();
 
-    const isTodaySelection = selectedHistoryDay === toYmd(new Date());
-    if (isGps51UnitSelected && isTodaySelection) {
-      refreshInterval = setInterval(() => {
-        void loadHistory();
-      }, 30000);
-    }
-
     return () => {
       ignore = true;
-      if (refreshInterval) {
-        clearInterval(refreshInterval);
-      }
     };
   }, [viewMode, selectedUnitId, selectedHistoryDay, isGps51UnitSelected, selectedUnitLabel, selectedHistoryDate]);
 

@@ -6,14 +6,6 @@ import { persist } from "zustand/middleware";
 import type { FleetUnit, GPSTelemetry } from "@/types";
 import { fetchLastPosition } from "@/services/gps51";
 
-// ─── GPS51 credentials ───────────────────────────────────────────────────────
-// ⚠️ Move these to .env in production:
-// VITE_GPS51_USERNAME=your_username
-// VITE_GPS51_PASSWORD=your_password
-const GPS51_USERNAME = import.meta.env.VITE_GPS51_USERNAME ?? "";
-const GPS51_PASSWORD = import.meta.env.VITE_GPS51_PASSWORD ?? "";
-// ─────────────────────────────────────────────────────────────────────────────
-
 interface FleetState {
   units: FleetUnit[];
   selectedUnitId: number | null;
@@ -95,7 +87,7 @@ export const useFleetStore = create<FleetState>()(
       // ── Fetch real GPS data now ──────────────────────────────────────────
       fetchNow: async () => {
         try {
-          const position = await fetchLastPosition(GPS51_USERNAME, GPS51_PASSWORD);
+          const position = await fetchLastPosition();
 
           if (!position) {
             set({ fetchError: "No position data returned" });

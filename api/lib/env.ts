@@ -16,4 +16,6 @@ export const env = {
   kimiAuthUrl: required("KIMI_AUTH_URL"),
   kimiOpenUrl: required("KIMI_OPEN_URL"),
   ownerUnionId: process.env.OWNER_UNION_ID ?? "",
+  gps51Username: process.env.GPS51_USERNAME ?? process.env.VITE_GPS51_USERNAME ?? "",
+  gps51Password: process.env.GPS51_PASSWORD ?? process.env.VITE_GPS51_PASSWORD ?? "",
 };
