@@ -118,8 +118,8 @@ function formatHoursMinutes(hours: number): string {
         />
         <KPICard
           label="Total Revenue"
-          value={`$${(totalRevenue / 1000).toFixed(1)}k`}
-          delta={`$${(outstandingRevenue / 1000).toFixed(1)}k outstanding`}
+          value={`₱${(totalRevenue / 1000).toFixed(1)}k`}
+          delta={`₱${(outstandingRevenue / 1000).toFixed(1)}k outstanding`}
           deltaUp={totalRevenue > 3000}
           icon={DollarSign}
         />
@@ -263,7 +263,7 @@ function formatHoursMinutes(hours: number): string {
                   <tr key={deal.id} className="border-b border-white/5 hover:bg-white/5">
                     <td className="py-2 text-[#EAEAEA]">{deal.title}</td>
                     <td className="py-2 text-[#F2A900] font-mono-tech">
-                      ${deal.value.toLocaleString()}
+                      ₱{deal.value.toLocaleString()}
                     </td>
                     <td className="py-2 text-[#88888C] capitalize">{deal.stage.replace("_", " ")}</td>
                     <td className="py-2">

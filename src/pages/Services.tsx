@@ -762,7 +762,7 @@ function EquipmentDetail({
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className="text-[10px] text-[#F2A900] font-mono-tech font-bold">${record.cost.toFixed(2)}</div>
+                    <div className="text-[10px] text-[#F2A900] font-mono-tech font-bold">₱{record.cost.toFixed(2)}</div>
                     <span className="text-[9px] text-[#10B981] font-bold uppercase tracking-wider">Completed</span>
                   </div>
                 </div>

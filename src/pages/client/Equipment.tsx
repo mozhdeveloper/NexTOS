@@ -201,7 +201,7 @@ export default function ClientEquipment() {
                                 <span className="text-[10px] text-[#88888C]">{record.technician}</span>
                               </div>
                               <div className="flex items-center gap-2">
-                                <span className="text-[10px] text-[#F2A900] font-mono-tech">${record.cost.toFixed(2)}</span>
+                                <span className="text-[10px] text-[#F2A900] font-mono-tech">₱{record.cost.toFixed(2)}</span>
                                 <span className="text-[10px] text-[#88888C]">{record.completedDate ? new Date(record.completedDate).toLocaleDateString() : "—"}</span>
                               </div>
                             </div>

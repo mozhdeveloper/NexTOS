@@ -190,7 +190,7 @@ export default function ClientPortal() {
       <div className="grid grid-cols-3 gap-3">
         <div className="data-card p-4">
           <div className="text-[10px] text-[#88888C] uppercase tracking-wider mb-1">Current Balance</div>
-          <div className="text-3xl font-bold text-[#F2A900] kpi-glow">${outstandingTotal.toFixed(2)}</div>
+          <div className="text-3xl font-bold text-[#F2A900] kpi-glow">₱{outstandingTotal.toFixed(2)}</div>
           <div className="text-[10px] text-[#88888C] mt-1">
             {clientInvoices.filter((i) => i.status !== "paid").length} outstanding invoices
           </div>
@@ -315,7 +315,7 @@ export default function ClientPortal() {
                                 <span className="text-[10px] text-[#88888C]">{record.technician}</span>
                               </div>
                               <div className="flex items-center gap-2">
-                                <span className="text-[10px] text-[#F2A900] font-mono-tech">${record.cost.toFixed(2)}</span>
+                                <span className="text-[10px] text-[#F2A900] font-mono-tech">₱{record.cost.toFixed(2)}</span>
                                 <span className="text-[10px] text-[#88888C]">
                                   {record.completedDate ? new Date(record.completedDate).toLocaleDateString() : "—"}
                                 </span>
@@ -645,7 +645,7 @@ export default function ClientPortal() {
                         {pkg.status}
                       </span>
                     </div>
-                    <div className="text-[#F2A900] font-bold text-sm mb-2">${pkg.price.toFixed(0)}</div>
+                    <div className="text-[#F2A900] font-bold text-sm mb-2">₱{pkg.price.toFixed(0)}</div>
                     <div className="flex flex-wrap gap-1">
                       {pkg.includedServices.map((service, idx) => (
                         <span key={idx} className="px-1.5 py-0.5 rounded text-[10px] bg-[#005F73]/20 text-[#005F73]">
@@ -678,7 +678,7 @@ export default function ClientPortal() {
                       Available
                     </span>
                   </div>
-                  <div className="text-[#F2A900] font-bold text-sm mb-2">${pkg.price.toFixed(0)}</div>
+                  <div className="text-[#F2A900] font-bold text-sm mb-2">₱{pkg.price.toFixed(0)}</div>
                   <div className="flex flex-wrap gap-1 mb-3">
                     {pkg.includedServices.map((service, idx) => (
                       <span key={idx} className="px-1.5 py-0.5 rounded text-[10px] bg-[#005F73]/20 text-[#005F73]">
@@ -727,7 +727,7 @@ export default function ClientPortal() {
                   <p className="text-[10px] text-[#88888C] capitalize">{pkg.tier} Plan — {pkg.billingCycle}</p>
                 </div>
                 <div className="text-right">
-                  <div className="text-xl font-bold text-[#F2A900]">${pkg.price.toFixed(0)}</div>
+                  <div className="text-xl font-bold text-[#F2A900]">₱{pkg.price.toFixed(0)}</div>
                   <div className="text-[10px] text-[#88888C]">per {pkg.billingCycle === "monthly" ? "month" : pkg.billingCycle}</div>
                 </div>
               </div>
@@ -761,7 +761,7 @@ export default function ClientPortal() {
                 {clientInvoices.map((invoice) => (
                   <tr key={invoice.id} className="grid-table-row border-b border-[#2A2A30]">
                     <td className="py-2.5 px-3 text-[#EAEAEA] font-mono-tech">{invoice.invoiceNumber}</td>
-                    <td className="py-2.5 px-3 text-[#F2A900] font-mono-tech font-bold">${invoice.total.toFixed(2)}</td>
+                    <td className="py-2.5 px-3 text-[#F2A900] font-mono-tech font-bold">₱{invoice.total.toFixed(2)}</td>
                     <td className="py-2.5 px-3">
                       <span
                         className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${

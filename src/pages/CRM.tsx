@@ -281,7 +281,7 @@ export default function CRM() {
                       <div className="flex items-center justify-between">
                         <span className="text-[9px] text-[#88888C] uppercase tracking-wider">Weighted Revenue</span>
                         <span className="text-[11px] text-[#F2A900] font-mono-tech font-bold">
-                          ${(weightedValue / 1000).toFixed(1)}k
+                          ₱{(weightedValue / 1000).toFixed(1)}k
                         </span>
                       </div>
                     </div>
@@ -728,7 +728,7 @@ function ClientProfile({
                         <div className="text-[10px] text-[#88888C]">Expected Close: {new Date(deal.expectedClose).toLocaleDateString()}</div>
                       </div>
                       <div className="text-right">
-                        <div className="text-xs font-bold text-[#F2A900] font-mono-tech">${deal.value.toLocaleString()}</div>
+                        <div className="text-xs font-bold text-[#F2A900] font-mono-tech">₱{deal.value.toLocaleString()}</div>
                         <div className="text-[10px] text-[#88888C] capitalize">{deal.stage.replace('_', ' ')}</div>
                       </div>
                     </div>
@@ -755,7 +755,7 @@ function ClientProfile({
                   <div className="flex items-center justify-between">
                     <span className="text-xs text-[#88888C]">Contract Value</span>
                     <span className="text-xs font-bold text-[#F2A900] font-mono-tech">
-                      ${client.contractValue.toLocaleString()}
+                      ₱{client.contractValue.toLocaleString()}
                     </span>
                   </div>
                 </div>
@@ -836,7 +836,7 @@ function ClientProfile({
                 <div key={pkg.id} className="data-card p-5 border-t-4 border-t-[#F2A900]">
                   <div className="text-[10px] text-[#F2A900] font-bold uppercase mb-1">{pkg.tier} Package</div>
                   <div className="text-lg font-bold text-[#EAEAEA]">{pkg.name}</div>
-                  <div className="text-2xl font-bold text-[#EAEAEA] mt-4 font-mono-tech">${pkg.price}/mo</div>
+                  <div className="text-2xl font-bold text-[#EAEAEA] mt-4 font-mono-tech">₱{pkg.price}/mo</div>
                   <div className="mt-4 space-y-2">
                     {pkg.includedServices.map((service: string, i: number) => (
                       <div key={i} className="flex items-center gap-2 text-[10px] text-[#88888C]">
@@ -865,7 +865,7 @@ function ClientProfile({
                     <tr key={inv.id} className="border-b border-white/5">
                       <td className="py-2.5 px-3 text-[#EAEAEA] font-mono-tech">{inv.invoiceNumber}</td>
                       <td className="py-2.5 px-3 text-[#88888C]">{new Date(inv.dueDate).toLocaleDateString()}</td>
-                      <td className="py-2.5 px-3 text-[#F2A900] font-bold font-mono-tech">${inv.total.toFixed(2)}</td>
+                      <td className="py-2.5 px-3 text-[#F2A900] font-bold font-mono-tech">₱{inv.total.toFixed(2)}</td>
                       <td className="py-2.5 px-3">
                         <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-[#F2A900]/10 text-[#F2A900] uppercase">
                           {inv.status}
@@ -1042,7 +1042,7 @@ function DealCard({
       <h4 className="text-xs font-semibold text-[#EAEAEA] mb-1">{deal.title}</h4>
       <div className="flex items-center justify-between">
         <span className="text-sm font-bold text-[#F2A900] font-mono-tech">
-          ${deal.value.toLocaleString()}
+          ₱{deal.value.toLocaleString()}
         </span>
         <span className="text-[10px] text-[#88888C]">{deal.probability}% prob</span>
       </div>
@@ -1079,7 +1079,7 @@ function ClientRow({ client, onClick }: { client: Client; onClick: () => void })
         </span>
       </td>
       <td className="py-2.5 px-3 text-[#F2A900] font-mono-tech font-bold">
-        ${client.contractValue.toLocaleString()}
+        ₱{client.contractValue.toLocaleString()}
       </td>
       <td className="py-2.5 px-3 text-[#88888C] font-mono-tech text-[10px]">
         {new Date(client.lastContact).toLocaleDateString()}

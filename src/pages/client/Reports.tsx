@@ -184,7 +184,7 @@ export default function ClientReports() {
         <MetricCard label="Services Completed" value={`${completedServices}`} hint="Success rate: 100%" icon={CheckCircle2} accent="text-[#10B981]" />
         <MetricCard label="Services Due" value={`${serviceDue}`} hint="Action required soon" icon={Wrench} accent="text-[#F2A900]" />
         <MetricCard label="Services Overdue" value={`${overdue}`} hint="Critical risk assets" icon={AlertTriangle} accent="text-[#EF4444]" />
-        <MetricCard label="Service Investment" value={`$${totalRevenue.toLocaleString()}`} hint="Total billed to date" icon={DollarSign} accent="text-[#EAEAEA]" />
+        <MetricCard label="Service Investment" value={`₱${totalRevenue.toLocaleString()}`} hint="Total billed to date" icon={DollarSign} accent="text-[#EAEAEA]" />
         <MetricCard label="Active Packages" value={`${activeSubs}`} hint={`${clientPackages.length} total assigned`} icon={Package} accent="text-[#005F73]" />
       </div>
 

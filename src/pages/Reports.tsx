@@ -154,7 +154,7 @@ export default function Reports() {
         <MetricCard label="Total Services" value={`${totalServices}`} hint="Completed to date" icon={CheckCircle2} accent="text-[#10B981]" />
         <MetricCard label="Global Due" value={`${totalDue}`} hint="Scheduled soon" icon={Wrench} accent="text-[#F2A900]" />
         <MetricCard label="Global Overdue" value={`${totalOverdue}`} hint="Critical service risk" icon={AlertTriangle} accent="text-[#EF4444]" />
-        <MetricCard label="Total Revenue" value={`$${(totalRevenue / 1000).toFixed(1)}k`} hint="Lifetime value" icon={DollarSign} accent="text-[#EAEAEA]" />
+        <MetricCard label="Total Revenue" value={`₱${(totalRevenue / 1000).toFixed(1)}k`} hint="Lifetime value" icon={DollarSign} accent="text-[#EAEAEA]" />
         <MetricCard label="Active Packages" value={`${totalActivePackages}`} hint="Managed subscriptions" icon={Package} accent="text-[#005F73]" />
       </div>
 
@@ -169,7 +169,7 @@ export default function Reports() {
               <YAxis stroke="#88888C" fontSize={11} />
               <Tooltip
                 contentStyle={{ background: "#1E1E22", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 4, fontSize: 12 }}
-                formatter={(value: number) => [`$${value.toLocaleString()}`, "Revenue"]}
+                formatter={(value: number) => [`₱${value.toLocaleString()}`, "Revenue"]}
               />
               <Bar dataKey="revenue" fill="#F2A900" radius={[2, 2, 0, 0]} />
             </BarChart>
@@ -228,7 +228,7 @@ export default function Reports() {
               {clientInsights.slice(0, 10).map((client) => (
                 <tr key={client.id} className="border-b border-[#2A2A30] hover:bg-white/5 transition-colors">
                   <td className="py-2.5 px-3 text-[#EAEAEA] font-bold">{client.name}</td>
-                  <td className="py-2.5 px-3 text-[#F2A900] font-mono-tech font-bold">${client.revenue.toLocaleString()}</td>
+                  <td className="py-2.5 px-3 text-[#F2A900] font-mono-tech font-bold">₱{client.revenue.toLocaleString()}</td>
                   <td className="py-2.5 px-3 text-[#88888C]">{client.services}</td>
                   <td className="py-2.5 px-3">
                     {client.overdue > 0 ? (
@@ -290,7 +290,7 @@ export default function Reports() {
                     <tr key={type} className="border-b border-[#2A2A30]">
                         <td className="py-2.5 px-3 text-[#EAEAEA] font-bold">{type}</td>
                         <td className="py-2.5 px-3 text-[#88888C]">{typePackages.length}</td>
-                        <td className="py-2.5 px-3 text-[#F2A900] font-mono-tech font-bold">${typeRevenue.toLocaleString()}</td>
+                        <td className="py-2.5 px-3 text-[#F2A900] font-mono-tech font-bold">₱{typeRevenue.toLocaleString()}</td>
                         <td className="py-2.5 px-3">
                             <div className="flex items-center gap-2">
                                 <div className="flex-1 h-1 bg-white/5 rounded-full overflow-hidden max-w-[100px]">

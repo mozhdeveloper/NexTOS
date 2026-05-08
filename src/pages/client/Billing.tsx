@@ -152,7 +152,7 @@ export default function ClientBilling() {
           <div className="text-[10px] text-[#88888C] uppercase tracking-wider mb-3 flex items-center gap-2">
             <CreditCard className="w-3 h-3" /> Outstanding
           </div>
-          <div className="text-3xl font-bold text-[#F2A900] kpi-glow">${outstandingAmount.toFixed(2)}</div>
+          <div className="text-3xl font-bold text-[#F2A900] kpi-glow">₱{outstandingAmount.toFixed(2)}</div>
           <div className="text-[10px] text-[#88888C] mt-2">{unpaidInvoices} unpaid invoices</div>
         </div>
         <div className="data-card p-4 lg:col-span-1">
@@ -166,7 +166,7 @@ export default function ClientBilling() {
           <div className="text-[10px] text-[#88888C] uppercase tracking-wider mb-3 flex items-center gap-2">
             <TrendingUp className="w-3 h-3" /> Paid Amount
           </div>
-          <div className="text-3xl font-bold text-[#10B981]">${paidAmount.toFixed(2)}</div>
+          <div className="text-3xl font-bold text-[#10B981]">₱{paidAmount.toFixed(2)}</div>
           <div className="text-[10px] text-[#88888C] mt-2">Total paid</div>
         </div>
         <div className="data-card p-4 lg:col-span-1">
@@ -180,7 +180,7 @@ export default function ClientBilling() {
           <div className="text-[10px] text-[#88888C] uppercase tracking-wider mb-3 flex items-center gap-2">
             <DollarSign className="w-3 h-3" /> Avg Invoice
           </div>
-          <div className="text-3xl font-bold text-[#EAEAEA]">${totalInvoices > 0 ? (clientInvoices.reduce((s, i) => s + i.total, 0) / totalInvoices).toFixed(2) : "0.00"}</div>
+          <div className="text-3xl font-bold text-[#EAEAEA]">₱{totalInvoices > 0 ? (clientInvoices.reduce((s, i) => s + i.total, 0) / totalInvoices).toFixed(2) : "0.00"}</div>
           <div className="text-[10px] text-[#88888C] mt-2">Per invoice</div>
         </div>
       </div>
@@ -223,8 +223,8 @@ export default function ClientBilling() {
                       </td>
                       <td className="py-4 px-3 align-top text-[#88888C] font-mono-tech">{getInvoiceAsset(invoice)}</td>
                       <td className="py-4 px-3 align-top">
-                        <div className="text-[#F2A900] font-bold text-sm">${invoice.total.toFixed(2)}</div>
-                        <div className="text-[10px] text-[#88888C]">Tax: ${invoice.tax.toFixed(2)}</div>
+                        <div className="text-[#F2A900] font-bold text-sm">₱{invoice.total.toFixed(2)}</div>
+                        <div className="text-[10px] text-[#88888C]">Tax: ₱{invoice.tax.toFixed(2)}</div>
                       </td>
                       <td className="py-4 px-3 align-top text-[#EAEAEA]">
                         <div className="font-semibold">{new Date(invoice.dueDate).toLocaleDateString()}</div>
@@ -321,7 +321,7 @@ export default function ClientBilling() {
                       <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: item.color }} />
                       {item.name}
                     </span>
-                    <span>${item.value.toFixed(2)}</span>
+                    <span>₱{item.value.toFixed(2)}</span>
                   </div>
                 ))}
               </div>
@@ -375,7 +375,7 @@ export default function ClientBilling() {
                     <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: segment.color }} />
                     {segment.name}
                   </span>
-                  <span>${segment.value.toFixed(2)}</span>
+                  <span>₱{segment.value.toFixed(2)}</span>
                 </div>
               ))}
             </div>
@@ -395,7 +395,7 @@ export default function ClientBilling() {
                         <div className="text-sm font-semibold text-[#EAEAEA]">{invoice.invoiceNumber}</div>
                         <div className="text-[10px] text-[#88888C]">{getInvoiceCategory(invoice)}</div>
                       </div>
-                      <div className="text-[10px] text-[#F2A900] font-semibold">${invoice.total.toFixed(2)}</div>
+                      <div className="text-[10px] text-[#F2A900] font-semibold">₱{invoice.total.toFixed(2)}</div>
                     </div>
                     <div className="text-[10px] text-[#88888C] mt-2">Due {new Date(invoice.dueDate).toLocaleDateString()}</div>
                   </div>
@@ -467,7 +467,7 @@ export default function ClientBilling() {
                     <div className="text-sm font-semibold text-[#EAEAEA]">{category}</div>
                     <div className="text-[10px] text-[#88888C]">{data.count} invoices</div>
                   </div>
-                  <div className="text-[#F2A900] font-bold">${data.total.toFixed(2)}</div>
+                  <div className="text-[#F2A900] font-bold">₱{data.total.toFixed(2)}</div>
                 </div>
               ))}
             </div>
@@ -488,7 +488,7 @@ export default function ClientBilling() {
                     <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: item.color }} />
                     {item.name}
                   </span>
-                  <span>${item.value.toFixed(2)}</span>
+                  <span>₱{item.value.toFixed(2)}</span>
                 </div>
               ))}
             </div>
@@ -512,9 +512,9 @@ export default function ClientBilling() {
                 </div>
                 <div>
                   <h4 className="text-sm font-semibold">Amounts</h4>
-                  <p className="text-[10px] text-[#88888C]">Subtotal: ${selectedInvoiceDetails.subtotal?.toFixed(2) || selectedInvoiceDetails.total.toFixed(2)}</p>
-                  <p className="text-[10px] text-[#88888C]">Tax: ${selectedInvoiceDetails.tax.toFixed(2)}</p>
-                  <p className="text-[#F2A900] font-bold">Total: ${selectedInvoiceDetails.total.toFixed(2)}</p>
+                  <p className="text-[10px] text-[#88888C]">Subtotal: ₱{selectedInvoiceDetails.subtotal?.toFixed(2) || selectedInvoiceDetails.total.toFixed(2)}</p>
+                  <p className="text-[10px] text-[#88888C]">Tax: ₱{selectedInvoiceDetails.tax.toFixed(2)}</p>
+                  <p className="text-[#F2A900] font-bold">Total: ₱{selectedInvoiceDetails.total.toFixed(2)}</p>
                 </div>
               </div>
               <div>

@@ -215,7 +215,7 @@ export default function ClientPackages() {
           <div className="text-[10px] text-[#88888C] uppercase tracking-wider mb-3 flex items-center gap-2">
             <DollarSign className="w-3 h-3" /> Total Value
           </div>
-          <div className="text-3xl font-bold text-[#F2A900]">${activeValue.toLocaleString()}</div>
+          <div className="text-3xl font-bold text-[#F2A900]">₱{activeValue.toLocaleString()}</div>
           <div className="text-[10px] text-[#88888C] mt-2">Of active packages</div>
         </div>
       </div>
@@ -256,7 +256,7 @@ export default function ClientPackages() {
                             <div>
                               <div className="font-semibold text-[#EAEAEA] text-sm">{pkg.name}</div>
                               <div className="text-[10px] text-[#88888C]">{pkg.packageType}</div>
-                              <div className="text-[10px] text-[#F2A900] mt-1">${pkg.price.toLocaleString()} / {pkg.billingCycle}</div>
+                              <div className="text-[10px] text-[#F2A900] mt-1">₱{pkg.price.toLocaleString()} / {pkg.billingCycle}</div>
                             </div>
                           </div>
                         </td>
@@ -324,7 +324,7 @@ export default function ClientPackages() {
                       <span className="rounded-full bg-[#F2A900] px-2 py-1 text-[10px] font-semibold text-[#050505]">Most Popular</span>
                     )}
                   </div>
-                  <div className="text-[#F2A900] font-bold text-lg mb-2">${pkg.price.toLocaleString()} / {pkg.billingCycle === "annual" ? "year" : pkg.billingCycle}</div>
+                  <div className="text-[#F2A900] font-bold text-lg mb-2">₱{pkg.price.toLocaleString()} / {pkg.billingCycle === "annual" ? "year" : pkg.billingCycle}</div>
                   <div className="text-[10px] text-[#88888C] mb-3">{pkg.description}</div>
                   <div className="space-y-2 mb-4">
                     {pkg.includedServices.slice(0, 4).map((service, idx) => (

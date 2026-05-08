@@ -175,7 +175,7 @@ export default function Billing() {
             <span className="text-[10px] text-[#88888C] uppercase tracking-wider">Total Revenue</span>
             <DollarSign className="w-4 h-4 text-[#88888C]" />
           </div>
-          <div className="text-4xl font-bold text-[#EAEAEA] kpi-glow">${(totalRevenue / 1000).toFixed(1)}k</div>
+          <div className="text-4xl font-bold text-[#EAEAEA] kpi-glow">₱{(totalRevenue / 1000).toFixed(1)}k</div>
           <div className="flex items-center gap-1 mt-1">
             <TrendingUp className="w-3 h-3 text-[#10B981]" />
             <span className="text-xs text-[#10B981] font-medium">+12% vs last month</span>
@@ -186,7 +186,7 @@ export default function Billing() {
             <span className="text-[10px] text-[#88888C] uppercase tracking-wider">Outstanding</span>
             <Clock className="w-4 h-4 text-[#F2A900]" />
           </div>
-          <div className="text-4xl font-bold text-[#F2A900]">${(outstandingRevenue / 1000).toFixed(1)}k</div>
+          <div className="text-4xl font-bold text-[#F2A900]">₱{(outstandingRevenue / 1000).toFixed(1)}k</div>
           <div className="text-xs text-[#88888C] mt-1">{filteredInvoices.filter((i) => i.status === "sent").length} pending invoices</div>
         </div>
         <div className="data-card p-4">
@@ -278,9 +278,9 @@ export default function Billing() {
                 <tr key={invoice.id} className="grid-table-row border-b border-[#2A2A30]">
                   <td className="py-2.5 px-3 text-[#EAEAEA] font-mono-tech">{invoice.invoiceNumber}</td>
                   <td className="py-2.5 px-3 text-[#EAEAEA]">{client?.companyName || "—"}</td>
-                  <td className="py-2.5 px-3 text-[#88888C] font-mono-tech">${invoice.amount.toFixed(2)}</td>
-                  <td className="py-2.5 px-3 text-[#88888C] font-mono-tech">${invoice.tax.toFixed(2)}</td>
-                  <td className="py-2.5 px-3 text-[#F2A900] font-mono-tech font-bold">${invoice.total.toFixed(2)}</td>
+                  <td className="py-2.5 px-3 text-[#88888C] font-mono-tech">₱{invoice.amount.toFixed(2)}</td>
+                  <td className="py-2.5 px-3 text-[#88888C] font-mono-tech">₱{invoice.tax.toFixed(2)}</td>
+                  <td className="py-2.5 px-3 text-[#F2A900] font-mono-tech font-bold">₱{invoice.total.toFixed(2)}</td>
                   <td className="py-2.5 px-3">
                     <span
                       className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
@@ -353,7 +353,7 @@ export default function Billing() {
                 <div className="pt-4 border-t border-white/5 flex items-center justify-between">
                   <div>
                     <div className="text-[10px] text-[#88888C] uppercase">Monthly Price</div>
-                    <div className="text-xl font-bold text-[#F2A900] font-mono-tech">${pkg.price.toLocaleString()}</div>
+                    <div className="text-xl font-bold text-[#F2A900] font-mono-tech">₱{pkg.price.toLocaleString()}</div>
                   </div>
                   <Button variant="ghost" size="sm" className="text-[#88888C] hover:text-[#EAEAEA]">
                     Details <ChevronRight className="w-3 h-3 ml-1" />
