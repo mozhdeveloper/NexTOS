@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { useCRMStore } from "@/stores/useCRMStore";
 import { useOperationsStore } from "@/stores/useOperationsStore";
 import { useBillingStore } from "@/stores/useBillingStore";
@@ -11,6 +12,9 @@ import {
   ResponsiveContainer,
   LineChart,
   Line,
+  Cell,
+  PieChart,
+  Pie,
 } from "recharts";
 import {
   TrendingUp,
@@ -18,57 +22,127 @@ import {
   Wrench,
   DollarSign,
   Calendar,
+  CheckCircle2,
+  AlertTriangle,
+  Package,
+  Activity,
+  UserCheck,
 } from "lucide-react";
 
+function monthKey(dateISO: string) {
+  const d = new Date(dateISO);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function monthLabelFromKey(key: string) {
+  const [year, month] = key.split("-").map(Number);
+  return new Date(year, month - 1, 1).toLocaleDateString(undefined, {
+    month: "short",
+  });
+}
+
 export default function Reports() {
-  const { clients, deals, leads, tasks } = useCRMStore();
+  const { clients } = useCRMStore();
   const { equipment, serviceRecords } = useOperationsStore();
-  useBillingStore();
+  const { invoices, packages } = useBillingStore();
 
-  // Summary stats
-  const activeClients = clients.filter((c) => c.status === "active").length;
-  const prospectClients = clients.filter((c) => c.status === "prospect").length;
-  const totalContractValue = clients.reduce((sum, c) => sum + c.contractValue, 0);
-  const wonDeals = deals.filter((d) => d.stage === "closed_won");
-  const wonValue = wonDeals.reduce((sum, d) => sum + d.value, 0);
-  const pipelineValue = deals
-    .filter((d) => d.stage !== "closed_won" && d.stage !== "closed_lost")
-    .reduce((sum, d) => sum + d.value, 0);
-  const overdueTasks = tasks.filter((t) => t.status === "overdue").length;
-  const activeEquipment = equipment.filter((e) => e.status === "active").length;
-  const serviceDueEquipment = equipment.filter((e) => e.currentHours >= e.nextServiceDue).length;
+  const now = new Date();
 
-  const salesPipelineData = [
-    { stage: "Inquiry", count: deals.filter((d) => d.stage === "inquiry").length, value: deals.filter((d) => d.stage === "inquiry").reduce((s, d) => s + d.value, 0) },
-    { stage: "Proposal", count: deals.filter((d) => d.stage === "proposal").length, value: deals.filter((d) => d.stage === "proposal").reduce((s, d) => s + d.value, 0) },
-    { stage: "Negotiation", count: deals.filter((d) => d.stage === "negotiation").length, value: deals.filter((d) => d.stage === "negotiation").reduce((s, d) => s + d.value, 0) },
-    { stage: "Closed Won", count: deals.filter((d) => d.stage === "closed_won").length, value: wonValue },
+  // High-Level KPIs (All Clients)
+  const totalServices = serviceRecords.filter(s => s.status === "completed").length;
+  
+  const totalDue = equipment.filter(e => {
+    if (e.equipmentType === "Heavy Equipment") {
+        const remaining = e.nextPMSHours - e.currentHours;
+        return remaining > 0 && remaining <= 50;
+    }
+    if (e.equipmentType === "Lab Equipment" || e.equipmentType === "Testing Equipment") {
+        const nextDate = e.nextCalibrationDate ? new Date(e.nextCalibrationDate) : null;
+        if (!nextDate) return false;
+        const diffDays = Math.ceil((nextDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+        return diffDays > 0 && diffDays <= 15;
+    }
+    return false;
+  }).length;
+
+  const totalOverdue = equipment.filter(e => {
+    if (e.equipmentType === "Heavy Equipment") {
+        return e.nextPMSHours - e.currentHours <= 0;
+    }
+    if (e.equipmentType === "Lab Equipment" || e.equipmentType === "Testing Equipment") {
+        const nextDate = e.nextCalibrationDate ? new Date(e.nextCalibrationDate) : null;
+        if (!nextDate) return false;
+        return nextDate <= now;
+    }
+    return false;
+  }).length;
+
+  const totalRevenue = invoices.reduce((sum, i) => sum + i.total, 0);
+  const totalActivePackages = packages.filter(p => p.status === "active").length;
+
+  // Charts Data
+  const serviceStatusData = [
+    { name: "Completed", value: totalServices, color: "#10B981" },
+    { name: "Due Soon", value: totalDue, color: "#F2A900" },
+    { name: "Overdue", value: totalOverdue, color: "#EF4444" },
   ];
 
-  const leadSourceData = [
-    { source: "Website", count: leads.filter((l) => l.source === "Website").length },
-    { source: "Referral", count: leads.filter((l) => l.source === "Referral").length },
-    { source: "Trade Show", count: leads.filter((l) => l.source === "Trade Show").length },
-    { source: "Email", count: leads.filter((l) => l.source === "Email Campaign").length },
-    { source: "LinkedIn", count: leads.filter((l) => l.source === "LinkedIn").length },
-    { source: "Cold Call", count: leads.filter((l) => l.source === "Cold Call").length },
-  ];
+  const serviceMixData = useMemo(() => {
+    const counts = new Map<string, number>();
+    serviceRecords.forEach(s => {
+      counts.set(s.serviceCategory, (counts.get(s.serviceCategory) || 0) + 1);
+    });
+    return Array.from(counts.entries()).map(([name, value]) => ({ name, value }));
+  }, [serviceRecords]);
 
-  const monthlyServices = [
-    { month: "Jan", completed: 3, scheduled: 5 },
-    { month: "Feb", completed: 4, scheduled: 4 },
-    { month: "Mar", completed: 2, scheduled: 6 },
-    { month: "Apr", completed: 5, scheduled: 5 },
-    { month: "May", completed: 4, scheduled: 7 },
-    { month: "Jun", completed: 6, scheduled: 6 },
-  ];
+  const monthlyRevenueData = useMemo(() => {
+    const months = Array.from({ length: 6 }).map((_, index) => {
+      const d = new Date();
+      d.setMonth(d.getMonth() - (5 - index));
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      return { key, label: monthLabelFromKey(key), value: 0 };
+    });
+
+    const monthMap = new Map(months.map((m) => [m.key, m]));
+
+    invoices.forEach((invoice) => {
+      const month = monthMap.get(monthKey(invoice.createdAt));
+      if (month) {
+        month.value += invoice.total;
+      }
+    });
+
+    return months.map((m) => ({ month: m.label, revenue: m.value }));
+  }, [invoices]);
+
+  // Client Insights
+  const clientInsights = useMemo(() => {
+    return clients.map(client => {
+        const clientInvoices = invoices.filter(i => i.clientId === client.id);
+        const clientServices = serviceRecords.filter(s => s.clientId === client.id);
+        const clientEq = equipment.filter(e => e.clientId === client.id);
+        const overdueCount = clientEq.filter(e => {
+            if (e.equipmentType === "Heavy Equipment") return e.nextPMSHours - e.currentHours <= 0;
+            const nextDate = e.nextCalibrationDate ? new Date(e.nextCalibrationDate) : null;
+            return nextDate && nextDate <= now;
+        }).length;
+
+        return {
+            id: client.id,
+            name: client.companyName,
+            revenue: clientInvoices.reduce((s, i) => s + i.total, 0),
+            services: clientServices.length,
+            overdue: overdueCount
+        };
+    }).sort((a, b) => b.revenue - a.revenue);
+  }, [clients, invoices, serviceRecords, equipment, now]);
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-[32px] font-bold text-[#EAEAEA] tracking-[-0.02em]">Reports</h1>
-          <p className="text-sm text-[#88888C] mt-0.5">Performance analytics and operational insights</p>
+          <h1 className="text-[32px] font-bold text-[#EAEAEA] tracking-[-0.02em]">Operations Analytics</h1>
+          <p className="text-sm text-[#88888C] mt-0.5">Global performance, revenue distribution, and service risk</p>
         </div>
         <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded bg-[#005F73]/10 border border-[#005F73]/20">
           <Calendar className="w-3 h-3 text-[#005F73]" />
@@ -76,157 +150,186 @@ export default function Reports() {
         </div>
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <div className="data-card p-4">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[10px] text-[#88888C] uppercase tracking-wider">Clients</span>
-            <Users className="w-4 h-4 text-[#88888C]" />
-          </div>
-          <div className="text-3xl font-bold text-[#EAEAEA]">{activeClients}</div>
-          <div className="text-[10px] text-[#88888C] mt-1">{prospectClients} prospects</div>
-        </div>
-        <div className="data-card p-4">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[10px] text-[#88888C] uppercase tracking-wider">Pipeline Value</span>
-            <TrendingUp className="w-4 h-4 text-[#F2A900]" />
-          </div>
-          <div className="text-3xl font-bold text-[#F2A900]">${(pipelineValue / 1000).toFixed(0)}k</div>
-          <div className="text-[10px] text-[#88888C] mt-1">{wonValue > 0 ? `$${(wonValue / 1000).toFixed(0)}k closed` : "No closed deals"}</div>
-        </div>
-        <div className="data-card p-4">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[10px] text-[#88888C] uppercase tracking-wider">Equipment</span>
-            <Wrench className="w-4 h-4 text-[#88888C]" />
-          </div>
-          <div className="text-3xl font-bold text-[#EAEAEA]">{activeEquipment}</div>
-          <div className="text-[10px] text-[#EF4444] mt-1">{serviceDueEquipment} need service</div>
-        </div>
-        <div className="data-card p-4">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[10px] text-[#88888C] uppercase tracking-wider">Contract Value</span>
-            <DollarSign className="w-4 h-4 text-[#88888C]" />
-          </div>
-          <div className="text-3xl font-bold text-[#EAEAEA]">${(totalContractValue / 1000).toFixed(0)}k</div>
-          <div className="text-[10px] text-[#88888C] mt-1">Across {clients.length} clients</div>
-        </div>
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+        <MetricCard label="Total Services" value={`${totalServices}`} hint="Completed to date" icon={CheckCircle2} accent="text-[#10B981]" />
+        <MetricCard label="Global Due" value={`${totalDue}`} hint="Scheduled soon" icon={Wrench} accent="text-[#F2A900]" />
+        <MetricCard label="Global Overdue" value={`${totalOverdue}`} hint="Critical service risk" icon={AlertTriangle} accent="text-[#EF4444]" />
+        <MetricCard label="Total Revenue" value={`$${(totalRevenue / 1000).toFixed(1)}k`} hint="Lifetime value" icon={DollarSign} accent="text-[#EAEAEA]" />
+        <MetricCard label="Active Packages" value={`${totalActivePackages}`} hint="Managed subscriptions" icon={Package} accent="text-[#005F73]" />
       </div>
 
-      {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
         <div className="lg:col-span-2 data-card p-4">
-          <h3 className="text-base font-semibold text-[#EAEAEA] mb-1">Sales Pipeline</h3>
-          <p className="text-xs text-[#88888C] mb-3">Deals by stage with value</p>
+          <h3 className="text-base font-semibold text-[#EAEAEA] mb-1">Global Revenue Trend</h3>
+          <p className="text-xs text-[#88888C] mb-3">Revenue growth over the last 6 months</p>
           <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={salesPipelineData} barGap={4}>
+            <BarChart data={monthlyRevenueData}>
               <CartesianGrid strokeDasharray="3 3" stroke="#2A2A30" />
-              <XAxis dataKey="stage" stroke="#88888C" fontSize={11} />
+              <XAxis dataKey="month" stroke="#88888C" fontSize={11} />
               <YAxis stroke="#88888C" fontSize={11} />
               <Tooltip
                 contentStyle={{ background: "#1E1E22", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 4, fontSize: 12 }}
-                formatter={(value: number) => [`$${value.toLocaleString()}`, "Value"]}
+                formatter={(value: number) => [`$${value.toLocaleString()}`, "Revenue"]}
               />
-              <Bar dataKey="value" fill="#F2A900" radius={[2, 2, 0, 0]} />
+              <Bar dataKey="revenue" fill="#F2A900" radius={[2, 2, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
 
         <div className="data-card p-4">
-          <h3 className="text-base font-semibold text-[#EAEAEA] mb-1">Lead Sources</h3>
-          <p className="text-xs text-[#88888C] mb-3">Where leads originate</p>
+          <h3 className="text-base font-semibold text-[#EAEAEA] mb-1">Service Status Mix</h3>
+          <p className="text-xs text-[#88888C] mb-3">Overall fleet health (all clients)</p>
           <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={leadSourceData} layout="vertical" barGap={2}>
+            <PieChart>
+              <Pie
+                data={serviceStatusData}
+                innerRadius={60}
+                outerRadius={80}
+                paddingAngle={5}
+                dataKey="value"
+              >
+                {serviceStatusData.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={entry.color} />
+                ))}
+              </Pie>
+              <Tooltip
+                 contentStyle={{ background: "#1E1E22", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 4, fontSize: 12 }}
+              />
+            </PieChart>
+          </ResponsiveContainer>
+          <div className="flex justify-center gap-4 mt-2">
+            {serviceStatusData.map((s) => (
+              <div key={s.name} className="flex items-center gap-1.5">
+                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: s.color }} />
+                <span className="text-[10px] text-[#88888C]">{s.name}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        {/* Client Performance Table */}
+        <div className="data-card overflow-auto">
+          <div className="p-3 border-b border-white/5 flex items-center gap-2">
+            <UserCheck className="w-4 h-4 text-[#005F73]" />
+            <h3 className="text-sm font-semibold text-[#EAEAEA]">Client Value Report</h3>
+          </div>
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="bg-[#0A0A0C]">
+                <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Client</th>
+                <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Revenue</th>
+                <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Services</th>
+                <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Risk (Overdue)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {clientInsights.slice(0, 10).map((client) => (
+                <tr key={client.id} className="border-b border-[#2A2A30] hover:bg-white/5 transition-colors">
+                  <td className="py-2.5 px-3 text-[#EAEAEA] font-bold">{client.name}</td>
+                  <td className="py-2.5 px-3 text-[#F2A900] font-mono-tech font-bold">${client.revenue.toLocaleString()}</td>
+                  <td className="py-2.5 px-3 text-[#88888C]">{client.services}</td>
+                  <td className="py-2.5 px-3">
+                    {client.overdue > 0 ? (
+                        <span className="px-1.5 py-0.5 rounded text-[10px] bg-[#EF4444]/20 text-[#EF4444] font-bold">
+                            {client.overdue} OVERDUE
+                        </span>
+                    ) : (
+                        <span className="text-[#88888C]">—</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Global Service Breakdown */}
+        <div className="data-card p-4">
+          <h3 className="text-base font-semibold text-[#EAEAEA] mb-1">Global Service Performance</h3>
+          <p className="text-xs text-[#88888C] mb-3">Service volume by category</p>
+          <ResponsiveContainer width="100%" height={260}>
+            <BarChart data={serviceMixData} layout="vertical">
               <CartesianGrid strokeDasharray="3 3" stroke="#2A2A30" />
               <XAxis type="number" stroke="#88888C" fontSize={11} />
-              <YAxis dataKey="source" type="category" stroke="#88888C" fontSize={11} width={60} />
+              <YAxis dataKey="name" type="category" stroke="#88888C" fontSize={10} width={100} />
               <Tooltip
                 contentStyle={{ background: "#1E1E22", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 4, fontSize: 12 }}
               />
-              <Bar dataKey="count" fill="#005F73" radius={[0, 2, 2, 0]} />
+              <Bar dataKey="value" fill="#005F73" radius={[0, 2, 2, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
       </div>
 
-      {/* Service Activity */}
-      <div className="data-card p-4">
-        <h3 className="text-base font-semibold text-[#EAEAEA] mb-1">Service Activity</h3>
-        <p className="text-xs text-[#88888C] mb-3">Completed vs scheduled services</p>
-        <ResponsiveContainer width="100%" height={220}>
-          <LineChart data={monthlyServices}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#2A2A30" />
-            <XAxis dataKey="month" stroke="#88888C" fontSize={11} />
-            <YAxis stroke="#88888C" fontSize={11} />
-            <Tooltip
-              contentStyle={{ background: "#1E1E22", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 4, fontSize: 12 }}
-            />
-            <Line type="monotone" dataKey="completed" stroke="#10B981" strokeWidth={2} dot={{ fill: "#10B981", r: 3 }} />
-            <Line type="monotone" dataKey="scheduled" stroke="#005F73" strokeWidth={2} dot={{ fill: "#005F73", r: 3 }} />
-          </LineChart>
-        </ResponsiveContainer>
-      </div>
-
-      {/* Task Summary */}
-      <div className="grid grid-cols-3 gap-3">
-        <div className="data-card p-4 text-center">
-          <div className="text-3xl font-bold text-[#EAEAEA]">{tasks.length}</div>
-          <div className="text-[10px] text-[#88888C] uppercase tracking-wider mt-1">Total Tasks</div>
-        </div>
-        <div className="data-card p-4 text-center">
-          <div className="text-3xl font-bold text-[#EF4444]">{overdueTasks}</div>
-          <div className="text-[10px] text-[#EF4444] uppercase tracking-wider mt-1">Overdue</div>
-        </div>
-        <div className="data-card p-4 text-center">
-          <div className="text-3xl font-bold text-[#10B981]">
-            {tasks.filter((t) => t.status === "completed").length}
-          </div>
-          <div className="text-[10px] text-[#10B981] uppercase tracking-wider mt-1">Completed</div>
-        </div>
-      </div>
-
-      {/* Service Records Table */}
+      {/* Package Performance Report */}
       <div className="data-card overflow-auto">
-        <div className="p-3 border-b border-white/5">
-          <h3 className="text-sm font-semibold text-[#EAEAEA]">Recent Service Records</h3>
+        <div className="p-3 border-b border-white/5 flex items-center gap-2">
+          <Package className="w-4 h-4 text-[#8B5CF6]" />
+          <h3 className="text-sm font-semibold text-[#EAEAEA]">Package & Subscription Performance</h3>
         </div>
         <table className="w-full text-xs">
           <thead>
             <tr className="bg-[#0A0A0C]">
-              <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Equipment</th>
-              <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Type</th>
-              <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Technician</th>
-              <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Status</th>
-              <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Cost</th>
+              <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Package Type</th>
+              <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Active Count</th>
+              <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Total Revenue</th>
+              <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Usage Level</th>
             </tr>
           </thead>
           <tbody>
-            {serviceRecords.slice(0, 10).map((record) => {
-              const eq = equipment.find((e) => e.id === record.equipmentId);
-              return (
-                <tr key={record.id} className="grid-table-row border-b border-[#2A2A30]">
-                  <td className="py-2.5 px-3 text-[#EAEAEA] font-mono-tech">{eq?.unitId || "—"}</td>
-                  <td className="py-2.5 px-3">
-                    <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-[#005F73]/20 text-[#005F73] uppercase">
-                      {record.serviceType}
-                    </span>
-                  </td>
-                  <td className="py-2.5 px-3 text-[#EAEAEA]">{record.technician}</td>
-                  <td className="py-2.5 px-3">
-                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
-                      record.status === "completed" ? "bg-[#10B981]/20 text-[#10B981]" :
-                      record.status === "in_progress" ? "bg-[#F2A900]/20 text-[#F2A900]" :
-                      "bg-[#005F73]/20 text-[#005F73]"
-                    }`}>
-                      {record.status}
-                    </span>
-                  </td>
-                  <td className="py-2.5 px-3 text-[#F2A900] font-mono-tech">${record.cost.toFixed(2)}</td>
-                </tr>
-              );
+            {["Heavy Equipment PMS Package", "Calibration Package", "Lab Testing Package"].map((type) => {
+                const typePackages = packages.filter(p => p.packageType === type && p.status === "active");
+                const typeRevenue = packages.filter(p => p.packageType === type).reduce((s, p) => s + p.price, 0);
+                const avgUsage = typePackages.length > 0 
+                    ? typePackages.reduce((s, p) => s + (p.usageCount / p.totalVisits), 0) / typePackages.length 
+                    : 0;
+
+                return (
+                    <tr key={type} className="border-b border-[#2A2A30]">
+                        <td className="py-2.5 px-3 text-[#EAEAEA] font-bold">{type}</td>
+                        <td className="py-2.5 px-3 text-[#88888C]">{typePackages.length}</td>
+                        <td className="py-2.5 px-3 text-[#F2A900] font-mono-tech font-bold">${typeRevenue.toLocaleString()}</td>
+                        <td className="py-2.5 px-3">
+                            <div className="flex items-center gap-2">
+                                <div className="flex-1 h-1 bg-white/5 rounded-full overflow-hidden max-w-[100px]">
+                                    <div className="h-full bg-[#005F73] rounded-full" style={{ width: `${avgUsage * 100}%` }} />
+                                </div>
+                                <span className="text-[10px] text-[#88888C]">{(avgUsage * 100).toFixed(0)}% avg usage</span>
+                            </div>
+                        </td>
+                    </tr>
+                );
             })}
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+function MetricCard({
+  label,
+  value,
+  hint,
+  icon: Icon,
+  accent,
+}: {
+  label: string;
+  value: string;
+  hint: string;
+  icon: React.ElementType;
+  accent: string;
+}) {
+  return (
+    <div className="data-card p-4">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-[10px] text-[#88888C] uppercase tracking-wider">{label}</span>
+        <Icon className="w-4 h-4 text-[#88888C]" />
+      </div>
+      <div className={`text-3xl font-bold ${accent}`}>{value}</div>
+      <div className="text-[10px] text-[#88888C] mt-1">{hint}</div>
     </div>
   );
 }

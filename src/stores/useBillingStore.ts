@@ -9,13 +9,14 @@ interface BillingState {
   addInvoice: (invoice: Omit<Invoice, "id" | "createdAt">) => void;
   _addInvoice: (invoice: Invoice) => void;
   markInvoicePaid: (invoiceId: number) => void;
-  decrementPackageVisits: (clientId: number, serviceType: string) => void;
+  decrementPackageVisits: (clientId: number, serviceCategory: string) => void;
   getClientInvoices: (clientId: number) => Invoice[];
   getClientPackages: (clientId: number) => Package[];
   getTotalRevenue: () => number;
   getOutstandingRevenue: () => number;
 }
 
+const lastWeek = new Date(Date.now() - 7 * 86400000).toISOString();
 const lastMonth = new Date(Date.now() - 30 * 86400000).toISOString();
 const nextMonth = new Date(Date.now() + 30 * 86400000).toISOString();
 const nextYear = new Date(Date.now() + 365 * 86400000).toISOString();
@@ -24,80 +25,74 @@ const mockPackages: Package[] = [
   { 
     id: 1, 
     clientId: 1, 
-    name: "Enterprise Security", 
-    description: "Full-scale security and fleet monitoring for large operations.",
+    name: "Enterprise Heavy Equipment PMS", 
+    description: "Quarterly PMS for heavy machinery fleet.",
+    packageType: "Heavy Equipment PMS Package",
     tier: "enterprise", 
     price: 4500, 
     billingCycle: "monthly", 
-    includedServices: ["24/7 Monitoring", "Quarterly PMS", "Priority Support", "Fleet Tracking"], 
+    includedServices: ["Engine Oil", "Hydraulic Filter", "Track Inspection"], 
     totalVisits: 4,
     visitsRemaining: 3,
+    usageCount: 1,
     durationMonths: 12,
+    validityMonths: 12,
     terms: "Standard enterprise service level agreement applies.",
     startDate: lastMonth, 
     endDate: nextMonth, 
+    linkedServiceCategory: "Heavy Equipment PMS",
     status: "active", 
     createdAt: lastMonth 
   },
   { 
     id: 2, 
-    clientId: 2, 
-    name: "Professional Suite", 
-    description: "Optimized for medium-sized businesses needing regular maintenance.",
-    tier: "professional", 
-    price: 2800, 
-    billingCycle: "monthly", 
-    includedServices: ["Business Hours Monitoring", "Bi-annual PMS", "Standard Support"], 
-    totalVisits: 2,
-    visitsRemaining: 1,
-    durationMonths: 12,
-    terms: "Includes two preventative maintenance visits per year.",
-    startDate: lastMonth, 
-    endDate: nextMonth, 
-    status: "active", 
-    createdAt: lastMonth 
-  },
-  { 
-    id: 3, 
-    clientId: 5, 
+    clientId: 1, 
     name: "Annual Calibration Package", 
-    description: "Certified calibration services for precision equipment.",
+    description: "Certified calibration services for lab equipment.",
+    packageType: "Calibration Package",
     tier: "professional", 
     price: 1500, 
     billingCycle: "annual", 
     includedServices: ["Calibration", "Certification", "Reporting"], 
     totalVisits: 1,
     visitsRemaining: 1,
+    usageCount: 0,
     durationMonths: 12,
+    validityMonths: 12,
     terms: "Ensures equipment compliance with international standards.",
     startDate: lastMonth, 
     endDate: nextYear, 
+    linkedServiceCategory: "Calibration PMS",
     status: "active", 
     createdAt: lastMonth 
   },
   { 
-    id: 4, 
-    clientId: 4, 
-    name: "4x PMS Package", 
-    description: "Discounted quarterly preventative maintenance plan.",
+    id: 3, 
+    clientId: 1, 
+    name: "Lab Testing Bundle (10 Tests)", 
+    description: "Discounted bundle for concrete and soil testing.",
+    packageType: "Lab Testing Package",
     tier: "basic", 
-    price: 3200, 
-    billingCycle: "quarterly", 
-    includedServices: ["Quarterly PMS", "Oil Change", "Filter Replacement"], 
-    totalVisits: 4,
-    visitsRemaining: 4,
+    price: 1200, 
+    billingCycle: "annual", 
+    includedServices: ["Concrete Strength", "Soil Analysis", "Asphalt Test"], 
+    totalVisits: 10,
+    visitsRemaining: 9,
+    usageCount: 1,
     durationMonths: 12,
-    terms: "Visits must be scheduled at least 2 weeks in advance.",
+    validityMonths: 12,
+    terms: "Includes up to 10 lab testing services.",
     startDate: lastMonth, 
     endDate: nextYear, 
+    linkedServiceCategory: "Lab Testing Service",
     status: "active", 
     createdAt: lastMonth 
   },
 ];
 
 const mockInvoices: Invoice[] = [
-  { id: 1, clientId: 1, packageId: null, serviceRecordId: 1, invoiceNumber: "INV-2024-0001", amount: 450.00, tax: 45.00, total: 495.00, status: "paid", dueDate: nextMonth, paidDate: lastMonth, createdAt: lastMonth },
-  { id: 2, clientId: 1, packageId: null, serviceRecordId: 2, invoiceNumber: "INV-2024-0002", amount: 1200.00, tax: 120.00, total: 1320.00, status: "paid", dueDate: nextMonth, paidDate: lastMonth, createdAt: lastMonth },
+  { id: 1, clientId: 1, packageId: null, serviceRecordId: 1, invoiceNumber: "INV-2024-0001", amount: 850.00, tax: 85.00, total: 935.00, status: "paid", dueDate: nextMonth, paidDate: lastWeek, createdAt: lastWeek },
+  { id: 2, clientId: 1, packageId: null, serviceRecordId: 2, invoiceNumber: "INV-2024-0002", amount: 450.00, tax: 45.00, total: 495.00, status: "paid", dueDate: nextMonth, paidDate: lastMonth, createdAt: lastMonth },
 ];
 
 export const useBillingStore = create<BillingState>()(
@@ -130,16 +125,18 @@ export const useBillingStore = create<BillingState>()(
         }));
       },
 
-      decrementPackageVisits: (clientId, serviceType) => {
+      decrementPackageVisits: (clientId, serviceCategory) => {
         set((state) => ({
           packages: state.packages.map((pkg) => {
-            // Check if package belongs to client, is active, and includes the service type
-            const matchesService = pkg.includedServices.some(s => 
-              s.toLowerCase().includes(serviceType.toLowerCase())
-            );
+            // Check if package belongs to client, is active, and matches category
+            const matchesCategory = pkg.linkedServiceCategory === serviceCategory;
             
-            if (pkg.clientId === clientId && pkg.status === "active" && matchesService && pkg.visitsRemaining > 0) {
-              return { ...pkg, visitsRemaining: pkg.visitsRemaining - 1 };
+            if (pkg.clientId === clientId && pkg.status === "active" && matchesCategory && pkg.visitsRemaining > 0) {
+              return { 
+                ...pkg, 
+                visitsRemaining: pkg.visitsRemaining - 1,
+                usageCount: (pkg.usageCount || 0) + 1
+              };
             }
             return pkg;
           })

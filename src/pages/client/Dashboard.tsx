@@ -24,6 +24,7 @@ import {
   ShieldCheck,
   Clock3,
   Wrench,
+  AlertTriangle,
 } from "lucide-react";
 
 function getBookingEndDate(booking: { requestedDate: string; preferredTime?: string }) {
@@ -74,7 +75,43 @@ export default function ClientDashboard() {
 
   const overdueBookings = clientBookings.filter((b) => getBookingEndDate(b) < now && b.status !== "completed").length;
 
-  const serviceDueCount = clientEquipment.filter((e) => e.currentHours >= e.nextServiceDue).length;
+  const serviceDueCount = clientEquipment.filter((e) => {
+    const hoursDue = e.equipmentType === "Heavy Equipment" && e.nextPMSHours > 0 && e.currentHours >= e.nextPMSHours;
+    const calibrationDue = (e.equipmentType === "Lab Equipment" || e.equipmentType === "Testing Equipment") && 
+                          e.nextCalibrationDate && new Date(e.nextCalibrationDate) <= now;
+    return hoursDue || calibrationDue;
+  }).length;
+
+  const alerts = useMemo(() => {
+    const heavy: string[] = [];
+    const calibration: string[] = [];
+    
+    clientEquipment.forEach(e => {
+      if (e.equipmentType === "Heavy Equipment" && e.nextPMSHours > 0) {
+        const remaining = e.nextPMSHours - e.currentHours;
+        if (remaining <= 50 && remaining > 0) {
+          heavy.push(`${e.unitId} (${e.model}) has ${remaining} hours left before PMS`);
+        } else if (remaining <= 0) {
+          heavy.push(`${e.unitId} (${e.model}) is OVERDUE for PMS by ${Math.abs(remaining)} hours`);
+        }
+      }
+      if ((e.equipmentType === "Lab Equipment" || e.equipmentType === "Testing Equipment") && e.nextCalibrationDate) {
+        const nextDate = new Date(e.nextCalibrationDate);
+        const diffTime = nextDate.getTime() - now.getTime();
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        if (diffDays <= 15 && diffDays > 0) {
+          calibration.push(`${e.unitId} calibration due in ${diffDays} days`);
+        } else if (diffDays <= 0) {
+          calibration.push(`${e.unitId} calibration is OVERDUE by ${Math.abs(diffDays)} days`);
+        }
+      }
+    });
+    return { heavy, calibration };
+  }, [clientEquipment, now]);
+
+  const activeLabTests = useMemo(() => {
+    return clientServices.filter(s => s.serviceCategory === "Lab Testing Service" && s.status !== "completed");
+  }, [clientServices]);
 
   const unpaidInvoices = clientInvoices.filter((i) => i.status !== "paid");
   const outstandingBalance = unpaidInvoices.reduce((sum, i) => sum + i.total, 0);
@@ -113,12 +150,12 @@ export default function ClientDashboard() {
     const counts = new Map<string, number>();
 
     [...clientBookings, ...clientServices].forEach((item) => {
-      const key = item.serviceType;
+      const key = item.serviceCategory;
       counts.set(key, (counts.get(key) || 0) + 1);
     });
 
     return Array.from(counts.entries()).map(([name, value]) => ({
-      name: name.toUpperCase(),
+      name: name,
       value,
     }));
   }, [clientBookings, clientServices]);
@@ -157,6 +194,43 @@ export default function ClientDashboard() {
         <KpiCard label="Service Due" value={`${serviceDueCount}`} hint="Assets requiring attention" icon={Wrench} accent={serviceDueCount > 0 ? "text-[#EF4444]" : "text-[#10B981]"} />
       </div>
 
+      {(alerts.heavy.length > 0 || alerts.calibration.length > 0) && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {alerts.heavy.length > 0 && (
+            <div className="data-card p-3 border-l-4 border-[#EF4444] bg-[#EF4444]/5">
+              <div className="flex items-center gap-2 mb-2">
+                <Wrench className="w-4 h-4 text-[#EF4444]" />
+                <h3 className="text-sm font-bold text-[#EF4444] uppercase tracking-wider">Heavy Equipment Alerts</h3>
+              </div>
+              <ul className="space-y-1">
+                {alerts.heavy.map((alert, idx) => (
+                  <li key={idx} className="text-[10px] text-[#EAEAEA] flex items-center gap-2">
+                    <div className="w-1 h-1 rounded-full bg-[#EF4444]" />
+                    {alert}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {alerts.calibration.length > 0 && (
+            <div className="data-card p-3 border-l-4 border-[#F2A900] bg-[#F2A900]/5">
+              <div className="flex items-center gap-2 mb-2">
+                <AlertTriangle className="w-4 h-4 text-[#F2A900]" />
+                <h3 className="text-sm font-bold text-[#F2A900] uppercase tracking-wider">Calibration Alerts</h3>
+              </div>
+              <ul className="space-y-1">
+                {alerts.calibration.map((alert, idx) => (
+                  <li key={idx} className="text-[10px] text-[#EAEAEA] flex items-center gap-2">
+                    <div className="w-1 h-1 rounded-full bg-[#F2A900]" />
+                    {alert}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
         <div className="lg:col-span-2 data-card p-4">
           <h3 className="text-base font-semibold text-[#EAEAEA] mb-1">Service Trend</h3>
@@ -180,33 +254,25 @@ export default function ClientDashboard() {
           </ResponsiveContainer>
         </div>
 
-        <div className="data-card p-4">
-          <h3 className="text-base font-semibold text-[#EAEAEA] mb-1">Invoice Status</h3>
-          <p className="text-xs text-[#88888C] mb-3">Payment distribution</p>
-          <ResponsiveContainer width="100%" height={170}>
-            <PieChart>
-              <Pie data={invoiceStatusData} dataKey="value" cx="50%" cy="50%" innerRadius={36} outerRadius={65} paddingAngle={3}>
-                {invoiceStatusData.map((entry) => (
-                  <Cell key={entry.name} fill={entry.color} />
-                ))}
-              </Pie>
-              <Tooltip
-                contentStyle={{
-                  background: "#1E1E22",
-                  border: "1px solid rgba(255,255,255,0.1)",
-                  borderRadius: 4,
-                  fontSize: 12,
-                }}
-              />
-            </PieChart>
-          </ResponsiveContainer>
-          <div className="flex justify-center gap-3 mt-2">
-            {invoiceStatusData.map((item) => (
-              <div key={item.name} className="flex items-center gap-1.5">
-                <div className="w-2 h-2 rounded-full" style={{ background: item.color }} />
-                <span className="text-[10px] text-[#88888C]">{item.name}</span>
+        <div className="data-card p-4 flex flex-col">
+          <h3 className="text-base font-semibold text-[#EAEAEA] mb-1">Active Lab Tests</h3>
+          <p className="text-xs text-[#88888C] mb-3">Live testing queue status</p>
+          <div className="space-y-2 overflow-y-auto max-h-[180px] pr-1">
+            {activeLabTests.map((test) => (
+              <div key={test.id} className="p-2 rounded bg-[#1A1A20] border border-white/5">
+                <div className="flex justify-between items-start mb-1">
+                  <span className="text-[10px] font-bold text-[#EAEAEA] truncate max-w-[120px]">{test.testType}</span>
+                  <span className="text-[9px] px-1 py-0.5 rounded bg-[#005F73]/20 text-[#005F73] font-bold uppercase">{test.labStatus}</span>
+                </div>
+                <div className="text-[9px] text-[#88888C]">Proj: {test.projectName}</div>
               </div>
             ))}
+            {activeLabTests.length === 0 && (
+              <div className="h-full flex flex-col items-center justify-center py-8 opacity-50">
+                <Monitor className="w-8 h-8 text-[#2A2A30] mb-2" />
+                <span className="text-[10px] text-[#88888C]">No active tests in queue</span>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -218,7 +284,7 @@ export default function ClientDashboard() {
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={serviceTypeData} barGap={4}>
               <CartesianGrid strokeDasharray="3 3" stroke="#2A2A30" />
-              <XAxis dataKey="name" stroke="#88888C" fontSize={11} />
+              <XAxis dataKey="name" stroke="#88888C" fontSize={11} tick={{ fontSize: 9 }} />
               <YAxis stroke="#88888C" fontSize={11} />
               <Tooltip
                 contentStyle={{
@@ -243,7 +309,7 @@ export default function ClientDashboard() {
                 <div key={booking.id} className="rounded border border-white/10 bg-[#0A0A0C] p-2.5">
                   <div className="flex items-center justify-between">
                     <div className="text-[10px] font-semibold text-[#EAEAEA]">{eq?.unitId || "—"}</div>
-                    <span className="text-[10px] text-[#005F73] uppercase">{booking.serviceType}</span>
+                    <span className="text-[9px] text-[#005F73] uppercase font-bold">{booking.serviceCategory}</span>
                   </div>
                   <div className="mt-1 text-[10px] text-[#88888C] flex items-center gap-1">
                     <Clock3 className="w-3 h-3" />

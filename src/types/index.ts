@@ -85,38 +85,83 @@ export interface Task {
   createdAt: string;
 }
 
+export type EquipmentType = 
+  | "Heavy Equipment" 
+  | "Lab Equipment" 
+  | "Testing Equipment" 
+  | "Monitoring Device" 
+  | "Other";
+
 export interface Equipment {
   id: number;
   clientId: number;
   unitId: string;
-  type: string;
+  type: string; // Legacy field
+  equipmentType: EquipmentType;
   serialNumber: string;
   manufacturer: string;
   model: string;
   installDate: string;
   warrantyExpiry: string;
   status: "active" | "inactive" | "maintenance" | "retired" | "under_service" | "broken" | "service_due";
-  lastService: string;
-  nextServiceDue: number;
+  
+  // Heavy Equipment Logic (Hours-based)
   currentHours: number;
+  lastPMSHours: number;
+  pmsInterval: number; // e.g., 1000
+  nextPMSHours: number;
+  
+  // Calibration Logic (Date-based)
+  lastCalibrationDate: string | null;
+  calibrationFrequency: number; // in months, e.g., 6 or 12
+  nextCalibrationDate: string | null;
+  
   location: string;
   notes: string;
   createdAt: string;
 }
 
-export type ServiceType = "pms" | "installation" | "repair" | "inspection" | "calibration";
+export type ServiceCategory = 
+  | "Heavy Equipment PMS" 
+  | "Calibration PMS" 
+  | "Lab Testing Service" 
+  | "Repair" 
+  | "Inspection" 
+  | "Installation";
+
+export type ServiceType = "pms" | "installation" | "repair" | "inspection" | "calibration"; // Legacy enum
+
+export type LabTestingStatus = 
+  | "Requested" 
+  | "Scheduled" 
+  | "In Progress" 
+  | "Completed" 
+  | "Released";
 
 export interface ServiceRecord {
   id: number;
   equipmentId: number;
   clientId: number;
   technician: string;
-  serviceType: ServiceType;
+  serviceCategory: ServiceCategory;
+  serviceType?: ServiceType; // Legacy
   description: string;
   findings?: string;
   workDone?: string;
   recommendation?: string;
-  hoursAtService: number;
+  
+  // Logic-specific fields
+  hoursAtService?: number; // for Heavy Equipment
+  lastCalibrationDate?: string; // for Lab Equipment
+  nextCalibrationDate?: string; // for Lab Equipment
+  
+  // Lab Testing specific
+  testType?: string;
+  sampleName?: string;
+  projectName?: string;
+  labStatus?: LabTestingStatus;
+  reportAttachment?: string;
+  
   partsUsed: string;
   status: "scheduled" | "in_progress" | "completed" | "cancelled";
   scheduledDate: string;
@@ -141,13 +186,21 @@ export interface Booking {
   id: number;
   clientId: number;
   equipmentId: number;
-  serviceType: ServiceType;
+  serviceCategory: ServiceCategory;
+  serviceType?: ServiceType; // Legacy
   requestedDate: string;
   preferredTime: string;
   status: "pending" | "confirmed" | "completed" | "cancelled";
   notes: string;
+  projectName?: string;
+  sampleName?: string;
   createdAt: string;
 }
+
+export type PackageType = 
+  | "Heavy Equipment PMS Package" 
+  | "Calibration Package" 
+  | "Lab Testing Package";
 
 export type PackageTier = "basic" | "professional" | "enterprise";
 
@@ -156,16 +209,21 @@ export interface Package {
   clientId: number;
   name: string;
   description: string;
+  packageType: PackageType;
   tier: PackageTier;
   price: number;
   billingCycle: "monthly" | "quarterly" | "annual";
   includedServices: string[];
   totalVisits: number;
   visitsRemaining: number;
+  usageCount: number;
   durationMonths: number;
+  validityMonths: number;
   terms: string;
   startDate: string;
   endDate: string;
+  linkedEquipmentId?: number;
+  linkedServiceCategory?: ServiceCategory;
   status: "active" | "expired" | "cancelled";
   createdAt: string;
 }
