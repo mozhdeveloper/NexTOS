@@ -38,12 +38,23 @@ function getServiceDate(record: { completedDate: string | null; scheduledDate: s
   return record.completedDate ?? record.scheduledDate;
 }
 
-function formatServiceType(serviceType: string) {
-  if (serviceType === "pms") {
+function formatServiceType(serviceType?: string | null) {
+  const normalized = typeof serviceType === "string" ? serviceType.trim().toLowerCase() : "";
+
+  if (!normalized) {
+    return "Unknown";
+  }
+
+  if (normalized === "pms") {
     return "PMS";
   }
 
-  return serviceType.charAt(0).toUpperCase() + serviceType.slice(1);
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+}
+
+function formatStatusLabel(status?: string | null) {
+  const normalized = typeof status === "string" ? status.trim() : "";
+  return normalized ? normalized.replace(/_/g, " ") : "unknown";
 }
 
 function formatHours(hours: number) {
@@ -225,6 +236,7 @@ export default function ClientServiceHistory() {
       serviceRecords
         .filter((record) => record.clientId === clientId && record.equipmentId === asset.id)
         .map((record) => record.serviceType)
+        .filter((serviceType) => typeof serviceType === "string" && serviceType.trim().length > 0)
     ))),
     [clientEquipment, clientId, serviceRecords]
   );
@@ -292,11 +304,16 @@ export default function ClientServiceHistory() {
             </SelectTrigger>
             <SelectContent className="border-white/10 bg-[#111216] text-[#EAEAEA]">
               <SelectItem value="all">All Service Types</SelectItem>
-              {serviceTypes.map((serviceType) => (
-                <SelectItem key={serviceType} value={serviceType}>
-                  {formatServiceType(serviceType)}
-                </SelectItem>
-              ))}
+              {serviceTypes
+                .filter((serviceType) => typeof serviceType === "string" && serviceType.trim().length > 0)
+                .map((serviceType) => {
+                  const normalizedServiceType = serviceType as string;
+                  return (
+                    <SelectItem key={normalizedServiceType} value={normalizedServiceType}>
+                      {formatServiceType(normalizedServiceType)}
+                    </SelectItem>
+                  );
+                })}
             </SelectContent>
           </Select>
 
@@ -449,7 +466,11 @@ export default function ClientServiceHistory() {
                 const workDoneItems = buildWorkDone(record);
                 const findingsSummary = buildFindings(record);
                 const isExpanded = expanded === record.id;
-                const nextService = getNextServiceState(asset?.currentHours ?? 0, asset?.nextServiceDue ?? 0);
+                const nextService = getNextServiceState(asset?.currentHours ?? 0, asset?.nextPMSHours ?? 0);
+                const serviceTypeKey = typeof record.serviceType === "string" ? record.serviceType.toLowerCase() : "";
+                const statusKey = typeof record.status === "string" ? record.status.toLowerCase() : "";
+                const serviceTypeLabel = formatServiceType(record.serviceType);
+                const statusLabel = formatStatusLabel(record.status);
 
                 return (
                   <Fragment key={record.id}>
@@ -467,9 +488,9 @@ export default function ClientServiceHistory() {
                       </td>
 
                       <td className="py-3 px-3">
-                        <div className="text-[#EAEAEA] font-semibold">{formatServiceType(record.serviceType)}</div>
-                        <div className={`inline-flex mt-1 px-1.5 py-0.5 rounded text-[10px] font-medium ${serviceTypeColors[record.serviceType] ?? "bg-[#88888C]/20 text-[#88888C]"}`}>
-                          {record.serviceType.toUpperCase()}
+                        <div className="text-[#EAEAEA] font-semibold">{serviceTypeLabel}</div>
+                        <div className={`inline-flex mt-1 px-1.5 py-0.5 rounded text-[10px] font-medium ${serviceTypeColors[serviceTypeKey] ?? "bg-[#88888C]/20 text-[#88888C]"}`}>
+                          {serviceTypeKey ? serviceTypeKey.toUpperCase() : "UNKNOWN"}
                         </div>
                       </td>
 
@@ -494,7 +515,7 @@ export default function ClientServiceHistory() {
                       </td>
 
                       <td className="py-3 px-3">
-                        <div className="text-[#EAEAEA] font-semibold font-mono-tech">{formatHours(asset?.nextServiceDue ?? 0)}</div>
+                        <div className="text-[#EAEAEA] font-semibold font-mono-tech">{formatHours(asset?.nextPMSHours ?? 0)}</div>
                         <div className={`mt-0.5 ${nextService.remainingHours <= 0 ? "text-[#EF4444]" : "text-[#4ADE80]"}`}>
                           {nextService.remainingHours > 0
                             ? `${nextService.remainingHours.toLocaleString()} hrs remaining`
@@ -503,8 +524,8 @@ export default function ClientServiceHistory() {
                       </td>
 
                       <td className="py-3 px-3">
-                        <span className={`inline-flex px-2 py-0.5 rounded text-[11px] font-medium capitalize ${statusColors[record.status] ?? "bg-[#88888C]/20 text-[#88888C]"}`}>
-                          {record.status.replace("_", " ")}
+                        <span className={`inline-flex px-2 py-0.5 rounded text-[11px] font-medium capitalize ${statusColors[statusKey] ?? "bg-[#88888C]/20 text-[#88888C]"}`}>
+                          {statusLabel}
                         </span>
                       </td>
 
@@ -547,8 +568,8 @@ export default function ClientServiceHistory() {
                                 <div>
                                   <div className="text-2xl font-semibold text-[#EAEAEA] leading-tight">{asset?.unitId ?? "Unknown Unit"}</div>
                                   <div className="text-sm text-[#8E95A3] mt-0.5">SN: {asset?.serialNumber ?? "—"}</div>
-                                  <span className={`inline-flex mt-2 px-2 py-0.5 rounded text-[11px] font-medium capitalize ${statusColors[record.status] ?? "bg-[#88888C]/20 text-[#88888C]"}`}>
-                                    {record.status.replace("_", " ")}
+                                  <span className={`inline-flex mt-2 px-2 py-0.5 rounded text-[11px] font-medium capitalize ${statusColors[statusKey] ?? "bg-[#88888C]/20 text-[#88888C]"}`}>
+                                    {statusLabel}
                                   </span>
                                 </div>
                               </div>
@@ -573,7 +594,7 @@ export default function ClientServiceHistory() {
 
                               <div>
                                 <div className="text-[10px] text-[#8E95A3] uppercase">Next Service At</div>
-                                <div className="text-2xl text-[#EAEAEA] mt-0.5 font-mono-tech">{formatHours(asset?.nextServiceDue ?? 0)}</div>
+                                <div className="text-2xl text-[#EAEAEA] mt-0.5 font-mono-tech">{formatHours(asset?.nextPMSHours ?? 0)}</div>
                                 <div className="text-sm text-[#4ADE80] mt-0.5">
                                   {nextService.remainingHours > 0
                                     ? `${nextService.remainingHours.toLocaleString()} hrs remaining`
@@ -639,8 +660,8 @@ export default function ClientServiceHistory() {
 
                               <div className="space-y-2">
                                 <div className="text-[11px] text-[#8E95A3] uppercase">Next Service Information</div>
-                                <RowDetail label="Next Service Type" value={formatServiceType(record.serviceType)} />
-                                <RowDetail label="Next Service At" value={formatHours(asset?.nextServiceDue ?? 0)} />
+                                <RowDetail label="Next Service Type" value={serviceTypeLabel} />
+                                <RowDetail label="Next Service At" value={formatHours(asset?.nextPMSHours ?? 0)} />
                                 <RowDetail label="Before / After" value={`${beforePhotos.length} / ${afterPhotos.length}`} />
                                 <RowDetail label="Reminder" value="30 days before" />
                                 <div className="mt-3 p-2 rounded-md bg-[#101A2A] border border-white/10 flex items-center justify-between">

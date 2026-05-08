@@ -94,9 +94,19 @@ function formatMoneyPeso(amount: number) {
   }).format(amount);
 }
 
-function formatServiceType(serviceType: ServiceType) {
-  if (serviceType === "pms") return "PMS";
-  return serviceType.charAt(0).toUpperCase() + serviceType.slice(1);
+function formatServiceType(serviceType?: ServiceType | string | null) {
+  const normalized = typeof serviceType === "string" ? serviceType.trim().toLowerCase() : "";
+  if (!normalized) return "Unknown";
+  if (normalized === "pms") return "PMS";
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+}
+
+function toServiceCategory(serviceType: ServiceType): Booking["serviceCategory"] {
+  if (serviceType === "pms") return "Heavy Equipment PMS";
+  if (serviceType === "calibration") return "Calibration PMS";
+  if (serviceType === "repair") return "Repair";
+  if (serviceType === "inspection") return "Inspection";
+  return "Installation";
 }
 
 function formatBookingId(id: number, requestedDate: string) {
@@ -266,7 +276,7 @@ export default function ClientBookings() {
   const [editBookingId, setEditBookingId] = useState<number | null>(null);
   const [calendarMonth, setCalendarMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
 
-  const seedKey = `nextos-bookings-seeded-client-${clientId}`;
+  const seedKey = `nextos-bookings-seeded-client-${clientId}-v2`;
 
   const resetModalState = () => {
     setBookingStep(0);
@@ -310,6 +320,7 @@ export default function ClientBookings() {
       addBooking({
         clientId,
         equipmentId: eq.id,
+        serviceCategory: toServiceCategory(seed.type),
         serviceType: seed.type,
         requestedDate,
         preferredTime: seed.time,
@@ -331,7 +342,7 @@ export default function ClientBookings() {
     const tech = getTag(booking.notes, "tech") ?? getTechnicianFromEquipmentId(booking.equipmentId);
     setEditBookingId(booking.id);
     setBookingEquipment(String(booking.equipmentId));
-    setBookingType(booking.serviceType);
+    setBookingType(booking.serviceType ?? "pms");
     setBookingPackage(pkg);
     setBookingDate(booking.requestedDate.slice(0, 10));
     setBookingTime(booking.preferredTime);
@@ -365,6 +376,7 @@ export default function ClientBookings() {
       addBooking({
         clientId,
         equipmentId: parseInt(bookingEquipment, 10),
+        serviceCategory: toServiceCategory(bookingType),
         serviceType: bookingType,
         requestedDate: normalizedDate.toISOString(),
         preferredTime: bookingTime,
@@ -1004,6 +1016,9 @@ export default function ClientBookings() {
                   {filteredBookings.map((item) => {
                     const transitions = actionTransitions[item.status];
                     const isStartVisible = item.status === "in_progress" || item.status === "confirmed" || item.status === "scheduled";
+                    const serviceTypeKey = typeof item.booking.serviceType === "string"
+                      ? item.booking.serviceType.toLowerCase()
+                      : "";
                     return (
                       <tr key={item.booking.id} className="border-b border-white/5 hover:bg-white/[0.02] transition-colors duration-150">
                         <td className="py-2 px-2">
@@ -1025,7 +1040,7 @@ export default function ClientBookings() {
                         </td>
 
                         <td className="py-2 px-2">
-                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${SERVICE_COLORS[item.booking.serviceType]}`}>
+                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${SERVICE_COLORS[serviceTypeKey as ServiceType] ?? "bg-[#88888C]/20 text-[#88888C]"}`}>
                             {formatServiceType(item.booking.serviceType)}
                           </span>
                           <div className="text-[10px] text-[#88888C] mt-1">{item.booking.serviceType === "pms" ? "(1000 hrs)" : "One-time"}</div>
