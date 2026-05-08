@@ -14,7 +14,7 @@ export default function AssetScanner() {
       const unit = equipment.find((e) => e.serialNumber === serial);
       
       if (unit) {
-        // Redirect to services page with this unit selected
+        // Redirec t to services page with this unit selected
         // We pass the state so the Services page knows to select it
         navigate("/services", { state: { selectedUnitId: unit.id } });
       } else {
