@@ -16,6 +16,7 @@ interface BillingState {
   getOutstandingRevenue: () => number;
 }
 
+const lastWeek = new Date(Date.now() - 7 * 86400000).toISOString();
 const lastMonth = new Date(Date.now() - 30 * 86400000).toISOString();
 const nextMonth = new Date(Date.now() + 30 * 86400000).toISOString();
 const nextYear = new Date(Date.now() + 365 * 86400000).toISOString();
