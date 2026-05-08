@@ -1,31 +1,148 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { useNavigate } from "react-router";
 import { useAuthStore } from "@/stores/useAuthStore";
-import { useCRMStore } from "@/stores/useCRMStore";
 import { useOperationsStore } from "@/stores/useOperationsStore";
 import { useBillingStore } from "@/stores/useBillingStore";
+import type { Booking, Equipment, ServiceCategory } from "@/types";
+import { ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 import {
-  ResponsiveContainer,
-  LineChart,
-  Line,
-  CartesianGrid,
-  XAxis,
-  YAxis,
-  Tooltip,
-  BarChart,
-  Bar,
-  PieChart,
-  Pie,
-  Cell,
-} from "recharts";
-import {
-  Monitor,
+  ArrowRight,
+  Bell,
   Calendar,
-  DollarSign,
-  ShieldCheck,
-  Clock3,
+  CheckCircle2,
+  ChevronRight,
+  ClipboardList,
+  Eye,
+  FileText,
+  FlaskConical,
+  HardHat,
+  PackageCheck,
+  Plus,
+  Receipt,
+  Siren,
   Wrench,
-  AlertTriangle,
 } from "lucide-react";
+
+type DashboardServiceTab = "upcoming" | "calibration" | "testing";
+
+type HeavyStatus = "OK" | "Near Service" | "Due Soon" | "Overdue";
+type CalibrationStatus = "OK" | "Due Soon" | "Due" | "Overdue";
+
+type OverviewRow = {
+  id: string;
+  equipmentName: string;
+  equipmentMeta: string;
+  category: ServiceCategory;
+  typeLabel: string;
+  scheduleLabel: string;
+  scheduleMeta: string;
+  statusLabel: string;
+  technician: string;
+  icon: React.ElementType;
+  iconBg: string;
+};
+
+type AlertItem = {
+  id: string;
+  title: string;
+  subtitle: string;
+  tone: "danger" | "warning" | "info";
+};
+
+type ActivityItem = {
+  id: string;
+  title: string;
+  subtitle: string;
+  timestamp: string;
+  icon: React.ElementType;
+  tone: string;
+};
+
+type DonutDatum = {
+  name: string;
+  value: number;
+  color: string;
+};
+
+const HEAVY_COLORS: Record<HeavyStatus, string> = {
+  OK: "#10B981",
+  "Near Service": "#F2A900",
+  "Due Soon": "#3B82F6",
+  Overdue: "#EF4444",
+};
+
+const CALIBRATION_COLORS: Record<CalibrationStatus | "Due This Month", string> = {
+  OK: "#10B981",
+  "Due Soon": "#F2A900",
+  Due: "#3B82F6",
+  Overdue: "#EF4444",
+  "Due This Month": "#3B82F6",
+};
+
+const LAB_COLORS = {
+  "In Progress": "#2563EB",
+  Scheduled: "#F2A900",
+  Completed: "#10B981",
+};
+
+const CATEGORY_BADGE: Record<ServiceCategory, string> = {
+  "Heavy Equipment PMS": "bg-[#0F3C66] text-[#60A5FA] border border-[#60A5FA]/20",
+  "Calibration PMS": "bg-[#0B5137] text-[#4ADE80] border border-[#4ADE80]/20",
+  "Lab Testing Service": "bg-[#41215E] text-[#C084FC] border border-[#C084FC]/20",
+  Repair: "bg-[#5B1D1D] text-[#F87171] border border-[#F87171]/20",
+  Inspection: "bg-[#46310C] text-[#FBBF24] border border-[#FBBF24]/20",
+  Installation: "bg-[#113947] text-[#22D3EE] border border-[#22D3EE]/20",
+};
+
+const STATUS_BADGE: Record<string, string> = {
+  OK: "bg-[#0B5137]/50 text-[#4ADE80] border border-[#4ADE80]/20",
+  "Near Service": "bg-[#46310C]/50 text-[#FBBF24] border border-[#FBBF24]/20",
+  "Due Soon": "bg-[#102C53]/60 text-[#60A5FA] border border-[#60A5FA]/20",
+  Due: "bg-[#102C53]/60 text-[#60A5FA] border border-[#60A5FA]/20",
+  Overdue: "bg-[#5B1D1D]/50 text-[#F87171] border border-[#F87171]/20",
+  Scheduled: "bg-[#102C53]/60 text-[#60A5FA] border border-[#60A5FA]/20",
+  Requested: "bg-[#3E2A07]/60 text-[#FBBF24] border border-[#FBBF24]/20",
+  Completed: "bg-[#0B5137]/50 text-[#4ADE80] border border-[#4ADE80]/20",
+  Released: "bg-[#113947]/50 text-[#22D3EE] border border-[#22D3EE]/20",
+  "In Progress": "bg-[#1D3E6E]/50 text-[#60A5FA] border border-[#60A5FA]/20",
+};
+
+function formatPeso(amount: number) {
+  return new Intl.NumberFormat("en-PH", {
+    style: "currency",
+    currency: "PHP",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(amount);
+}
+
+function formatShortDate(dateISO: string) {
+  return new Date(dateISO).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function formatDateTimeLabel(dateISO: string) {
+  return new Date(dateISO).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function formatTimeRange(timeRange?: string) {
+  if (!timeRange) return "Time not set";
+  const [start] = timeRange.split("-");
+  const [hours, minutes] = start.split(":").map(Number);
+  const date = new Date();
+  date.setHours(hours, minutes, 0, 0);
+  return date.toLocaleTimeString(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
 
 function getBookingEndDate(booking: { requestedDate: string; preferredTime?: string }) {
   const date = new Date(booking.requestedDate);
@@ -41,286 +158,724 @@ function getBookingEndDate(booking: { requestedDate: string; preferredTime?: str
   return date;
 }
 
-function monthKey(dateISO: string) {
-  const d = new Date(dateISO);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+function getTag(notes: string, tag: string) {
+  const match = notes.match(new RegExp(`\\[${tag}:([^\\]]+)\\]`));
+  return match?.[1] ?? null;
 }
 
-function monthLabelFromKey(key: string) {
-  const [year, month] = key.split("-").map(Number);
-  return new Date(year, month - 1, 1).toLocaleDateString(undefined, {
-    month: "short",
-  });
+function getTechnicianFromBooking(booking: Booking) {
+  return getTag(booking.notes, "tech") ?? "Unassigned";
+}
+
+function getHeavyStatus(equipment: Equipment): HeavyStatus {
+  const remaining = equipment.nextPMSHours - equipment.currentHours;
+  if (remaining <= 0) return "Overdue";
+  if (remaining <= 50) return "Due Soon";
+  if (remaining <= 100) return "Near Service";
+  return "OK";
+}
+
+function getCalibrationStatus(nextCalibrationDate: string | null, now: Date): CalibrationStatus {
+  if (!nextCalibrationDate) return "OK";
+  const diffDays = Math.ceil((new Date(nextCalibrationDate).getTime() - now.getTime()) / 86400000);
+  if (diffDays <= 0) return "Overdue";
+  if (diffDays <= 7) return "Due";
+  if (diffDays <= 30) return "Due Soon";
+  return "OK";
+}
+
+function getDaysUntil(dateISO: string, now: Date) {
+  return Math.ceil((new Date(dateISO).getTime() - now.getTime()) / 86400000);
+}
+
+function getEquipmentLabel(equipment?: Equipment) {
+  if (!equipment) return "Unknown equipment";
+  return `${equipment.type} ${equipment.model}`;
+}
+
+function getEquipmentSubLabel(equipment?: Equipment) {
+  if (!equipment) return "No asset linked";
+  return `SN: ${equipment.serialNumber}`;
+}
+
+function createServiceId(prefix: string, id: number) {
+  return `${prefix}-${new Date().getFullYear()}-${String(id).padStart(4, "0")}`;
+}
+
+function donutCenterLabel(total: number, label: string) {
+  return (
+    <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+      <div className="text-[22px] font-bold text-[#EAEAEA] leading-none">{total}</div>
+      <div className="mt-1 text-[9px] uppercase tracking-[0.18em] text-[#6B7280]">{label}</div>
+    </div>
+  );
 }
 
 export default function ClientDashboard() {
+  const navigate = useNavigate();
   const { user } = useAuthStore();
-  const { clients } = useCRMStore();
   const { equipment, serviceRecords, bookings } = useOperationsStore();
   const { invoices } = useBillingStore();
 
   const clientId = user?.clientId || 1;
-  const client = clients.find((c) => c.id === clientId);
+  const [serviceTab, setServiceTab] = useState<DashboardServiceTab>("upcoming");
 
-  const clientEquipment = equipment.filter((e) => e.clientId === clientId);
-  const clientBookings = bookings.filter((b) => b.clientId === clientId);
-  const clientServices = serviceRecords.filter((s) => s.clientId === clientId);
-  const clientInvoices = invoices.filter((i) => i.clientId === clientId);
+  const clientEquipment = useMemo(() => equipment.filter((entry) => entry.clientId === clientId), [equipment, clientId]);
+  const clientServices = useMemo(() => serviceRecords.filter((entry) => entry.clientId === clientId), [serviceRecords, clientId]);
+  const clientBookings = useMemo(() => bookings.filter((entry) => entry.clientId === clientId), [bookings, clientId]);
+  const clientInvoices = useMemo(() => invoices.filter((entry) => entry.clientId === clientId), [invoices, clientId]);
+
+  const equipmentById = useMemo(() => new Map(clientEquipment.map((entry) => [entry.id, entry])), [clientEquipment]);
 
   const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
 
-  const upcomingBookings = clientBookings
-    .filter((b) => getBookingEndDate(b) >= now)
-    .sort((a, b) => new Date(a.requestedDate).getTime() - new Date(b.requestedDate).getTime());
+  const heavyEquipment = clientEquipment.filter((entry) => entry.equipmentType === "Heavy Equipment");
+  const calibrationEquipment = clientEquipment.filter(
+    (entry) => entry.equipmentType !== "Heavy Equipment" && !!entry.nextCalibrationDate
+  );
+  const labTestingServices = clientServices.filter((entry) => entry.serviceCategory === "Lab Testing Service");
 
-  const overdueBookings = clientBookings.filter((b) => getBookingEndDate(b) < now && b.status !== "completed").length;
+  const openInvoices = clientInvoices.filter((entry) => entry.status !== "paid");
+  const outstandingBalance = openInvoices.reduce((sum, entry) => sum + entry.total, 0);
 
-  const serviceDueCount = clientEquipment.filter((e) => {
-    const hoursDue = e.equipmentType === "Heavy Equipment" && e.nextPMSHours > 0 && e.currentHours >= e.nextPMSHours;
-    const calibrationDue = (e.equipmentType === "Lab Equipment" || e.equipmentType === "Testing Equipment") && 
-                          e.nextCalibrationDate && new Date(e.nextCalibrationDate) <= now;
-    return hoursDue || calibrationDue;
-  }).length;
+  const heavyCounts = useMemo(() => {
+    const counts: Record<HeavyStatus, number> = {
+      OK: 0,
+      "Near Service": 0,
+      "Due Soon": 0,
+      Overdue: 0,
+    };
 
-  const alerts = useMemo(() => {
-    const heavy: string[] = [];
-    const calibration: string[] = [];
-    
-    clientEquipment.forEach(e => {
-      if (e.equipmentType === "Heavy Equipment" && e.nextPMSHours > 0) {
-        const remaining = e.nextPMSHours - e.currentHours;
-        if (remaining <= 50 && remaining > 0) {
-          heavy.push(`${e.unitId} (${e.model}) has ${remaining} hours left before PMS`);
-        } else if (remaining <= 0) {
-          heavy.push(`${e.unitId} (${e.model}) is OVERDUE for PMS by ${Math.abs(remaining)} hours`);
+    heavyEquipment.forEach((entry) => {
+      counts[getHeavyStatus(entry)] += 1;
+    });
+
+    return counts;
+  }, [heavyEquipment]);
+
+  const calibrationCounts = useMemo(() => {
+    const counts = {
+      OK: 0,
+      "Due Soon": 0,
+      Overdue: 0,
+      "Due This Month": 0,
+    };
+
+    calibrationEquipment.forEach((entry) => {
+      const status = getCalibrationStatus(entry.nextCalibrationDate, now);
+      if (status === "OK") counts.OK += 1;
+      if (status === "Due Soon" || status === "Due") counts["Due Soon"] += 1;
+      if (status === "Overdue") counts.Overdue += 1;
+
+      if (entry.nextCalibrationDate) {
+        const date = new Date(entry.nextCalibrationDate);
+        if (date >= monthStart && date <= monthEnd) {
+          counts["Due This Month"] += 1;
         }
       }
-      if ((e.equipmentType === "Lab Equipment" || e.equipmentType === "Testing Equipment") && e.nextCalibrationDate) {
-        const nextDate = new Date(e.nextCalibrationDate);
-        const diffTime = nextDate.getTime() - now.getTime();
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        if (diffDays <= 15 && diffDays > 0) {
-          calibration.push(`${e.unitId} calibration due in ${diffDays} days`);
-        } else if (diffDays <= 0) {
-          calibration.push(`${e.unitId} calibration is OVERDUE by ${Math.abs(diffDays)} days`);
-        }
+    });
+
+    return counts;
+  }, [calibrationEquipment, monthEnd, monthStart, now]);
+
+  const labCounts = useMemo(() => {
+    const counts = {
+      "In Progress": 0,
+      Scheduled: 0,
+      Completed: 0,
+    };
+
+    labTestingServices.forEach((entry) => {
+      const label = entry.labStatus ?? (entry.status === "in_progress" ? "In Progress" : entry.status === "completed" ? "Completed" : "Scheduled");
+      if (label === "In Progress") counts["In Progress"] += 1;
+      if (label === "Scheduled" || label === "Requested") counts.Scheduled += 1;
+      if (label === "Completed" || label === "Released") counts.Completed += 1;
+    });
+
+    return counts;
+  }, [labTestingServices]);
+
+  const heavyDonutData: DonutDatum[] = [
+    { name: "OK", value: heavyCounts.OK, color: HEAVY_COLORS.OK },
+    { name: "Near Service", value: heavyCounts["Near Service"], color: HEAVY_COLORS["Near Service"] },
+    { name: "Overdue", value: heavyCounts.Overdue, color: HEAVY_COLORS.Overdue },
+    { name: "Due Soon", value: heavyCounts["Due Soon"], color: HEAVY_COLORS["Due Soon"] },
+  ].filter((entry) => entry.value > 0);
+
+  const calibrationDonutData: DonutDatum[] = [
+    { name: "OK", value: calibrationCounts.OK, color: CALIBRATION_COLORS.OK },
+    { name: "Due Soon", value: calibrationCounts["Due Soon"], color: CALIBRATION_COLORS["Due Soon"] },
+    { name: "Overdue", value: calibrationCounts.Overdue, color: CALIBRATION_COLORS.Overdue },
+    { name: "Due This Month", value: calibrationCounts["Due This Month"], color: CALIBRATION_COLORS["Due This Month"] },
+  ].filter((entry) => entry.value > 0);
+
+  const labDonutData: DonutDatum[] = [
+    { name: "In Progress", value: labCounts["In Progress"], color: LAB_COLORS["In Progress"] },
+    { name: "Scheduled", value: labCounts.Scheduled, color: LAB_COLORS.Scheduled },
+    { name: "Completed", value: labCounts.Completed, color: LAB_COLORS.Completed },
+  ].filter((entry) => entry.value > 0);
+
+  const upcomingRows = useMemo<OverviewRow[]>(() => {
+    return clientBookings
+      .filter((entry) => getBookingEndDate(entry) >= now)
+      .sort((left, right) => new Date(left.requestedDate).getTime() - new Date(right.requestedDate).getTime())
+      .slice(0, 4)
+      .map((entry) => {
+        const linkedEquipment = equipmentById.get(entry.equipmentId);
+        const technician = getTechnicianFromBooking(entry);
+        const heavyStatus = linkedEquipment?.equipmentType === "Heavy Equipment" ? getHeavyStatus(linkedEquipment) : null;
+
+        return {
+          id: createServiceId("SRV", entry.id),
+          equipmentName: getEquipmentLabel(linkedEquipment),
+          equipmentMeta: getEquipmentSubLabel(linkedEquipment),
+          category: entry.serviceCategory,
+          typeLabel: entry.serviceCategory === "Heavy Equipment PMS" ? "PMS (1000 hrs)" : entry.serviceCategory,
+          scheduleLabel:
+            linkedEquipment?.equipmentType === "Heavy Equipment" && linkedEquipment.nextPMSHours > 0
+              ? `In ${Math.max(linkedEquipment.nextPMSHours - linkedEquipment.currentHours, 0)} hrs`
+              : formatDateTimeLabel(entry.requestedDate),
+          scheduleMeta: `${formatDateTimeLabel(entry.requestedDate)}${entry.preferredTime ? `, ${formatTimeRange(entry.preferredTime)}` : ""}`,
+          statusLabel: heavyStatus ?? (entry.status === "confirmed" ? "Scheduled" : entry.status === "completed" ? "Completed" : "Requested"),
+          technician,
+          icon: entry.serviceCategory === "Calibration PMS" ? FlaskConical : entry.serviceCategory === "Lab Testing Service" ? ClipboardList : HardHat,
+          iconBg: entry.serviceCategory === "Calibration PMS" ? "bg-[#0B5137]/30" : entry.serviceCategory === "Lab Testing Service" ? "bg-[#41215E]/30" : "bg-[#3E2A07]/40",
+        };
+      });
+  }, [clientBookings, equipmentById, now]);
+
+  const calibrationRows = useMemo<OverviewRow[]>(() => {
+    return calibrationEquipment
+      .slice()
+      .sort((left, right) => new Date(left.nextCalibrationDate || 0).getTime() - new Date(right.nextCalibrationDate || 0).getTime())
+      .slice(0, 4)
+      .map((entry) => {
+        const daysUntil = entry.nextCalibrationDate ? getDaysUntil(entry.nextCalibrationDate, now) : 0;
+        const status = getCalibrationStatus(entry.nextCalibrationDate, now);
+
+        return {
+          id: createServiceId("CAL", entry.id),
+          equipmentName: getEquipmentLabel(entry),
+          equipmentMeta: getEquipmentSubLabel(entry),
+          category: "Calibration PMS",
+          typeLabel: "Calibration",
+          scheduleLabel:
+            daysUntil > 0 ? `Due in ${daysUntil} day${daysUntil === 1 ? "" : "s"}` : `Overdue by ${Math.abs(daysUntil)} day${Math.abs(daysUntil) === 1 ? "" : "s"}`,
+          scheduleMeta: entry.nextCalibrationDate ? formatShortDate(entry.nextCalibrationDate) : "No date set",
+          statusLabel: status,
+          technician: "Mike Thompson",
+          icon: FlaskConical,
+          iconBg: "bg-[#0B5137]/30",
+        };
+      });
+  }, [calibrationEquipment, now]);
+
+  const testingRows = useMemo<OverviewRow[]>(() => {
+    return labTestingServices
+      .slice()
+      .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())
+      .slice(0, 4)
+      .map((entry) => {
+        const linkedEquipment = equipmentById.get(entry.equipmentId);
+        const status = entry.labStatus ?? (entry.status === "completed" ? "Completed" : entry.status === "in_progress" ? "In Progress" : "Scheduled");
+
+        return {
+          id: createServiceId("LAB", entry.id),
+          equipmentName: entry.testType || getEquipmentLabel(linkedEquipment),
+          equipmentMeta: entry.projectName ? `Project: ${entry.projectName}` : entry.sampleName ? `Sample: ${entry.sampleName}` : getEquipmentSubLabel(linkedEquipment),
+          category: "Lab Testing Service",
+          typeLabel: entry.testType || "Lab Test",
+          scheduleLabel: formatShortDate(entry.completedDate || entry.scheduledDate),
+          scheduleMeta: entry.completedDate ? "Report available" : "Queue active",
+          statusLabel: status,
+          technician: entry.technician,
+          icon: ClipboardList,
+          iconBg: "bg-[#41215E]/30",
+        };
+      });
+  }, [equipmentById, labTestingServices]);
+
+  const activeRows = serviceTab === "upcoming" ? upcomingRows : serviceTab === "calibration" ? calibrationRows : testingRows;
+
+  const alertItems = useMemo<AlertItem[]>(() => {
+    const alerts: AlertItem[] = [];
+
+    calibrationEquipment.forEach((entry) => {
+      if (!entry.nextCalibrationDate) return;
+      const daysUntil = getDaysUntil(entry.nextCalibrationDate, now);
+      if (daysUntil <= 15) {
+        alerts.push({
+          id: `cal-${entry.id}`,
+          title: `${getEquipmentLabel(entry)} calibration ${daysUntil <= 0 ? "is overdue" : `is due in ${daysUntil} day${daysUntil === 1 ? "" : "s"}`}`,
+          subtitle: `Due: ${formatShortDate(entry.nextCalibrationDate)}`,
+          tone: daysUntil <= 0 ? "danger" : "warning",
+        });
       }
     });
-    return { heavy, calibration };
-  }, [clientEquipment, now]);
 
-  const activeLabTests = useMemo(() => {
-    return clientServices.filter(s => s.serviceCategory === "Lab Testing Service" && s.status !== "completed");
-  }, [clientServices]);
-
-  const unpaidInvoices = clientInvoices.filter((i) => i.status !== "paid");
-  const outstandingBalance = unpaidInvoices.reduce((sum, i) => sum + i.total, 0);
-
-  const serviceTrendData = useMemo(() => {
-    const months = Array.from({ length: 6 }).map((_, index) => {
-      const d = new Date();
-      d.setMonth(d.getMonth() - (5 - index));
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-      return { key, label: monthLabelFromKey(key), completed: 0, booked: 0 };
-    });
-
-    const monthMap = new Map(months.map((m) => [m.key, m]));
-
-    clientServices.forEach((record) => {
-      const sourceDate = record.completedDate || record.scheduledDate;
-      const key = monthKey(sourceDate);
-      const month = monthMap.get(key);
-      if (month) {
-        month.completed += 1;
+    heavyEquipment.forEach((entry) => {
+      const remaining = entry.nextPMSHours - entry.currentHours;
+      if (remaining <= 50) {
+        alerts.push({
+          id: `heavy-${entry.id}`,
+          title: `${getEquipmentLabel(entry)} PMS ${remaining <= 0 ? "is overdue" : `is due in ${remaining} hrs`}`,
+          subtitle: `Current Hours: ${entry.currentHours} hrs`,
+          tone: remaining <= 0 ? "danger" : "warning",
+        });
       }
     });
 
-    clientBookings.forEach((booking) => {
-      const key = monthKey(booking.requestedDate);
-      const month = monthMap.get(key);
-      if (month) {
-        month.booked += 1;
-      }
-    });
+    const releasableReports = labTestingServices.filter((entry) => entry.labStatus === "Released" || entry.labStatus === "Completed");
+    if (releasableReports.length > 0) {
+      alerts.push({
+        id: "reports-ready",
+        title: `${releasableReports.length} test report${releasableReports.length === 1 ? "" : "s"} ready for release`,
+        subtitle: "View reports",
+        tone: "info",
+      });
+    }
 
-    return months.map((m) => ({ month: m.label, completed: m.completed, booked: m.booked }));
-  }, [clientBookings, clientServices]);
+    return alerts.slice(0, 4);
+  }, [calibrationEquipment, heavyEquipment, labTestingServices, now]);
 
-  const serviceTypeData = useMemo(() => {
-    const counts = new Map<string, number>();
+  const quickSummary = useMemo(() => {
+    const completedThisMonth = clientServices.filter(
+      (entry) => entry.completedDate && new Date(entry.completedDate) >= monthStart
+    );
 
-    [...clientBookings, ...clientServices].forEach((item) => {
-      const key = item.serviceCategory;
-      counts.set(key, (counts.get(key) || 0) + 1);
-    });
+    return {
+      servicesCompleted: completedThisMonth.filter((entry) => entry.serviceCategory !== "Calibration PMS" && entry.serviceCategory !== "Lab Testing Service").length,
+      calibrationsCompleted: completedThisMonth.filter((entry) => entry.serviceCategory === "Calibration PMS").length,
+      testsCompleted: completedThisMonth.filter((entry) => entry.serviceCategory === "Lab Testing Service").length,
+      totalSpent: clientInvoices
+        .filter((entry) => new Date(entry.createdAt) >= monthStart)
+        .reduce((sum, entry) => sum + entry.total, 0),
+    };
+  }, [clientInvoices, clientServices, monthStart]);
 
-    return Array.from(counts.entries()).map(([name, value]) => ({
-      name: name,
-      value,
+  const latestReports = useMemo(() => {
+    return clientServices
+      .filter((entry) => entry.completedDate)
+      .slice()
+      .sort((left, right) => new Date(right.completedDate || right.createdAt).getTime() - new Date(left.completedDate || left.createdAt).getTime())
+      .slice(0, 3)
+      .map((entry) => ({
+        id: entry.id,
+        title:
+          entry.serviceCategory === "Lab Testing Service"
+            ? `${entry.testType || "Test"} - Report`
+            : `${getEquipmentLabel(equipmentById.get(entry.equipmentId))} - ${entry.serviceCategory === "Heavy Equipment PMS" ? "PMS Report" : "Service Report"}`,
+        date: formatShortDate(entry.completedDate || entry.createdAt),
+      }));
+  }, [clientServices, equipmentById]);
+
+  const recentActivity = useMemo<ActivityItem[]>(() => {
+    const serviceActivity = clientServices.slice(0, 4).map((entry) => ({
+      id: `svc-${entry.id}`,
+      title:
+        entry.serviceCategory === "Heavy Equipment PMS"
+          ? `PMS completed for ${getEquipmentLabel(equipmentById.get(entry.equipmentId))}`
+          : entry.serviceCategory === "Calibration PMS"
+            ? `Calibration done for ${getEquipmentLabel(equipmentById.get(entry.equipmentId))}`
+            : `${entry.testType || "Lab test"} report ${entry.labStatus === "Released" ? "released" : "updated"}`,
+      subtitle: entry.projectName ? entry.projectName : entry.description,
+      timestamp: formatShortDate(entry.completedDate || entry.createdAt),
+      icon: entry.serviceCategory === "Lab Testing Service" ? FlaskConical : entry.serviceCategory === "Calibration PMS" ? CheckCircle2 : Wrench,
+      tone: entry.serviceCategory === "Lab Testing Service" ? "bg-[#41215E] text-[#C084FC]" : entry.serviceCategory === "Calibration PMS" ? "bg-[#0B5137] text-[#4ADE80]" : "bg-[#0B5137] text-[#4ADE80]",
     }));
-  }, [clientBookings, clientServices]);
 
-  const invoiceStatusData = useMemo(() => {
-    const paid = clientInvoices.filter((i) => i.status === "paid").length;
-    const sent = clientInvoices.filter((i) => i.status === "sent").length;
-    const overdue = clientInvoices.filter((i) => i.status === "overdue").length;
+    const invoiceActivity = clientInvoices.slice(0, 2).map((entry) => ({
+      id: `inv-${entry.id}`,
+      title: `Invoice ${entry.invoiceNumber} ${entry.status === "paid" ? "has been paid" : "has been issued"}`,
+      subtitle: formatPeso(entry.total),
+      timestamp: formatShortDate(entry.createdAt),
+      icon: Receipt,
+      tone: "bg-[#46310C] text-[#FBBF24]",
+    }));
 
-    return [
-      { name: "Paid", value: paid, color: "#10B981" },
-      { name: "Sent", value: sent, color: "#F2A900" },
-      { name: "Overdue", value: overdue, color: "#EF4444" },
-    ];
-  }, [clientInvoices]);
+    return [...serviceActivity, ...invoiceActivity]
+      .sort((left, right) => right.timestamp.localeCompare(left.timestamp))
+      .slice(0, 5);
+  }, [clientInvoices, clientServices, equipmentById]);
+
+  const topHeavyRisk = heavyEquipment
+    .slice()
+    .sort((left, right) => (left.nextPMSHours - left.currentHours) - (right.nextPMSHours - right.currentHours))[0];
+
+  const topCalibrationRisk = calibrationEquipment
+    .slice()
+    .sort((left, right) => new Date(left.nextCalibrationDate || 0).getTime() - new Date(right.nextCalibrationDate || 0).getTime())[0];
+
+  const topLabItem = testingRows[0];
 
   return (
-    <div className="space-y-4 px-8 pt-8">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-[32px] font-bold text-[#EAEAEA] tracking-[-0.02em]">Dashboard</h1>
-          <p className="text-sm text-[#88888C] mt-0.5">
-            {client?.companyName || "Your account"} overview and operational health
-          </p>
-        </div>
-        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-[#005F73]/10 border border-[#005F73]/20">
-          <ShieldCheck className="w-3.5 h-3.5 text-[#005F73]" />
-          <span className="text-xs text-[#005F73] font-medium">Client Command View</span>
-        </div>
-      </div>
+    <div className="min-h-full bg-[#07090D] px-6 py-5 text-[#EAEAEA] xl:px-8">
+      <div className="mx-auto max-w-[1500px] space-y-5">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+          <div>
+            <h1 className="text-[34px] font-bold tracking-[-0.03em] text-white">Dashboard</h1>
+            <p className="mt-1 text-sm text-[#94A3B8]">
+              Overview of your equipment, calibration &amp; testing services
+            </p>
+          </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <KpiCard label="Active Equipment" value={`${clientEquipment.length}`} hint="Units under coverage" icon={Monitor} accent="text-[#EAEAEA]" />
-        <KpiCard label="Upcoming Bookings" value={`${upcomingBookings.length}`} hint={`${overdueBookings} past due`} icon={Calendar} accent="text-[#F2A900]" />
-        <KpiCard label="Outstanding" value={`$${outstandingBalance.toFixed(2)}`} hint={`${unpaidInvoices.length} unpaid invoices`} icon={DollarSign} accent="text-[#F2A900]" />
-        <KpiCard label="Service Due" value={`${serviceDueCount}`} hint="Assets requiring attention" icon={Wrench} accent={serviceDueCount > 0 ? "text-[#EF4444]" : "text-[#10B981]"} />
-      </div>
-
-      {(alerts.heavy.length > 0 || alerts.calibration.length > 0) && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {alerts.heavy.length > 0 && (
-            <div className="data-card p-3 border-l-4 border-[#EF4444] bg-[#EF4444]/5">
-              <div className="flex items-center gap-2 mb-2">
-                <Wrench className="w-4 h-4 text-[#EF4444]" />
-                <h3 className="text-sm font-bold text-[#EF4444] uppercase tracking-wider">Heavy Equipment Alerts</h3>
-              </div>
-              <ul className="space-y-1">
-                {alerts.heavy.map((alert, idx) => (
-                  <li key={idx} className="text-[10px] text-[#EAEAEA] flex items-center gap-2">
-                    <div className="w-1 h-1 rounded-full bg-[#EF4444]" />
-                    {alert}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {alerts.calibration.length > 0 && (
-            <div className="data-card p-3 border-l-4 border-[#F2A900] bg-[#F2A900]/5">
-              <div className="flex items-center gap-2 mb-2">
-                <AlertTriangle className="w-4 h-4 text-[#F2A900]" />
-                <h3 className="text-sm font-bold text-[#F2A900] uppercase tracking-wider">Calibration Alerts</h3>
-              </div>
-              <ul className="space-y-1">
-                {alerts.calibration.map((alert, idx) => (
-                  <li key={idx} className="text-[10px] text-[#EAEAEA] flex items-center gap-2">
-                    <div className="w-1 h-1 rounded-full bg-[#F2A900]" />
-                    {alert}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-        <div className="lg:col-span-2 data-card p-4">
-          <h3 className="text-base font-semibold text-[#EAEAEA] mb-1">Service Trend</h3>
-          <p className="text-xs text-[#88888C] mb-3">Booked vs completed over the last 6 months</p>
-          <ResponsiveContainer width="100%" height={220}>
-            <LineChart data={serviceTrendData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#2A2A30" />
-              <XAxis dataKey="month" stroke="#88888C" fontSize={11} />
-              <YAxis stroke="#88888C" fontSize={11} />
-              <Tooltip
-                contentStyle={{
-                  background: "#1E1E22",
-                  border: "1px solid rgba(255,255,255,0.1)",
-                  borderRadius: 4,
-                  fontSize: 12,
-                }}
-              />
-              <Line type="monotone" dataKey="booked" stroke="#F2A900" strokeWidth={2} dot={{ fill: "#F2A900", r: 3 }} />
-              <Line type="monotone" dataKey="completed" stroke="#10B981" strokeWidth={2} dot={{ fill: "#10B981", r: 3 }} />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-
-        <div className="data-card p-4 flex flex-col">
-          <h3 className="text-base font-semibold text-[#EAEAEA] mb-1">Active Lab Tests</h3>
-          <p className="text-xs text-[#88888C] mb-3">Live testing queue status</p>
-          <div className="space-y-2 overflow-y-auto max-h-[180px] pr-1">
-            {activeLabTests.map((test) => (
-              <div key={test.id} className="p-2 rounded bg-[#1A1A20] border border-white/5">
-                <div className="flex justify-between items-start mb-1">
-                  <span className="text-[10px] font-bold text-[#EAEAEA] truncate max-w-[120px]">{test.testType}</span>
-                  <span className="text-[9px] px-1 py-0.5 rounded bg-[#005F73]/20 text-[#005F73] font-bold uppercase">{test.labStatus}</span>
-                </div>
-                <div className="text-[9px] text-[#88888C]">Proj: {test.projectName}</div>
-              </div>
-            ))}
-            {activeLabTests.length === 0 && (
-              <div className="h-full flex flex-col items-center justify-center py-8 opacity-50">
-                <Monitor className="w-8 h-8 text-[#2A2A30] mb-2" />
-                <span className="text-[10px] text-[#88888C]">No active tests in queue</span>
-              </div>
-            )}
+          <div className="flex flex-wrap items-center gap-3">
+            <button className="flex h-11 items-center gap-2 rounded-md border border-white/10 bg-[#111827] px-4 text-sm text-[#E5E7EB] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+              <Calendar className="h-4 w-4 text-[#CBD5E1]" />
+              {now.toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" })}
+            </button>
+            <button className="flex h-11 w-11 items-center justify-center rounded-md border border-white/10 bg-[#111827] text-[#CBD5E1]">
+              <Bell className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => navigate("/client/bookings")}
+              className="flex h-11 items-center gap-2 rounded-md bg-[#F2A900] px-5 text-sm font-semibold text-[#111827] transition-colors hover:bg-[#FFBF1F]"
+            >
+              <Plus className="h-4 w-4" />
+              Book a Service
+            </button>
           </div>
         </div>
-      </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-        <div className="lg:col-span-2 data-card p-4">
-          <h3 className="text-base font-semibold text-[#EAEAEA] mb-1">Service Mix</h3>
-          <p className="text-xs text-[#88888C] mb-3">Most frequent requested/performed services</p>
-          <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={serviceTypeData} barGap={4}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#2A2A30" />
-              <XAxis dataKey="name" stroke="#88888C" fontSize={11} tick={{ fontSize: 9 }} />
-              <YAxis stroke="#88888C" fontSize={11} />
-              <Tooltip
-                contentStyle={{
-                  background: "#1E1E22",
-                  border: "1px solid rgba(255,255,255,0.1)",
-                  borderRadius: 4,
-                  fontSize: 12,
-                }}
-              />
-              <Bar dataKey="value" fill="#005F73" radius={[2, 2, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
+        <div className="grid gap-4 xl:grid-cols-[1.1fr_1.1fr_1.1fr_1.25fr]">
+          <SummaryCard
+            title="Heavy Equipment PMS"
+            value={heavyEquipment.length}
+            subtitle="Total Equipment"
+            icon={HardHat}
+            tint="from-[#0C4A6E] to-[#102A43]"
+            stats={[
+              { label: "OK", value: heavyCounts.OK, color: "text-[#22C55E]" },
+              { label: "Near Service", value: heavyCounts["Near Service"], color: "text-[#FBBF24]" },
+              { label: "Overdue", value: heavyCounts.Overdue, color: "text-[#F87171]" },
+              { label: "Due Soon", value: heavyCounts["Due Soon"], color: "text-[#60A5FA]" },
+            ]}
+          />
 
-        <div className="data-card p-4">
-          <h3 className="text-base font-semibold text-[#EAEAEA] mb-1">Next Up</h3>
-          <p className="text-xs text-[#88888C] mb-3">Upcoming booking windows</p>
-          <div className="space-y-2">
-            {upcomingBookings.slice(0, 5).map((booking) => {
-              const eq = clientEquipment.find((e) => e.id === booking.equipmentId);
-              return (
-                <div key={booking.id} className="rounded border border-white/10 bg-[#0A0A0C] p-2.5">
-                  <div className="flex items-center justify-between">
-                    <div className="text-[10px] font-semibold text-[#EAEAEA]">{eq?.unitId || "—"}</div>
-                    <span className="text-[9px] text-[#005F73] uppercase font-bold">{booking.serviceCategory}</span>
+          <SummaryCard
+            title="Calibration PMS"
+            value={calibrationEquipment.length}
+            subtitle="Lab Equipment"
+            icon={PackageCheck}
+            tint="from-[#0B5137] to-[#0F3D2E]"
+            stats={[
+              { label: "OK", value: calibrationCounts.OK, color: "text-[#22C55E]" },
+              { label: "Due Soon", value: calibrationCounts["Due Soon"], color: "text-[#FBBF24]" },
+              { label: "Overdue", value: calibrationCounts.Overdue, color: "text-[#F87171]" },
+              { label: "Due This Month", value: calibrationCounts["Due This Month"], color: "text-[#60A5FA]" },
+            ]}
+          />
+
+          <SummaryCard
+            title="Lab Testing Services"
+            value={labTestingServices.length}
+            subtitle="Active Jobs"
+            icon={ClipboardList}
+            tint="from-[#3F1D6B] to-[#22133B]"
+            stats={[
+              { label: "In Progress", value: labCounts["In Progress"], color: "text-[#60A5FA]" },
+              { label: "Scheduled", value: labCounts.Scheduled, color: "text-[#FBBF24]" },
+              { label: "Completed", value: labCounts.Completed, color: "text-[#22C55E]" },
+            ]}
+          />
+
+          <div className="data-card rounded-xl border border-white/6 bg-[linear-gradient(180deg,#171D28_0%,#0F131A_100%)] p-5 shadow-[0_10px_35px_rgba(0,0,0,0.24)]">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-3">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#8A5608]/30 text-[#F2A900]">
+                    <Receipt className="h-5 w-5" />
                   </div>
-                  <div className="mt-1 text-[10px] text-[#88888C] flex items-center gap-1">
-                    <Clock3 className="w-3 h-3" />
-                    {new Date(booking.requestedDate).toLocaleDateString()} · {booking.preferredTime}
+                  <div>
+                    <div className="text-sm font-semibold text-white">Open Invoices</div>
+                    <div className="mt-1 text-[13px] text-[#94A3B8]">{openInvoices.length} Unpaid</div>
                   </div>
                 </div>
-              );
-            })}
-            {upcomingBookings.length === 0 && (
-              <div className="text-xs text-[#88888C]">No upcoming bookings scheduled.</div>
-            )}
+              </div>
+              <span className="rounded-full bg-[#8A5608]/15 px-2.5 py-1 text-[11px] font-medium text-[#FBBF24]">
+                Total Outstanding
+              </span>
+            </div>
+            <div className="mt-5 text-[34px] font-bold tracking-[-0.03em] text-[#F8B84E]">{formatPeso(outstandingBalance)}</div>
+            <button
+              onClick={() => navigate("/client/billing")}
+              className="mt-5 inline-flex items-center gap-2 text-sm font-medium text-[#60A5FA] transition-colors hover:text-[#93C5FD]"
+            >
+              View Invoices
+              <ArrowRight className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,2.3fr)_minmax(320px,1fr)]">
+          <div className="space-y-4">
+            <section className="data-card overflow-hidden rounded-xl border border-white/6 bg-[linear-gradient(180deg,#121923_0%,#0D1219_100%)] shadow-[0_12px_40px_rgba(0,0,0,0.24)]">
+              <div className="border-b border-white/6 px-5 pt-4">
+                <div className="flex flex-wrap items-center gap-6 text-sm">
+                  <button
+                    onClick={() => setServiceTab("upcoming")}
+                    className={`border-b-2 pb-3 font-medium transition-colors ${
+                      serviceTab === "upcoming" ? "border-[#F2A900] text-[#F2A900]" : "border-transparent text-[#94A3B8] hover:text-white"
+                    }`}
+                  >
+                    Upcoming Services
+                  </button>
+                  <button
+                    onClick={() => setServiceTab("calibration")}
+                    className={`border-b-2 pb-3 font-medium transition-colors ${
+                      serviceTab === "calibration" ? "border-[#F2A900] text-[#F2A900]" : "border-transparent text-[#94A3B8] hover:text-white"
+                    }`}
+                  >
+                    Calibration Due
+                  </button>
+                  <button
+                    onClick={() => setServiceTab("testing")}
+                    className={`border-b-2 pb-3 font-medium transition-colors ${
+                      serviceTab === "testing" ? "border-[#F2A900] text-[#F2A900]" : "border-transparent text-[#94A3B8] hover:text-white"
+                    }`}
+                  >
+                    Testing Schedules
+                  </button>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto px-3 pb-2 pt-3">
+                <table className="w-full min-w-[900px] text-left">
+                  <thead>
+                    <tr className="text-[11px] uppercase tracking-[0.14em] text-[#64748B]">
+                      <th className="px-3 py-2 font-medium">Service ID</th>
+                      <th className="px-3 py-2 font-medium">Equipment / Service</th>
+                      <th className="px-3 py-2 font-medium">Category</th>
+                      <th className="px-3 py-2 font-medium">Type</th>
+                      <th className="px-3 py-2 font-medium">Schedule</th>
+                      <th className="px-3 py-2 font-medium">Status</th>
+                      <th className="px-3 py-2 font-medium">Technician</th>
+                      <th className="px-3 py-2 text-right font-medium">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {activeRows.map((row) => {
+                      const Icon = row.icon;
+                      return (
+                        <tr key={row.id} className="border-t border-white/6 text-sm text-[#E2E8F0]">
+                          <td className="px-3 py-3 text-[12px] font-semibold text-white">{row.id}</td>
+                          <td className="px-3 py-3">
+                            <div className="flex items-center gap-3">
+                              <div className={`flex h-11 w-11 items-center justify-center rounded-lg border border-white/6 ${row.iconBg}`}>
+                                <Icon className="h-5 w-5 text-white" />
+                              </div>
+                              <div>
+                                <div className="font-medium text-white">{row.equipmentName}</div>
+                                <div className="mt-1 text-[11px] text-[#94A3B8]">{row.equipmentMeta}</div>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-3 py-3">
+                            <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-medium ${CATEGORY_BADGE[row.category]}`}>
+                              {row.category}
+                            </span>
+                          </td>
+                          <td className="px-3 py-3 text-[13px] text-[#CBD5E1]">{row.typeLabel}</td>
+                          <td className="px-3 py-3">
+                            <div className={`text-[13px] font-medium ${row.statusLabel === "Overdue" ? "text-[#F87171]" : row.statusLabel === "Due Soon" || row.statusLabel === "Near Service" ? "text-[#FBBF24]" : "text-[#22C55E]"}`}>
+                              {row.scheduleLabel}
+                            </div>
+                            <div className="mt-1 text-[11px] text-[#94A3B8]">{row.scheduleMeta}</div>
+                          </td>
+                          <td className="px-3 py-3">
+                            <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-medium ${STATUS_BADGE[row.statusLabel] ?? STATUS_BADGE.Scheduled}`}>
+                              {row.statusLabel}
+                            </span>
+                          </td>
+                          <td className="px-3 py-3">
+                            <div className="flex items-center gap-2">
+                              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#334155] text-[11px] font-semibold text-white">
+                                {row.technician
+                                  .split(" ")
+                                  .map((part) => part[0])
+                                  .join("")
+                                  .slice(0, 2)
+                                  .toUpperCase()}
+                              </div>
+                              <span className="text-[13px] text-[#CBD5E1]">{row.technician}</span>
+                            </div>
+                          </td>
+                          <td className="px-3 py-3">
+                            <div className="flex justify-end gap-2">
+                              <button className="flex h-8 w-8 items-center justify-center rounded-md border border-[#1D4ED8]/30 bg-[#102C53]/50 text-[#60A5FA]">
+                                <Eye className="h-4 w-4" />
+                              </button>
+                              <button className="flex h-8 w-8 items-center justify-center rounded-md border border-white/10 bg-[#111827] text-[#CBD5E1]">
+                                <Calendar className="h-4 w-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {activeRows.length === 0 && (
+                      <tr>
+                        <td colSpan={8} className="px-3 py-10 text-center text-sm text-[#94A3B8]">
+                          No service items available for this section.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="flex justify-center border-t border-white/6 px-5 py-3">
+                <button className="inline-flex items-center gap-2 text-sm font-medium text-[#60A5FA] transition-colors hover:text-[#93C5FD]">
+                  View all upcoming services
+                  <ArrowRight className="h-4 w-4" />
+                </button>
+              </div>
+            </section>
+
+            <div className="grid gap-4 xl:grid-cols-3">
+              <OverviewCard
+                title="Heavy Equipment PMS Overview"
+                linkLabel="View all"
+                total={heavyEquipment.length}
+                centerLabel="Total"
+                data={heavyDonutData}
+                footerIcon={Siren}
+                footerTitle={topHeavyRisk ? `${getEquipmentLabel(topHeavyRisk)}` : "No critical unit"}
+                footerSubtitle={
+                  topHeavyRisk
+                    ? `${topHeavyRisk.nextPMSHours - topHeavyRisk.currentHours <= 0 ? "Overdue" : "Due in"} ${Math.abs(topHeavyRisk.nextPMSHours - topHeavyRisk.currentHours)} hrs`
+                    : "All units within target"
+                }
+              />
+
+              <OverviewCard
+                title="Calibration PMS Overview"
+                linkLabel="View all"
+                total={calibrationEquipment.length}
+                centerLabel="Total"
+                data={calibrationDonutData}
+                footerIcon={PackageCheck}
+                footerTitle={topCalibrationRisk ? `${getEquipmentLabel(topCalibrationRisk)}` : "No calibration risk"}
+                footerSubtitle={
+                  topCalibrationRisk?.nextCalibrationDate
+                    ? `Due ${formatShortDate(topCalibrationRisk.nextCalibrationDate)}`
+                    : "No upcoming calibration"
+                }
+              />
+
+              <OverviewCard
+                title="Lab Testing Overview"
+                linkLabel="View all"
+                total={labTestingServices.length}
+                centerLabel="Total"
+                data={labDonutData}
+                footerIcon={ClipboardList}
+                footerTitle={topLabItem ? topLabItem.equipmentName : "No active tests"}
+                footerSubtitle={topLabItem ? topLabItem.equipmentMeta : "Testing queue is clear"}
+              />
+            </div>
+
+            <section className="data-card rounded-xl border border-white/6 bg-[linear-gradient(180deg,#121923_0%,#0D1219_100%)] p-4 shadow-[0_12px_40px_rgba(0,0,0,0.24)]">
+              <div className="mb-3 flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-white">Recent Activity</h3>
+                <button className="text-sm font-medium text-[#60A5FA]">View all</button>
+              </div>
+              <div className="flex gap-2.5 overflow-x-auto pb-0.5">
+                {recentActivity.map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <div
+                      key={item.id}
+                      className="flex min-w-[170px] flex-1 items-start gap-2.5 rounded-xl border border-white/6 bg-[#0E141D] p-3"
+                    >
+                      <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${item.tone}`}>
+                        <Icon className="h-4 w-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-[11px] font-medium leading-4 text-white">{item.title}</div>
+                        <div className="mt-0.5 text-[10px] text-[#64748B]">{item.timestamp}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          </div>
+
+          <div className="space-y-4">
+            <section className="data-card rounded-xl border border-white/6 bg-[linear-gradient(180deg,#121923_0%,#0D1219_100%)] p-5 shadow-[0_12px_40px_rgba(0,0,0,0.24)]">
+              <div className="mb-4 flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-white">Alerts &amp; Reminders</h3>
+                <button className="text-sm font-medium text-[#60A5FA]">View all</button>
+              </div>
+              <div className="space-y-3">
+                {alertItems.map((item) => (
+                  <div key={item.id} className="flex items-start gap-3 rounded-xl border border-white/6 bg-[#0E141D] p-4">
+                    <div
+                      className={`mt-0.5 flex h-9 w-9 items-center justify-center rounded-full ${
+                        item.tone === "danger"
+                          ? "bg-[#5B1D1D] text-[#F87171]"
+                          : item.tone === "warning"
+                            ? "bg-[#46310C] text-[#FBBF24]"
+                            : "bg-[#102C53] text-[#60A5FA]"
+                      }`}
+                    >
+                      {item.tone === "danger" ? <Siren className="h-4 w-4" /> : item.tone === "warning" ? <Bell className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-medium leading-6 text-white">{item.title}</div>
+                      <div className="mt-1 text-xs text-[#94A3B8]">{item.subtitle}</div>
+                    </div>
+                    <ChevronRight className="mt-1 h-4 w-4 text-[#64748B]" />
+                  </div>
+                ))}
+                {alertItems.length === 0 && (
+                  <div className="rounded-xl border border-white/6 bg-[#0E141D] p-4 text-sm text-[#94A3B8]">
+                    No active alerts right now.
+                  </div>
+                )}
+              </div>
+            </section>
+
+            <section className="data-card rounded-xl border border-white/6 bg-[linear-gradient(180deg,#121923_0%,#0D1219_100%)] p-5 shadow-[0_12px_40px_rgba(0,0,0,0.24)]">
+              <div className="mb-4 flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-white">Quick Summary</h3>
+                <span className="rounded-md border border-white/10 bg-[#111827] px-3 py-1.5 text-xs text-[#CBD5E1]">This Month</span>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <QuickSummaryCard label="Services Completed" value={quickSummary.servicesCompleted} icon={Wrench} tint="bg-[#0B5137] text-[#4ADE80]" />
+                <QuickSummaryCard label="Calibrations Completed" value={quickSummary.calibrationsCompleted} icon={PackageCheck} tint="bg-[#0B5137] text-[#4ADE80]" />
+                <QuickSummaryCard label="Tests Completed" value={quickSummary.testsCompleted} icon={ClipboardList} tint="bg-[#41215E] text-[#C084FC]" />
+                <QuickSummaryCard label="Total Spent" value={formatPeso(quickSummary.totalSpent)} icon={Receipt} tint="bg-[#102C53] text-[#60A5FA]" />
+              </div>
+            </section>
+
+            <section className="data-card rounded-xl border border-white/6 bg-[linear-gradient(180deg,#121923_0%,#0D1219_100%)] p-5 shadow-[0_12px_40px_rgba(0,0,0,0.24)]">
+              <div className="mb-4 flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-white">Latest Service Reports</h3>
+                <button className="text-sm font-medium text-[#60A5FA]">View all</button>
+              </div>
+              <div className="space-y-3">
+                {latestReports.map((report) => (
+                  <div key={report.id} className="flex items-center gap-3 rounded-xl border border-white/6 bg-[#0E141D] p-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#5B1D1D] text-[#F87171]">
+                      <FileText className="h-4 w-4" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-medium text-white">{report.title}</div>
+                      <div className="mt-1 text-xs text-[#94A3B8]">{report.date}</div>
+                    </div>
+                  </div>
+                ))}
+                {latestReports.length === 0 && (
+                  <div className="rounded-xl border border-white/6 bg-[#0E141D] p-4 text-sm text-[#94A3B8]">
+                    No recent reports available.
+                  </div>
+                )}
+              </div>
+            </section>
           </div>
         </div>
       </div>
@@ -328,27 +883,142 @@ export default function ClientDashboard() {
   );
 }
 
-function KpiCard({
-  label,
+function SummaryCard({
+  title,
   value,
-  hint,
+  subtitle,
   icon: Icon,
-  accent,
+  tint,
+  stats,
 }: {
-  label: string;
-  value: string;
-  hint: string;
+  title: string;
+  value: number;
+  subtitle: string;
   icon: React.ElementType;
-  accent: string;
+  tint: string;
+  stats: Array<{ label: string; value: number; color: string }>;
 }) {
   return (
-    <div className="data-card p-4">
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-[10px] text-[#88888C] uppercase tracking-wider">{label}</span>
-        <Icon className="w-4 h-4 text-[#88888C]" />
+    <div className={`data-card rounded-xl border border-white/6 bg-gradient-to-br ${tint} p-5 shadow-[0_10px_35px_rgba(0,0,0,0.24)]`}>
+      <div className="flex items-start gap-3">
+        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-white/10 text-white backdrop-blur-sm">
+          <Icon className="h-5 w-5" />
+        </div>
+        <div className="min-w-0">
+          <div className="text-sm font-semibold text-white">{title}</div>
+          <div className="mt-1 flex items-end gap-2">
+            <span className="text-[36px] font-bold leading-none tracking-[-0.04em] text-white">{value}</span>
+            <span className="pb-1 text-[13px] text-[#CBD5E1]">{subtitle}</span>
+          </div>
+        </div>
       </div>
-      <div className={`text-3xl font-bold ${accent}`}>{value}</div>
-      <div className="text-[10px] text-[#88888C] mt-1">{hint}</div>
+
+      <div className={`mt-5 grid gap-3 text-sm ${stats.length === 3 ? "grid-cols-3" : "grid-cols-4"}`}>
+        {stats.map((stat) => (
+          <div key={stat.label}>
+            <div className={`text-base font-semibold ${stat.color}`}>{stat.value}</div>
+            <div className="mt-1 text-[11px] text-[#CBD5E1]">{stat.label}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function OverviewCard({
+  title,
+  linkLabel,
+  total,
+  centerLabel,
+  data,
+  footerIcon: FooterIcon,
+  footerTitle,
+  footerSubtitle,
+}: {
+  title: string;
+  linkLabel: string;
+  total: number;
+  centerLabel: string;
+  data: DonutDatum[];
+  footerIcon: React.ElementType;
+  footerTitle: string;
+  footerSubtitle: string;
+}) {
+  return (
+    <section className="data-card rounded-xl border border-white/6 bg-[linear-gradient(180deg,#121923_0%,#0D1219_100%)] p-5 shadow-[0_12px_40px_rgba(0,0,0,0.24)]">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <h3 className="text-base font-semibold text-white">{title}</h3>
+        <button className="text-sm font-medium text-[#60A5FA]">{linkLabel}</button>
+      </div>
+
+      <div className="grid grid-cols-[140px_minmax(0,1fr)] items-center gap-3">
+        <div className="relative h-[140px] w-[140px]">
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+              <Pie data={data} dataKey="value" cx="50%" cy="50%" innerRadius={42} outerRadius={64} stroke="none" paddingAngle={3}>
+                {data.map((entry) => (
+                  <Cell key={entry.name} fill={entry.color} />
+                ))}
+              </Pie>
+            </PieChart>
+          </ResponsiveContainer>
+          {donutCenterLabel(total, centerLabel)}
+        </div>
+
+        <div className="space-y-2">
+          {data.map((entry) => {
+            const percentage = total > 0 ? Math.round((entry.value / total) * 100) : 0;
+            return (
+              <div key={entry.name} className="flex items-center justify-between gap-3 text-xs">
+                <div className="flex items-center gap-2 text-[#CBD5E1]">
+                  <span className="h-2 w-2 rounded-full" style={{ backgroundColor: entry.color }} />
+                  {entry.name}
+                </div>
+                <div className="text-right text-[#94A3B8]">
+                  <span className="mr-1.5 text-white">{entry.value}</span>
+                  ({percentage}%)
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="mt-4 flex items-start gap-3 rounded-xl border border-white/6 bg-[#0E141D] p-3">
+        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#46310C] text-[#FBBF24]">
+          <FooterIcon className="h-4 w-4" />
+        </div>
+        <div>
+          <div className="text-sm font-medium text-white">{footerTitle}</div>
+          <div className="mt-1 text-xs text-[#94A3B8]">{footerSubtitle}</div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function QuickSummaryCard({
+  label,
+  value,
+  icon: Icon,
+  tint,
+}: {
+  label: string;
+  value: number | string;
+  icon: React.ElementType;
+  tint: string;
+}) {
+  return (
+    <div className="rounded-xl border border-white/6 bg-[#0E141D] p-4">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <div className="text-xs uppercase tracking-[0.14em] text-[#64748B]">{label}</div>
+          <div className="mt-2 text-[24px] font-semibold tracking-[-0.03em] text-white">{value}</div>
+        </div>
+        <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${tint}`}>
+          <Icon className="h-4 w-4" />
+        </div>
+      </div>
     </div>
   );
 }

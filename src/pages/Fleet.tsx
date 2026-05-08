@@ -9,6 +9,9 @@ import {
   fetchDailyHistorySummary,
   type GPS51DailyHistorySummary,
 } from "@/services/gps51";
+import { AddEquipmentModal, type Equipment as ModalEquipment } from "@/components/AddEquipmentModal";
+import { PMSConfigurationModal, type PMSConfiguration } from "@/components/PMSConfigurationModal";
+import { Button } from "@/components/ui/button";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import {
@@ -17,6 +20,8 @@ import {
   ChevronRight,
   Wifi,
   WifiOff,
+  Plus,
+  Settings,
 } from "lucide-react";
 
 // Fix Leaflet default markers
@@ -262,6 +267,16 @@ export default function Fleet() {
   const [historyDateStatus, setHistoryDateStatus] = useState<"parking" | "offline" | null>(null);
   const [gps001HoursTodayMs, setGps001HoursTodayMs] = useState(0);
   const [gps001HoursTotalMs, setGps001HoursTotalMs] = useState(() => readCachedGps001TotalHoursMs());
+  
+  // Modal states
+  const [addEquipmentOpen, setAddEquipmentOpen] = useState(false);
+  const [pmsConfigOpen, setPmsConfigOpen] = useState(false);
+  
+  // Equipment added through modal (in-memory)
+  const [addedEquipment, setAddedEquipment] = useState<ModalEquipment[]>([]);
+  
+  // PMS Configurations (in-memory)
+  const [pmsConfigurations, setPmsConfigurations] = useState<PMSConfiguration[]>([]);
 
   const selectedUnit = units.find((u) => u.id === selectedUnitId);
   const selectedEquipment = equipment.find((e) => e.id === selectedUnit?.equipmentId);
@@ -486,6 +501,26 @@ export default function Fleet() {
       default:
         return offlineIcon;
     }
+  };
+
+  // Handlers for equipment modal
+  const handleAddEquipment = (equipment: ModalEquipment) => {
+    setAddedEquipment([...addedEquipment, equipment]);
+  };
+
+  // Handlers for PMS configuration modal
+  const handleAddPMSConfiguration = (config: PMSConfiguration) => {
+    setPmsConfigurations([...pmsConfigurations, config]);
+  };
+
+  const handleUpdatePMSConfiguration = (id: string, config: PMSConfiguration) => {
+    setPmsConfigurations(
+      pmsConfigurations.map((c) => (c.id === id ? config : c))
+    );
+  };
+
+  const handleDeletePMSConfiguration = (id: string) => {
+    setPmsConfigurations(pmsConfigurations.filter((c) => c.id !== id));
   };
 
   return (
@@ -798,6 +833,55 @@ export default function Fleet() {
             </div>
             <p className="text-[10px] text-[#88888C]">{units.length} units tracked</p>
           </div>
+
+          {/* Action Buttons */}
+          <div className="p-3 border-b border-white/5 flex gap-2">
+            <Button
+              onClick={() => setAddEquipmentOpen(true)}
+              className="flex-1 bg-[#F2A900] text-[#050505] hover:bg-[#F2A900]/90 font-semibold text-xs h-8"
+            >
+              <Plus className="w-3.5 h-3.5 mr-1" />
+              Add Equipment
+            </Button>
+            <Button
+              onClick={() => setPmsConfigOpen(true)}
+              className="flex-1 bg-[#3B82F6] text-white hover:bg-[#3B82F6]/90 font-semibold text-xs h-8"
+            >
+              <Settings className="w-3.5 h-3.5 mr-1" />
+              PMS Config
+            </Button>
+          </div>
+
+          {/* Added Equipment Section */}
+          {addedEquipment.length > 0 && (
+            <div className="border-b border-white/5">
+              {addedEquipment.map((eq) => {
+                const client = clients.find((c) => c.id === eq.clientId);
+                return (
+                  <button
+                    key={eq.id}
+                    className="w-full p-3 text-left transition-colors hover:bg-white/5 border-b border-white/5 last:border-b-0"
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-2 h-2 rounded-full bg-[#F2A900]" />
+                        <span className="text-xs font-medium text-[#EAEAEA]">{eq.name}</span>
+                      </div>
+                      <ChevronRight className="w-3 h-3 text-[#88888C]" />
+                    </div>
+                    <div className="text-[10px] text-[#88888C] ml-3.5 space-y-0.5">
+                      <div>{client?.companyName || "—"}</div>
+                      <div className="flex items-center gap-2">
+                        <span>Hours Today: {eq.hoursToday}</span>
+                        <span>Hours in Total: {eq.hoursTotal}</span>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
           <div className="divide-y divide-white/5">
             {units.map((unit) => {
               const eq = equipment.find((e) => e.id === unit.equipmentId);
@@ -811,15 +895,20 @@ export default function Fleet() {
                 "GPS-004": { today: "6h 15m", total: "2100h 40m" },
                 "GPS-010": { today: "3h 50m", total: "3450h 40m" },
                 "GPS-007": { today: "7h 10m", total: "5200h 40m" },
+                "EXC-CAT-20": { today: "5h 05m", total: "2780h 30m" },
+                "LAB-STS-01": { today: "2h 40m", total: "1120h 20m" },
+                "TST-BEAM-02": { today: "3h 25m", total: "1655h 15m" },
               };
+
+              const fallbackStaticHours = { today: "4h 20m", total: "3890h 40m" };
 
               const hoursTodayText = isGps001
                 ? formatHoursFromMsForSidebar(gps001HoursTodayMs)
-                : (staticHoursByUnit[unitLabel]?.today ?? "0");
+                : (staticHoursByUnit[unitLabel]?.today ?? fallbackStaticHours.today);
 
               const hoursTotalText = isGps001
                 ? formatHoursFromMsForSidebar(gps001HoursTotalMs)
-                : (staticHoursByUnit[unitLabel]?.total ?? "0");
+                : (staticHoursByUnit[unitLabel]?.total ?? fallbackStaticHours.total);
 
               return (
                 <button
@@ -855,6 +944,23 @@ export default function Fleet() {
           </div>
         </div>
       </div>
+
+      {/* Modals */}
+      <AddEquipmentModal
+        open={addEquipmentOpen}
+        onOpenChange={setAddEquipmentOpen}
+        clients={clients}
+        onAddEquipment={handleAddEquipment}
+      />
+
+      <PMSConfigurationModal
+        open={pmsConfigOpen}
+        onOpenChange={setPmsConfigOpen}
+        configurations={pmsConfigurations}
+        onAddConfiguration={handleAddPMSConfiguration}
+        onUpdateConfiguration={handleUpdatePMSConfiguration}
+        onDeleteConfiguration={handleDeletePMSConfiguration}
+      />
     </div>
   );
 }
