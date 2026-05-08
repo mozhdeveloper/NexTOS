@@ -88,6 +88,20 @@ interface HistoryRow {
 const GPS51_USERNAME = import.meta.env.VITE_GPS51_USERNAME ?? "";
 const GPS51_PASSWORD = import.meta.env.VITE_GPS51_PASSWORD ?? "";
 const FLEET_HISTORY_DEBUG = true;
+const GPS001_TOTAL_HOURS_CACHE_KEY = "nextos-gps001-total-hours-ms";
+
+function readCachedGps001TotalHoursMs(): number {
+  if (typeof window === "undefined") return 0;
+  const rawValue = window.localStorage.getItem(GPS001_TOTAL_HOURS_CACHE_KEY);
+  const parsed = Number(rawValue ?? "0");
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
+
+function writeCachedGps001TotalHoursMs(totalMs: number): void {
+  if (typeof window === "undefined") return;
+  if (!Number.isFinite(totalMs) || totalMs <= 0) return;
+  window.localStorage.setItem(GPS001_TOTAL_HOURS_CACHE_KEY, String(totalMs));
+}
 
 function logFleetHistory(label: string, payload: unknown): void {
   if (!FLEET_HISTORY_DEBUG) return;
@@ -247,7 +261,7 @@ export default function Fleet() {
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [historyDateStatus, setHistoryDateStatus] = useState<"parking" | "offline" | null>(null);
   const [gps001HoursTodayMs, setGps001HoursTodayMs] = useState(0);
-  const [gps001HoursTotalMs, setGps001HoursTotalMs] = useState(0);
+  const [gps001HoursTotalMs, setGps001HoursTotalMs] = useState(() => readCachedGps001TotalHoursMs());
 
   const selectedUnit = units.find((u) => u.id === selectedUnitId);
   const selectedEquipment = equipment.find((e) => e.id === selectedUnit?.equipmentId);
@@ -269,6 +283,11 @@ export default function Fleet() {
   const gps001LiveStatus = gps001Unit ? toDisplayStatus(gps001Unit.telemetry.status) : "offline";
   const workingCount = gps001LiveStatus === "driving" || gps001LiveStatus === "idle" ? 1 : 0;
   const today = new Date();
+  const sidebarDateLabel = today.toLocaleDateString(undefined, {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
   const isCurrentMonthView =
     historyMonth.getFullYear() === today.getFullYear() && historyMonth.getMonth() === today.getMonth();
 
@@ -331,10 +350,10 @@ export default function Fleet() {
 
   useEffect(() => {
     let ignore = false;
+    let refreshInterval: ReturnType<typeof setInterval> | null = null;
 
     const loadGps001HoursTotal = async () => {
       if (!GPS51_USERNAME || !GPS51_PASSWORD) {
-        if (!ignore) setGps001HoursTotalMs(0);
         return;
       }
       try {
@@ -344,20 +363,26 @@ export default function Fleet() {
           "2000-01-01",
           toYmd(new Date())
         );
-        if (!ignore) {
+        if (!ignore && Number.isFinite(totalMs) && totalMs > 0) {
           setGps001HoursTotalMs(totalMs);
+          writeCachedGps001TotalHoursMs(totalMs);
         }
       } catch {
-        if (!ignore) {
-          setGps001HoursTotalMs(0);
-        }
+        // Keep the last known-good total; transient API failures should not reset the sidebar to 0.
       }
     };
 
     void loadGps001HoursTotal();
 
+    refreshInterval = setInterval(() => {
+      void loadGps001HoursTotal();
+    }, 120000);
+
     return () => {
       ignore = true;
+      if (refreshInterval) {
+        clearInterval(refreshInterval);
+      }
     };
   }, []);
 
@@ -748,7 +773,10 @@ export default function Fleet() {
         {/* Asset List Sidebar */}
         <div className="w-[280px] data-card overflow-auto">
           <div className="p-3 border-b border-white/5">
-            <h3 className="text-sm font-semibold text-[#EAEAEA]">Fleet Units</h3>
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="text-sm font-semibold text-[#EAEAEA]">Fleet Units</h3>
+              <span className="text-[10px] text-[#88888C]">{sidebarDateLabel}</span>
+            </div>
             <p className="text-[10px] text-[#88888C]">{units.length} units tracked</p>
           </div>
           <div className="divide-y divide-white/5">

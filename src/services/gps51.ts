@@ -1155,41 +1155,112 @@ export async function fetchAllTimeWorkingMs(
   endDay?: string
 ): Promise<number> {
   const finalEndDay = endDay ?? new Date().toISOString().slice(0, 10);
-  const data = await postGps51Action("reportmileagedetail", username, password, {
-    deviceid: DEVICE_ID,
-    startday: startDay,
-    endday: finalEndDay,
-    offset: 8,
-  });
+  const toYmd = (date: Date): string => {
+    const year = date.getFullYear();
+    const month = `${date.getMonth() + 1}`.padStart(2, "0");
+    const day = `${date.getDate()}`.padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
 
-  if (data?.status !== 0) {
-    return 0;
+  const parseYmd = (value: string): Date | null => {
+    const parsed = new Date(`${value}T00:00:00`);
+    if (Number.isNaN(parsed.getTime())) {
+      return null;
+    }
+    return parsed;
+  };
+
+  const resolveRecordWorkingMs = (record: Record<string, unknown>): number => {
+    const explicitMs = pickFirstNonNegative(
+      record.totalacc,
+      record.workingduration,
+      record.workingtime,
+      record.accontime,
+      record.totalacctime,
+      record.totalworkingtime,
+      record.worktime,
+      record.onlinetime
+    ) ?? 0;
+
+    const parsedDurationMs = Math.max(
+      parseDurationFromRecordStrings(record, /(totalacc|accon|working|work|online).*(str|text|duration|time)/i),
+      parseDurationFromRecordStrings(record, /(str|text|duration).*(totalacc|accon|working|work|online)/i)
+    );
+
+    return Math.max(explicitMs, parsedDurationMs);
+  };
+
+  const fetchRangeRecords = async (rangeStart: string, rangeEnd: string): Promise<Record<string, unknown>[]> => {
+    const data = await postGps51Action("reportmileagedetail", username, password, {
+      deviceid: DEVICE_ID,
+      startday: rangeStart,
+      endday: rangeEnd,
+      offset: 8,
+    });
+
+    if (data?.status !== 0) {
+      logGPS51("alltime.working.range.error", {
+        rangeStart,
+        rangeEnd,
+        status: data?.status,
+        cause: data?.cause,
+      });
+      return [];
+    }
+
+    return Array.isArray(data?.records)
+      ? (data.records as Record<string, unknown>[])
+      : [];
+  };
+
+  let records = await fetchRangeRecords(startDay, finalEndDay);
+  let usedYearlyFallback = false;
+
+  if (!records.length) {
+    const parsedStart = parseYmd(startDay);
+    const parsedEnd = parseYmd(finalEndDay);
+
+    if (parsedStart && parsedEnd && parsedStart <= parsedEnd) {
+      usedYearlyFallback = true;
+      const yearlyRecords: Record<string, unknown>[] = [];
+      let cursorYear = parsedStart.getFullYear();
+      const endYear = parsedEnd.getFullYear();
+
+      while (cursorYear <= endYear) {
+        const rangeStartDate =
+          cursorYear === parsedStart.getFullYear()
+            ? parsedStart
+            : new Date(cursorYear, 0, 1);
+        const rangeEndDate =
+          cursorYear === endYear
+            ? parsedEnd
+            : new Date(cursorYear, 11, 31);
+
+        const chunkRecords = await fetchRangeRecords(
+          toYmd(rangeStartDate),
+          toYmd(rangeEndDate)
+        );
+        yearlyRecords.push(...chunkRecords);
+        cursorYear += 1;
+      }
+
+      records = yearlyRecords;
+    }
   }
 
-  const records = Array.isArray(data?.records) ? data.records : [];
   if (!records.length) {
     return 0;
   }
 
-  const resolveRecordMetricMs = (record: Record<string, unknown>, keys: string[]): number => {
-    for (const key of keys) {
-      const value = Number(record[key]);
-      if (Number.isFinite(value) && value >= 0) {
-        return value;
-      }
-    }
-    return 0;
-  };
-
   const totalWorkingMs = records.reduce((sum: number, record: Record<string, unknown>) => {
-    const workingMs = resolveRecordMetricMs(record, ["totalacc", "workingduration", "workingtime", "accontime"]);
-    return sum + workingMs;
+    return sum + resolveRecordWorkingMs(record);
   }, 0);
 
   logGPS51("alltime.working.ms", {
     startDay,
     endDay: finalEndDay,
     days: records.length,
+    usedYearlyFallback,
     totalWorkingMs,
   });
 
