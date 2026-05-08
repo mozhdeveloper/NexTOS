@@ -28,6 +28,7 @@ interface OperationsState {
   getServiceHistory: (equipmentId: number) => ServiceRecord[];
   getClientServiceHistory: (clientId: number) => ServiceRecord[];
   generateQRData: (serialNumber: string) => string;
+  syncWithFleet: (fleetUnits: any[]) => void;
 }
 
 const now = new Date().toISOString();
@@ -240,9 +241,25 @@ export const useOperationsStore = create<OperationsState>()(
       getServiceHistory: (equipmentId) => get().serviceRecords.filter((r) => r.equipmentId === equipmentId),
       getClientServiceHistory: (clientId) => get().serviceRecords.filter((r) => r.clientId === clientId),
       generateQRData: (serialNumber) => JSON.stringify({ serial: serialNumber, company: "NexTOS", scannedAt: new Date().toISOString() }),
+      
+      syncWithFleet: (fleetUnits) => {
+        set((state) => ({
+          equipment: state.equipment.map((eq) => {
+            const fleetUnit = fleetUnits.find((u) => u.equipmentId === eq.id);
+            if (fleetUnit) {
+              return {
+                ...eq,
+                currentHours: fleetUnit.telemetry.hours,
+                location: `${fleetUnit.telemetry.lat.toFixed(4)}, ${fleetUnit.telemetry.lng.toFixed(4)}`,
+              };
+            }
+            return eq;
+          }),
+        }));
+      },
     }),
     {
-      name: "nextos-operations-v2",
+      name: "nextos-operations-v4",
     }
   )
 );

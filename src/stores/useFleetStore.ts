@@ -5,6 +5,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { FleetUnit, GPSTelemetry } from "@/types";
 import { fetchLastPosition } from "@/services/gps51";
+import { useOperationsStore } from "./useOperationsStore";
 
 // ─── GPS51 credentials ───────────────────────────────────────────────────────
 // ⚠️ Move these to .env in production:
@@ -124,6 +125,9 @@ export const useFleetStore = create<FleetState>()(
                 : unit
             ),
           }));
+
+          // 🔄 Sync Equipment with Fleet Data
+          useOperationsStore.getState().syncWithFleet(get().units);
         } catch (err: any) {
           set({ fetchError: err.message ?? "Unknown error fetching GPS data" });
           console.error("GPS51 fetch error:", err);
@@ -176,6 +180,8 @@ export const useFleetStore = create<FleetState>()(
               },
             })),
           }));
+          // 🔄 Sync Equipment with Fleet Data (Simulation)
+          useOperationsStore.getState().syncWithFleet(get().units);
         }, 3000);
       },
 
