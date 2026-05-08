@@ -267,10 +267,13 @@ export default function Fleet() {
   const selectedEquipment = equipment.find((e) => e.id === selectedUnit?.equipmentId);
   const selectedUnitLabel = selectedEquipment?.unitId || selectedUnit?.unitName || "Unit";
   const isGps51UnitSelected = selectedUnit?.id === 1 || selectedUnitLabel.toUpperCase() === "GPS-001";
+  const isGps001Unit = (unit: { id: number; unitName?: string }) =>
+    unit.id === 1 || (unit.unitName ?? "").toUpperCase() === "GPS-001";
   const selectedHistoryDay = toYmd(selectedHistoryDate);
   // In history view, GPS-001 status reflects whether the selected date had activity
   const getEffectiveStatus = (unitId: number, rawStatus: string): UnitDisplayStatus => {
-    if (viewMode === "history" && unitId === 1 && historyDateStatus !== null) {
+    const unit = units.find((u) => u.id === unitId);
+    if (unit && isGps001Unit(unit) && historyDateStatus !== null) {
       return historyDateStatus;
     }
     return toDisplayStatus(rawStatus);
@@ -283,11 +286,19 @@ export default function Fleet() {
   const gps001LiveStatus = gps001Unit ? toDisplayStatus(gps001Unit.telemetry.status) : "offline";
   const workingCount = gps001LiveStatus === "driving" || gps001LiveStatus === "idle" ? 1 : 0;
   const today = new Date();
-  const sidebarDateLabel = today.toLocaleDateString(undefined, {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  });
+  const isDateToday = isSameDate(selectedHistoryDate, today);
+  const hideGps001Pin = !isDateToday && historyDateStatus === "offline" && historyRows.length === 0;
+  const sidebarDateWithPrefix = isDateToday
+    ? `Today: ${today.toLocaleDateString(undefined, {
+        month: "long",
+        day: "numeric",
+        year: "numeric",
+      })}`
+    : `Past Date: ${selectedHistoryDate.toLocaleDateString(undefined, {
+        month: "long",
+        day: "numeric",
+        year: "numeric",
+      })}`;
   const isCurrentMonthView =
     historyMonth.getFullYear() === today.getFullYear() && historyMonth.getMonth() === today.getMonth();
 
@@ -560,7 +571,12 @@ export default function Fleet() {
                   url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
                 />
                 <MapCenter center={mapCenter} />
-                {units.filter((unit) => typeof unit.telemetry.lat === "number" && typeof unit.telemetry.lng === "number").map((unit) => (
+                {units.filter((unit) => {
+                  const hasCoordinates = typeof unit.telemetry.lat === "number" && typeof unit.telemetry.lng === "number";
+                  if (!hasCoordinates) return false;
+                  if (isGps001Unit(unit) && hideGps001Pin) return false;
+                  return true;
+                }).map((unit) => (
                   <Marker
                     key={unit.id}
                     position={[unit.telemetry.lat, unit.telemetry.lng]}
@@ -582,7 +598,10 @@ export default function Fleet() {
                   </Marker>
                 ))}
                 {/* Pulse effect for selected unit */}
-                {selectedUnit && typeof selectedUnit.telemetry.lat === "number" && typeof selectedUnit.telemetry.lng === "number" && (
+                {selectedUnit &&
+                  typeof selectedUnit.telemetry.lat === "number" &&
+                  typeof selectedUnit.telemetry.lng === "number" &&
+                  !(isGps001Unit(selectedUnit) && hideGps001Pin) && (
                   <Circle
                     center={[selectedUnit.telemetry.lat, selectedUnit.telemetry.lng]}
                     radius={500}
@@ -775,7 +794,7 @@ export default function Fleet() {
           <div className="p-3 border-b border-white/5">
             <div className="flex items-center justify-between gap-2">
               <h3 className="text-sm font-semibold text-[#EAEAEA]">Fleet Units</h3>
-              <span className="text-[10px] text-[#88888C]">{sidebarDateLabel}</span>
+              <span className="text-[10px] text-[#88888C]">{sidebarDateWithPrefix}</span>
             </div>
             <p className="text-[10px] text-[#88888C]">{units.length} units tracked</p>
           </div>
