@@ -1,17 +1,43 @@
-import React from "react";
+import React, { useState } from "react";
 import { useAuthStore } from "@/stores/useAuthStore";
 import { useOperationsStore } from "@/stores/useOperationsStore";
-import { Package, ChevronDown, ChevronUp, Wrench, FileText } from "lucide-react";
+import { 
+  Package, 
+  ChevronDown, 
+  ChevronUp, 
+  Wrench, 
+  FileText, 
+  Search, 
+  QrCode, 
+  Printer 
+} from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { QRCodeSVG } from "qrcode.react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 export default function ClientEquipment() {
   const { user } = useAuthStore();
   const { equipment, serviceRecords, servicePhotos } = useOperationsStore();
   const clientId = user?.clientId || 1;
 
-  const clientEquipment = equipment.filter((e) => e.clientId === clientId);
-  const clientRecords = serviceRecords.filter((r) => r.clientId === clientId);
-  const { useState } = React;
+  const [searchQuery, setSearchQuery] = useState("");
+  const [qrSerial, setQrSerial] = useState("");
+  const [showQR, setShowQR] = useState(false);
   const [expanded, setExpanded] = useState<number | null>(null);
+
+  const clientEquipment = equipment.filter(
+    (e) => e.clientId === clientId && 
+    (searchQuery === "" || 
+     e.unitId.toLowerCase().includes(searchQuery.toLowerCase()) || 
+     e.serialNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
+     e.model.toLowerCase().includes(searchQuery.toLowerCase()))
+  );
 
   const statusBadge = (status: string) => {
     switch (status) {
@@ -39,17 +65,28 @@ export default function ClientEquipment() {
   };
 
   return (
-    <div className="space-y-4 px-8 pt-8">
+    <div className="space-y-4 px-8 pt-8 pb-12">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-[32px] font-bold text-[#EAEAEA] tracking-[-0.02em]" >My Equipment</h1>
           <p className="text-sm text-[#88888C] mt-0.5">{clientEquipment.length} units under management</p>
         </div>
+        <div className="flex items-center gap-3">
+          <div className="relative w-64">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#88888C]" />
+            <Input
+              placeholder="Search equipment..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-8 h-9 bg-[#1A1A20] border-white/10 text-[#EAEAEA] text-xs"
+            />
+          </div>
+        </div>
       </div>
 
       <div className="space-y-3">
         {clientEquipment.map((eq) => {
-          const eqRecords = clientRecords.filter((r) => r.equipmentId === eq.id);
+          const eqRecords = serviceRecords.filter((r) => r.equipmentId === eq.id && r.clientId === clientId);
           const eqPhotos = servicePhotos.filter((p) => eqRecords.some((r) => r.id === p.serviceRecordId));
           const isExpanded = expanded === eq.id;
           const serviceDue = isServiceDue(eq);
@@ -74,6 +111,18 @@ export default function ClientEquipment() {
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setQrSerial(eq.serialNumber);
+                      setShowQR(true);
+                    }}
+                    className="h-8 w-8 p-0 text-[#88888C] hover:text-[#F2A900] hover:bg-[#F2A900]/10"
+                  >
+                    <QrCode className="w-4 h-4" />
+                  </Button>
                   {serviceDue && (
                     <span className="px-1.5 py-0.5 rounded text-[10px] bg-[#EF4444]/20 text-[#EF4444] font-medium">Service Due</span>
                   )}
@@ -203,6 +252,36 @@ export default function ClientEquipment() {
           );
         })}
       </div>
+
+      {/* QR Code Dialog */}
+      <Dialog open={showQR} onOpenChange={setShowQR}>
+        <DialogContent className="bg-[#0A0A0C] border-white/10 sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-[#EAEAEA] flex items-center gap-2">
+              <QrCode className="w-5 h-5 text-[#F2A900]" />
+              Equipment QR Code
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col items-center justify-center p-6 bg-white rounded-lg mt-4">
+            <QRCodeSVG value={qrSerial} size={200} level="H" includeMargin={true} />
+            <div className="mt-4 text-center">
+              <p className="text-sm font-bold text-[#050505] font-mono-tech">{qrSerial}</p>
+              <p className="text-xs text-[#88888C] mt-1 uppercase font-bold">
+                {equipment.find((e) => e.serialNumber === qrSerial)?.unitId}
+              </p>
+            </div>
+          </div>
+          <div className="flex justify-center mt-4">
+            <Button
+              onClick={() => window.print()}
+              className="bg-[#F2A900] text-[#050505] hover:bg-[#F2A900]/80 font-bold"
+            >
+              <Printer className="w-4 h-4 mr-2" />
+              Print QR Code
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

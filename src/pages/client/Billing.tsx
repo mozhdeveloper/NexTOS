@@ -10,7 +10,7 @@ import {
   CreditCard,
   ReceiptText,
   CalendarClock,
-  DollarSign,
+  DollarSign, 
   TrendingUp,
   ChevronRight,
   Info,

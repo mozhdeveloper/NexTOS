@@ -243,6 +243,24 @@ export default function Services() {
                 className="pl-8 h-8 bg-[#1A1A20] border-white/10 text-[#EAEAEA] text-xs"
               />
             </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                if (selectedEquipment) {
+                  const eq = equipment.find(e => e.id === selectedEquipment);
+                  if (eq) {
+                    setQrSerial(eq.serialNumber);
+                    setShowQR(true);
+                  }
+                }
+              }}
+              className="h-8 border-white/10 bg-[#1A1A20] text-[#EAEAEA] hover:bg-[#F2A900] hover:text-[#050505]"
+              disabled={!selectedEquipment}
+            >
+              <QrCode className="w-3.5 h-3.5 mr-1.5" />
+              Generate QR
+            </Button>
           </div>
 
           <div className="data-card overflow-auto">
@@ -256,6 +274,7 @@ export default function Services() {
                   <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Status</th>
                   <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Hours</th>
                   <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Next Service</th>
+                  <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">QR</th>
                 </tr>
               </thead>
               <tbody>
@@ -287,6 +306,20 @@ export default function Services() {
                           {eq.nextServiceDue}h
                           {serviceDue && <AlertTriangle className="w-3 h-3 inline ml-1 text-[#EF4444]" />}
                         </span>
+                      </td>
+                      <td className="py-2.5 px-3">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setQrSerial(eq.serialNumber);
+                            setShowQR(true);
+                          }}
+                          className="h-7 w-7 p-0 text-[#88888C] hover:text-[#F2A900] hover:bg-[#F2A900]/10"
+                        >
+                          <QrCode className="w-3.5 h-3.5" />
+                        </Button>
                       </td>
                     </tr>
                   );
@@ -567,6 +600,36 @@ export default function Services() {
               onPrint={handlePrintReport}
             />
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* QR Code Dialog */}
+      <Dialog open={showQR} onOpenChange={setShowQR}>
+        <DialogContent className="bg-[#0A0A0C] border-white/10 sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-[#EAEAEA] flex items-center gap-2">
+              <QrCode className="w-5 h-5 text-[#F2A900]" />
+              Equipment QR Code
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col items-center justify-center p-6 bg-white rounded-lg mt-4">
+            <QRCodeSVG value={qrSerial} size={200} level="H" includeMargin={true} />
+            <div className="mt-4 text-center">
+              <p className="text-sm font-bold text-[#050505] font-mono-tech">{qrSerial}</p>
+              <p className="text-xs text-[#88888C] mt-1 uppercase font-bold">
+                {equipment.find((e) => e.serialNumber === qrSerial)?.unitId}
+              </p>
+            </div>
+          </div>
+          <div className="flex justify-center mt-4">
+            <Button
+              onClick={() => window.print()}
+              className="bg-[#F2A900] text-[#050505] hover:bg-[#F2A900]/80 font-bold"
+            >
+              <Printer className="w-4 h-4 mr-2" />
+              Print QR Code
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
