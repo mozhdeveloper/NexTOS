@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState } from "react";
 import { useAuthStore } from "@/stores/useAuthStore";
 import { useOperationsStore } from "@/stores/useOperationsStore";
 import { 
@@ -12,47 +12,17 @@ import {
   Printer,
   Camera,
   X,
-  Loader2,
-  CheckCircle2,
-  Activity,
-  Wallet
+  Loader2
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { QRCodeSVG } from "qrcode.react";
-import { Html5QrcodeScanner, Html5Qrcode } from "html5-qrcode";
-import { toast } from "sonner";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-
-function KPICard({ title, value, subtext, icon: Icon, colorClass, iconBgClass }: {
-  title: string;
-  value: string | number;
-  subtext: string;
-  icon: any;
-  colorClass: string;
-  iconBgClass: string;
-}) {
-  return (
-    <div className="group relative overflow-hidden rounded-xl bg-[#1A1A1A]/80 backdrop-blur-md border border-white/10 p-4 transition-all duration-300 hover:border-[#10B981]/50 hover:-translate-y-1 hover:shadow-[0_0_20px_rgba(16,185,129,0.1)]">
-      <div className="flex items-center justify-between relative z-10">
-        <div>
-          <p className="text-[10px] font-bold text-[#88888C] uppercase tracking-wider">{title}</p>
-          <h3 className="text-2xl font-bold text-[#EAEAEA] mt-1 font-mono-tech">{value}</h3>
-          <p className="text-[10px] text-[#88888C] mt-0.5">{subtext}</p>
-        </div>
-        <div className={`w-10 h-10 rounded-full flex items-center justify-center ${iconBgClass}`}>
-          <Icon className={`w-5 h-5 ${colorClass}`} />
-        </div>
-      </div>
-      <div className="absolute inset-0 bg-gradient-to-br from-[#10B981]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-    </div>
-  );
-}
 
 export default function ClientEquipment() {
   const { user } = useAuthStore();
@@ -63,21 +33,6 @@ export default function ClientEquipment() {
   const [qrSerial, setQrSerial] = useState("");
   const [showQR, setShowQR] = useState(false);
   const [expanded, setExpanded] = useState<number | null>(null);
-  
-  const allEqRecords = serviceRecords.filter((r) => r.clientId === clientId);
-  const totalServices = allEqRecords.length;
-  const completedServices = allEqRecords.filter(r => r.status === 'completed').length;
-  const inProgressServices = allEqRecords.filter(r => r.status === 'in_progress' || r.status === 'scheduled').length;
-  const totalSpent = allEqRecords.reduce((sum, r) => sum + Number(r.cost), 0);
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-PH', {
-      style: 'currency',
-      currency: 'PHP',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(amount);
-  };
   
   // Scanning states
   const [showScanner, setShowScanner] = useState(false);
@@ -98,250 +53,6 @@ export default function ClientEquipment() {
      e.serialNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
      e.model.toLowerCase().includes(searchQuery.toLowerCase()))
   );
-
-  // Scanning functions
-  const checkCameraPermission = async (): Promise<boolean> => {
-    try {
-      console.log("[QR Scanner] Checking camera permissions...");
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-      stream.getTracks().forEach(track => track.stop()); // Stop the test stream
-      console.log("[QR Scanner] Camera permissions granted");
-      return true;
-    } catch (error) {
-      console.error("[QR Scanner] Camera permission denied:", error);
-      setScannerError("Camera permission denied. Please allow camera access and try again.");
-      return false;
-    }
-  };
-
-  const startScanning = async () => {
-    console.log("[QR Scanner] Starting scanner...");
-    setShowScanner(true);
-    setScanning(true);
-    setManualSerial("");
-    setScannerError(null);
-
-    // Check permissions first
-    const hasPermission = await checkCameraPermission();
-    if (!hasPermission) {
-      setScanning(false);
-      return;
-    }
-
-    // Set initialization timeout
-    initTimeoutRef.current = setTimeout(() => {
-      console.error("[QR Scanner] Initialization timeout - camera failed to start");
-      setScannerError("Camera failed to start. Please try again or use manual entry.");
-      setScanning(false);
-      if (scannerRef.current) {
-        scannerRef.current.stop().catch(console.error);
-        scannerRef.current.clear().catch(console.error);
-        scannerRef.current = null;
-      }
-    }, 5000);
-
-    // Initialize scanner after modal opens and permissions are granted
-    setTimeout(async () => {
-      try {
-        // Ensure the DOM element exists
-        const readerElement = document.getElementById('qr-reader');
-        if (!readerElement) {
-          throw new Error('QR reader element not found in DOM');
-        }
-
-        if (!scannerRef.current) {
-          console.log("[QR Scanner] Initializing Html5Qrcode...");
-          scannerRef.current = new Html5Qrcode("qr-reader");
-          
-          // Start scanning with specific camera configuration
-          try {
-            await scannerRef.current.start(
-              { facingMode: "environment" }, // Try back camera first
-              {
-                fps: 10,
-                qrbox: { width: 250, height: 250 },
-                aspectRatio: 1.0,
-              },
-              (decodedText) => {
-                console.log("[QR Scanner] QR code detected:", decodedText);
-                handleScanSuccess(decodedText);
-              },
-              (errorMessage) => {
-                // Only log actual errors, not normal scan attempts
-                if (!errorMessage.includes("No QR code found")) {
-                  console.log("[QR Scanner] Scan error:", errorMessage);
-                }
-              }
-            );
-          } catch (envCameraError) {
-            console.warn("[QR Scanner] Back camera failed, trying any camera:", envCameraError);
-            // Fallback to any available camera
-            await scannerRef.current.start(
-              {}, // Any camera
-              {
-                fps: 10,
-                qrbox: { width: 250, height: 250 },
-                aspectRatio: 1.0,
-              },
-              (decodedText) => {
-                console.log("[QR Scanner] QR code detected:", decodedText);
-                handleScanSuccess(decodedText);
-              },
-              (errorMessage) => {
-                // Only log actual errors, not normal scan attempts
-                if (!errorMessage.includes("No QR code found")) {
-                  console.log("[QR Scanner] Scan error:", errorMessage);
-                }
-              }
-            );
-          }
-          
-          // Clear timeout on successful initialization
-          if (initTimeoutRef.current) {
-            clearTimeout(initTimeoutRef.current);
-            initTimeoutRef.current = null;
-          }
-          
-          // Scanner is now ready - hide loading state
-          setScanning(false);
-          console.log("[QR Scanner] Scanner initialized successfully");
-        }
-      } catch (error) {
-        console.error("[QR Scanner] Failed to initialize scanner:", error);
-        
-        // Provide more specific error messages
-        let errorMessage = "Failed to start camera. ";
-        if (error.message?.includes("Permission denied")) {
-          errorMessage += "Camera permission was denied.";
-        } else if (error.message?.includes("NotFoundError")) {
-          errorMessage += "No camera found on this device.";
-        } else if (error.message?.includes("NotAllowedError")) {
-          errorMessage += "Camera access blocked by browser.";
-        } else if (error.message?.includes("NotReadableError")) {
-          errorMessage += "Camera is being used by another application.";
-        } else {
-          errorMessage += "Please check camera permissions and try again.";
-        }
-        
-        setScannerError(errorMessage);
-        setScanning(false);
-        if (initTimeoutRef.current) {
-          clearTimeout(initTimeoutRef.current);
-          initTimeoutRef.current = null;
-        }
-      }
-    }, 500); // Increased delay to ensure DOM is ready
-  };
-
-  const stopScanning = async () => {
-    console.log("[QR Scanner] Stopping scanner...");
-    
-    // Clear initialization timeout
-    if (initTimeoutRef.current) {
-      clearTimeout(initTimeoutRef.current);
-      initTimeoutRef.current = null;
-    }
-
-    // Clear scanner
-    if (scannerRef.current) {
-      try {
-        await scannerRef.current.stop();
-        await scannerRef.current.clear();
-        console.log("[QR Scanner] Scanner stopped and cleared successfully");
-      } catch (error) {
-        console.error("[QR Scanner] Error stopping scanner:", error);
-      }
-      scannerRef.current = null;
-    }
-    
-    setScanning(false);
-    setShowScanner(false);
-    setScannerError(null);
-  };
-
-  const handleScanSuccess = async (scannedText: string) => {
-    console.log("[QR Scanner] Processing scanned text:", scannedText);
-    
-    // Immediately stop scanning to prevent further processing
-    await stopScanning();
-    
-    // Process the result after scanner is fully stopped
-    setTimeout(() => {
-      findAndHighlightEquipment(scannedText.trim());
-    }, 100);
-  };
-
-  const handleManualEntry = async () => {
-    if (manualSerial.trim()) {
-      console.log("[QR Scanner] Manual entry submitted:", manualSerial.trim());
-      
-      // Stop scanning if active
-      if (scanning) {
-        await stopScanning();
-      }
-      
-      // Process after scanner is stopped
-      setTimeout(() => {
-        findAndHighlightEquipment(manualSerial.trim());
-        setShowScanner(false);
-      }, 100);
-    }
-  };
-
-  const findAndHighlightEquipment = (serialNumber: string) => {
-    console.log("[QR Scanner] Searching for equipment with serial:", serialNumber);
-    
-    const foundEquipment = clientEquipment.find(eq => eq.serialNumber === serialNumber);
-    
-    if (foundEquipment) {
-      console.log("[QR Scanner] Match found - Equipment ID:", foundEquipment.id, "Unit:", foundEquipment.unitId);
-      
-      // Scroll to equipment
-      const element = equipmentRefs.current.get(foundEquipment.id);
-      if (element) {
-        console.log("[QR Scanner] Scrolling to equipment card");
-        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      } else {
-        console.warn("[QR Scanner] Equipment element not found in refs");
-      }
-      
-      // Highlight equipment
-      setHighlightedEquipment(foundEquipment.id);
-      console.log("[QR Scanner] Highlighting equipment for 3 seconds");
-      
-      // Expand the equipment card
-      setExpanded(foundEquipment.id);
-      
-      // Remove highlight after 3 seconds
-      setTimeout(() => {
-        setHighlightedEquipment(null);
-        console.log("[QR Scanner] Highlight removed");
-      }, 3000);
-      
-      toast.success(`Found equipment: ${foundEquipment.unitId}`, {
-        description: `Serial: ${foundEquipment.serialNumber}`,
-      });
-    } else {
-      console.warn("[QR Scanner] No equipment found with serial:", serialNumber);
-      toast.error(`Equipment not found`, {
-        description: `Serial number "${serialNumber}" is not in your equipment list.`,
-      });
-    }
-  };
-
-  // Cleanup scanner on unmount
-  useEffect(() => {
-    return () => {
-      console.log("[QR Scanner] Component unmounting - cleaning up");
-      if (initTimeoutRef.current) {
-        clearTimeout(initTimeoutRef.current);
-      }
-      if (scannerRef.current) {
-        scannerRef.current.stop().catch(console.error);
-        scannerRef.current.clear().catch(console.error);
-      }
-    };
-  }, []);
 
   const statusBadge = (status: string) => {
     switch (status) {
@@ -378,16 +89,25 @@ export default function ClientEquipment() {
         <div className="flex items-center gap-3">
           <Button
             onClick={startScanning}
-            className="bg-[#10B981] text-[#050505] hover:bg-[#10B981]/90 font-bold h-9"
+            className="bg-[#10B981] text-white hover:bg-[#10B981]/80 font-semibold text-sm h-9"
           >
             <Camera className="w-4 h-4 mr-2" />
             Scan Equipment
           </Button>
+          <div className="relative w-64">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#88888C]" />
+            <Input
+              placeholder="Search equipment..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-8 h-9 bg-[#1A1A20] border-white/10 text-[#EAEAEA] text-xs"
+            />
+          </div>
         </div>
       </div>
 
       {/* KPI Row */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <KPICard 
           title="Total Services" 
           value={totalServices} 
@@ -422,19 +142,6 @@ export default function ClientEquipment() {
         />
       </div>
 
-      {/* Filter Bar */}
-      <div className="flex items-center justify-between pt-2">
-        <div className="relative w-full max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#88888C]" />
-          <Input
-            placeholder="Search serial, model, or unit ID..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10 h-10 bg-[#1A1A20] border-white/10 text-[#EAEAEA] text-sm focus:border-[#10B981]/50 transition-colors"
-          />
-        </div>
-      </div>
-
       <div className="space-y-3">
         {clientEquipment.map((eq) => {
           const eqRecords = serviceRecords.filter((r) => r.equipmentId === eq.id && r.clientId === clientId);
@@ -452,7 +159,7 @@ export default function ClientEquipment() {
                   equipmentRefs.current.delete(eq.id);
                 }
               }}
-              className={`data-card transition-all duration-300 hover:border-[#10B981]/30 ${
+              className={`data-card transition-all duration-300 ${
                 highlightedEquipment === eq.id 
                   ? 'equipment-highlight ring-2 ring-[#10B981] shadow-lg shadow-[#10B981]/20' 
                   : ''
@@ -617,76 +324,6 @@ export default function ClientEquipment() {
           );
         })}
       </div>
-
-      {/* QR Scanner Modal */}
-      <Dialog open={showScanner} onOpenChange={(open) => {
-        if (!open) stopScanning();
-      }}>
-        <DialogContent className="bg-[#0A0A0C] border-white/10 sm:max-w-lg void-glass">
-          <DialogHeader>
-            <DialogTitle className="text-[#EAEAEA] flex items-center gap-2">
-              <Camera className="w-5 h-5 text-[#10B981]" />
-              Scan Equipment QR Code
-            </DialogTitle>
-          </DialogHeader>
-          
-          <div className="space-y-4">
-            {/* Error Message */}
-            {scannerError && (
-              <div className="p-3 rounded-lg bg-[#EF4444]/10 border border-[#EF4444]/20">
-                <div className="flex items-center gap-2">
-                  <X className="w-4 h-4 text-[#EF4444] flex-shrink-0" />
-                  <p className="text-sm text-[#EF4444]">{scannerError}</p>
-                </div>
-              </div>
-            )}
-
-            {/* Scanner Container */}
-            <div className="relative">
-              <div 
-                id="qr-reader" 
-                className="w-full max-w-sm mx-auto rounded-lg overflow-hidden bg-[#121214] border border-white/5"
-              ></div>
-              {scanning && !scannerError && (
-                <div className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-lg backdrop-blur-sm">
-                  <div className="text-center">
-                    <Loader2 className="w-8 h-8 text-[#10B981] animate-spin mx-auto mb-2" />
-                    <p className="text-sm text-[#EAEAEA] font-medium">Scanning...</p>
-                    <p className="text-xs text-[#88888C] mt-1">Position QR code within the frame</p>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Manual Entry Fallback */}
-            <div className="space-y-3 pt-2 border-t border-white/5">
-              <div className="text-sm text-[#88888C] text-center">
-                Can't scan? Enter serial number manually:
-              </div>
-              <div className="flex gap-2">
-                <Input
-                  placeholder="Enter serial number..."
-                  value={manualSerial}
-                  onChange={(e) => setManualSerial(e.target.value)}
-                  className="bg-[#1A1A20] border-white/10 text-[#EAEAEA] text-sm focus:border-[#10B981]"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      handleManualEntry();
-                    }
-                  }}
-                />
-                <Button
-                  onClick={handleManualEntry}
-                  disabled={!manualSerial.trim() || scanning}
-                  className="bg-[#10B981] text-white hover:bg-[#10B981]/80 font-semibold px-4 disabled:opacity-50"
-                >
-                  Find
-                </Button>
-              </div>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
 
       {/* QR Code Dialog */}
       <Dialog open={showQR} onOpenChange={setShowQR}>
