@@ -1,0 +1,337 @@
+{
+  "clients": [
+    {
+      "id": "CL-001",
+      "companyName": "MetroBuild Construction Corp.",
+      "industry": "Construction",
+      "location": "Quezon City",
+      "mainContact": "Engr. Michael Santos",
+      "departments": ["Engineering", "Procurement", "Operations"]
+    },
+    {
+      "id": "CL-002",
+      "companyName": "Prime Infra Solutions",
+      "industry": "Infrastructure",
+      "location": "Makati",
+      "mainContact": "Anna Reyes",
+      "departments": []
+    },
+    {
+      "id": "CL-003",
+      "companyName": "Delta Testing Laboratories",
+      "industry": "Materials Testing",
+      "location": "Pasig",
+      "mainContact": null,
+      "departments": []
+    },
+    {
+      "id": "CL-004",
+      "companyName": "GreenBuild Developers",
+      "industry": "Real Estate Development",
+      "location": null,
+      "mainContact": null,
+      "departments": []
+    }
+  ],
+
+  "equipment": [
+    {
+      "id": "EQ-001",
+      "name": "Excavator CAT 320",
+      "clientId": "CL-001",
+      "serialNumber": "CAT320-ACM-001",
+      "equipmentType": "Heavy Equipment",
+      "currentHours": 980,
+      "lastPmsHours": 0,
+      "nextPmsHours": 1000,
+      "status": "Near Service"
+    },
+    {
+      "id": "EQ-002",
+      "name": "Boom Truck X500",
+      "clientId": "CL-002",
+      "equipmentType": "Heavy Equipment",
+      "currentHours": 1250,
+      "nextPmsHours": 1000,
+      "status": "Overdue"
+    },
+    {
+      "id": "EQ-003",
+      "name": "Generator 500KVA",
+      "clientId": "CL-004",
+      "equipmentType": "Heavy Equipment",
+      "currentHours": 750,
+      "nextPmsHours": 1000,
+      "status": "OK"
+    },
+    {
+      "id": "LAB-001",
+      "name": "Concrete Strength Tester",
+      "clientId": "CL-003",
+      "equipmentType": "Lab Equipment",
+      "lastCalibrationDate": "2025-01-10T00:00:00.000Z",
+      "frequencyMonths": 12,
+      "nextCalibrationDate": "2026-01-10T00:00:00.000Z",
+      "status": "OK"
+    },
+    {
+      "id": "LAB-002",
+      "name": "Steel Beam Tester",
+      "clientId": "CL-001",
+      "equipmentType": "Lab Equipment",
+      "lastCalibrationDate": "2025-04-10T00:00:00.000Z",
+      "frequencyMonths": 6,
+      "nextCalibrationDate": "2025-10-10T00:00:00.000Z",
+      "status": "Due Soon"
+    },
+    {
+      "id": "LAB-003",
+      "name": "Soil Compaction Machine",
+      "clientId": "CL-002",
+      "equipmentType": "Lab Equipment",
+      "lastCalibrationDate": "2024-03-01T00:00:00.000Z",
+      "frequencyMonths": 12,
+      "nextCalibrationDate": "2025-03-01T00:00:00.000Z",
+      "status": "Overdue"
+    }
+  ],
+
+  "serviceRecords": [
+    {
+      "id": "SRV-001",
+      "equipmentId": "EQ-001",
+      "serviceCategory": "Heavy Equipment PMS",
+      "serviceType": "PMS (1000 hrs)",
+      "createdAt": "2025-05-10T00:00:00.000Z",
+      "completedDate": "2025-05-10T00:00:00.000Z",
+      "technician": "James Rodriguez",
+      "currentHours": 980,
+      "workDone": ["Oil replacement", "Hydraulic inspection", "Greasing", "Filter replacement"],
+      "nextPmsHours": 1980,
+      "status": "Completed",
+      "clientId": "CL-001"
+    },
+    {
+      "id": "SRV-002",
+      "equipmentId": "LAB-002",
+      "serviceCategory": "Calibration PMS",
+      "serviceType": "Calibration",
+      "createdAt": "2025-04-12T00:00:00.000Z",
+      "completedDate": "2025-04-12T00:00:00.000Z",
+      "technician": "Alex Smith",
+      "result": "Calibration passed",
+      "nextCalibrationDate": "2025-10-12T00:00:00.000Z",
+      "status": "Completed",
+      "clientId": "CL-001"
+    },
+    {
+      "id": "SRV-003",
+      "serviceCategory": "Lab Testing Service",
+      "serviceType": "Concrete Strength Test",
+      "projectName": "City Mall Project",
+      "clientId": "CL-001",
+      "createdAt": "2025-03-22T00:00:00.000Z",
+      "completedDate": "2025-03-22T00:00:00.000Z",
+      "status": "Completed",
+      "result": "Passed required strength threshold"
+    }
+  ],
+
+  "bookings": [
+    {
+      "id": "BK-001",
+      "equipmentId": "EQ-001",
+      "clientId": "CL-001",
+      "type": "PMS",
+      "date": "2025-05-16T09:00:00.000Z",
+      "status": "Confirmed",
+      "package": "PMS 1000 hrs Package",
+      "requestedDate": "2025-05-16T09:00:00.000Z"
+    },
+    {
+      "id": "BK-002",
+      "equipmentId": "LAB-003",
+      "clientId": "CL-002",
+      "type": "Calibration",
+      "date": "2025-05-20T09:00:00.000Z",
+      "status": "Pending",
+      "requestedDate": "2025-05-20T09:00:00.000Z"
+    },
+    {
+      "id": "BK-003",
+      "serviceType": "Concrete Strength Test",
+      "projectName": "Highway Project",
+      "clientId": "CL-001",
+      "date": "2025-05-18T09:00:00.000Z",
+      "status": "Scheduled",
+      "requestedDate": "2025-05-18T09:00:00.000Z"
+    }
+  ],
+
+  "packages": [
+    {
+      "id": "PKG-001",
+      "name": "PMS 1000 hrs Package",
+      "type": "Heavy Equipment PMS",
+      "includes": ["4 PMS visits", "Oil inspection", "Hydraulic inspection", "Lubrication"],
+      "validityMonths": 12,
+      "price": 45000
+    },
+    {
+      "id": "PKG-002",
+      "name": "Annual Calibration Package",
+      "type": "Calibration PMS",
+      "includes": ["2 calibrations yearly", "Priority scheduling", "PDF reports"],
+      "price": 28000
+    },
+    {
+      "id": "PKG-003",
+      "name": "Concrete Lab Testing Package",
+      "type": "Lab Testing",
+      "includes": ["10 concrete strength tests", "Digital reports", "Priority processing"],
+      "price": 65000
+    }
+  ],
+
+  "invoices": [
+    {
+      "invoiceNumber": "INV-2026-0001",
+      "clientId": "CL-001",
+      "service": "Excavator CAT 320 PMS",
+      "total": 12500,
+      "status": "Paid",
+      "createdAt": "2026-01-15T10:00:00.000Z"
+    },
+    {
+      "invoiceNumber": "INV-2026-0002",
+      "clientId": "CL-002",
+      "service": "Soil Machine Calibration",
+      "total": 8500,
+      "status": "Overdue",
+      "daysOverdue": 12,
+      "createdAt": "2026-02-01T10:00:00.000Z"
+    },
+    {
+      "invoiceNumber": "INV-2026-0003",
+      "clientId": "CL-003",
+      "service": "Concrete Strength Test Package",
+      "total": 65000,
+      "status": "Paid",
+      "createdAt": "2026-01-20T10:00:00.000Z"
+    }
+  ],
+
+  "crmLeads": [
+    {
+      "id": "LEAD-001",
+      "company": "ABC Builders",
+      "department": "Engineering",
+      "interest": "Annual Calibration Package",
+      "value": 85000,
+      "stage": "Negotiation",
+      "assignedTo": "Sarah Lee",
+      "nextFollowUp": "2025-05-12"
+    },
+    {
+      "id": "LEAD-002",
+      "company": "StrongBuild Inc.",
+      "interest": "PMS + GPS Tracking",
+      "value": 220000,
+      "stage": "Quotation Sent",
+      "assignedTo": null
+    },
+    {
+      "id": "LEAD-003",
+      "company": "Mega Infra",
+      "interest": "Lab Testing Services",
+      "stage": "Contacted",
+      "assignedTo": null
+    }
+  ],
+
+  "followUpTasks": [
+    {
+      "salesperson": "James Rodriguez",
+      "task": "Follow up quotation for MetroBuild",
+      "due": "2025-05-11",
+      "status": "Pending"
+    },
+    {
+      "salesperson": "Sarah Lee",
+      "task": "Schedule calibration meeting",
+      "due": "2025-04-30",
+      "status": "Overdue"
+    }
+  ],
+
+  "emailMarketing": [
+    {
+      "campaign": "Annual Calibration Promo",
+      "sent": 1250,
+      "opened": 445,
+      "clicked": 160,
+      "leadsGenerated": 28
+    },
+    {
+      "campaign": "PMS Reminder Campaign",
+      "sent": 520,
+      "opened": 310,
+      "clicked": 85,
+      "bookingsGenerated": 14
+    }
+  ],
+
+  "gpsFleet": [
+    {
+      "device": "GPS-001",
+      "equipmentId": "EQ-001",
+      "status": "Online",
+      "location": "Quezon City Site A",
+      "currentHours": 980,
+      "lastUpdate": "2026-05-11T08:58:00.000Z",
+      "speedKmh": 12
+    },
+    {
+      "device": "GPS-002",
+      "equipmentId": "EQ-002",
+      "status": "Offline",
+      "location": "Unknown",
+      "currentHours": 1250,
+      "lastUpdate": "2026-05-11T05:00:00.000Z",
+      "speedKmh": 0,
+      "serviceStatus": "Overdue"
+    }
+  ],
+
+  "dashboardAlerts": [
+    "Excavator CAT 320 has 20 hrs left before PMS",
+    "Soil Compaction Machine calibration overdue by 65 days",
+    "5 leads not contacted in 48 hours",
+    "3 overdue invoices require attention",
+    "2 test reports ready for release"
+  ],
+
+  "salesPerformance": [
+    {
+      "salesperson": "James Rodriguez",
+      "leads": 36,
+      "closedDeals": 5,
+      "revenue": 950000,
+      "conversion": "23%"
+    },
+    {
+      "salesperson": "Sarah Lee",
+      "leads": 28,
+      "closedDeals": 4,
+      "revenue": 720000,
+      "conversion": "14%"
+    },
+    {
+      "salesperson": "Mike Thompson",
+      "leads": 30,
+      "closedDeals": 2,
+      "revenue": 450000,
+      "conversion": "6%"
+    }
+  ]
+}

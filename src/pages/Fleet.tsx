@@ -12,12 +12,23 @@ import {
 import { AddEquipmentModal, type Equipment as ModalEquipment } from "@/components/AddEquipmentModal";
 import { PMSConfigurationModal, type PMSConfiguration } from "@/components/PMSConfigurationModal";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import {
   Radio,
   AlertTriangle,
   ChevronRight,
+  Trash2,
   Wifi,
   WifiOff,
   Plus,
@@ -94,6 +105,8 @@ const GPS51_USERNAME = import.meta.env.VITE_GPS51_USERNAME ?? "";
 const GPS51_PASSWORD = import.meta.env.VITE_GPS51_PASSWORD ?? "";
 const FLEET_HISTORY_DEBUG = true;
 const GPS001_TOTAL_HOURS_CACHE_KEY = "nextos-gps001-total-hours-ms";
+const ADDED_EQUIPMENT_STORAGE_KEY = "nextos-fleet-added-equipment";
+const PMS_CONFIG_STORAGE_KEY = "nextos-fleet-pms-configurations";
 
 function readCachedGps001TotalHoursMs(): number {
   if (typeof window === "undefined") return 0;
@@ -106,6 +119,30 @@ function writeCachedGps001TotalHoursMs(totalMs: number): void {
   if (typeof window === "undefined") return;
   if (!Number.isFinite(totalMs) || totalMs <= 0) return;
   window.localStorage.setItem(GPS001_TOTAL_HOURS_CACHE_KEY, String(totalMs));
+}
+
+function readCachedAddedEquipment(): ModalEquipment[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const rawValue = window.localStorage.getItem(ADDED_EQUIPMENT_STORAGE_KEY);
+    if (!rawValue) return [];
+    const parsed = JSON.parse(rawValue);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function readCachedPmsConfigurations(): PMSConfiguration[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const rawValue = window.localStorage.getItem(PMS_CONFIG_STORAGE_KEY);
+    if (!rawValue) return [];
+    const parsed = JSON.parse(rawValue);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
 }
 
 function logFleetHistory(label: string, payload: unknown): void {
@@ -273,10 +310,11 @@ export default function Fleet() {
   const [pmsConfigOpen, setPmsConfigOpen] = useState(false);
   
   // Equipment added through modal (in-memory)
-  const [addedEquipment, setAddedEquipment] = useState<ModalEquipment[]>([]);
+  const [addedEquipment, setAddedEquipment] = useState<ModalEquipment[]>(() => readCachedAddedEquipment());
+  const [pendingDeleteEquipmentId, setPendingDeleteEquipmentId] = useState<string | null>(null);
   
   // PMS Configurations (in-memory)
-  const [pmsConfigurations, setPmsConfigurations] = useState<PMSConfiguration[]>([]);
+  const [pmsConfigurations, setPmsConfigurations] = useState<PMSConfiguration[]>(() => readCachedPmsConfigurations());
 
   const selectedUnit = units.find((u) => u.id === selectedUnitId);
   const selectedEquipment = equipment.find((e) => e.id === selectedUnit?.equipmentId);
@@ -329,6 +367,16 @@ export default function Fleet() {
     startLiveTracking();
     return () => stopLiveTracking();
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(ADDED_EQUIPMENT_STORAGE_KEY, JSON.stringify(addedEquipment));
+  }, [addedEquipment]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(PMS_CONFIG_STORAGE_KEY, JSON.stringify(pmsConfigurations));
+  }, [pmsConfigurations]);
 
   useEffect(() => {
     if (selectedUnit && typeof selectedUnit.telemetry.lat === "number" && typeof selectedUnit.telemetry.lng === "number") {
@@ -508,6 +556,12 @@ export default function Fleet() {
     setAddedEquipment([...addedEquipment, equipment]);
   };
 
+  const handleConfirmDeleteEquipment = () => {
+    if (!pendingDeleteEquipmentId) return;
+    setAddedEquipment((prev) => prev.filter((entry) => entry.id !== pendingDeleteEquipmentId));
+    setPendingDeleteEquipmentId(null);
+  };
+
   // Handlers for PMS configuration modal
   const handleAddPMSConfiguration = (config: PMSConfiguration) => {
     setPmsConfigurations([...pmsConfigurations, config]);
@@ -524,7 +578,7 @@ export default function Fleet() {
   };
 
   return (
-    <div className="space-y-4 h-[calc(100vh-40px)]">
+    <div className="flex h-[calc(100vh-40px)] min-h-0 flex-col gap-4 overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between shrink-0">
         <div>
@@ -565,9 +619,9 @@ export default function Fleet() {
         </div>
       </div>
 
-      <div className="flex gap-4 flex-1 min-h-0">
+      <div className="flex gap-4 flex-1 min-h-0 overflow-hidden">
         {/* Map */}
-        <div className="flex-1 data-card overflow-hidden relative">
+        <div className="flex-1 data-card overflow-hidden relative min-h-0">
           <div className="absolute top-3 left-3 z-[1000] flex items-center rounded border border-white/10 bg-[#050505]/70 p-1 backdrop-blur">
             <button
               type="button"
@@ -825,7 +879,7 @@ export default function Fleet() {
         </div>
 
         {/* Asset List Sidebar */}
-        <div className="w-[280px] data-card overflow-auto">
+        <div className="w-[280px] data-card flex h-full min-h-0 flex-col overflow-hidden">
           <div className="p-3 border-b border-white/5">
             <div className="flex items-center justify-between gap-2">
               <h3 className="text-sm font-semibold text-[#EAEAEA]">Fleet Units</h3>
@@ -852,95 +906,105 @@ export default function Fleet() {
             </Button>
           </div>
 
-          {/* Added Equipment Section */}
-          {addedEquipment.length > 0 && (
-            <div className="border-b border-white/5">
-              {addedEquipment.map((eq) => {
-                const client = clients.find((c) => c.id === eq.clientId);
+          <div className="flex flex-1 min-h-0 flex-col overflow-y-auto overscroll-contain divide-y divide-white/5">
+            {/* Added Equipment Section */}
+            {addedEquipment.length > 0 && (
+              <div className="border-b border-white/5">
+                {addedEquipment.map((eq) => {
+                  const client = clients.find((c) => c.id === eq.clientId);
+                  return (
+                    <div
+                      key={eq.id}
+                      className="w-full p-3 text-left transition-colors hover:bg-white/5 border-b border-white/5 last:border-b-0"
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-2 h-2 rounded-full bg-[#F2A900]" />
+                          <span className="text-xs font-medium text-[#EAEAEA]">{eq.name}</span>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => setPendingDeleteEquipmentId(eq.id)}
+                          aria-label="Delete equipment"
+                          className="h-6 w-6 p-0 border-[#EF4444]/40 text-[#EF4444] hover:bg-[#EF4444]/15 hover:text-[#EF4444]"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </Button>
+                      </div>
+                      <div className="text-[10px] text-[#88888C] ml-3.5 space-y-0.5">
+                        <div>{client?.companyName || "—"}</div>
+                        <div className="flex items-center gap-2">
+                          <span>Hours Today: {eq.hoursToday}</span>
+                          <span>Hours in Total: {eq.hoursTotal}</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            <div className="divide-y divide-white/5">
+              {units.map((unit) => {
+                const eq = equipment.find((e) => e.id === unit.equipmentId);
+                const client = clients.find((c) => c.id === eq?.clientId);
+                const isSelected = selectedUnitId === unit.id;
+                const unitLabel = (eq?.unitId || unit.unitName || "").toUpperCase();
+                const isGps001 = unit.id === 1 || unitLabel === "GPS-001";
+
+                const staticHoursByUnit: Record<string, { today: string; total: string }> = {
+                  "GPS-003": { today: "4h 20m", total: "3890h 40m" },
+                  "GPS-004": { today: "6h 15m", total: "2100h 40m" },
+                  "GPS-010": { today: "3h 50m", total: "3450h 40m" },
+                  "GPS-007": { today: "7h 10m", total: "5200h 40m" },
+                  "EXC-CAT-20": { today: "5h 05m", total: "2780h 30m" },
+                  "LAB-STS-01": { today: "2h 40m", total: "1120h 20m" },
+                  "TST-BEAM-02": { today: "3h 25m", total: "1655h 15m" },
+                };
+
+                const fallbackStaticHours = { today: "4h 20m", total: "3890h 40m" };
+
+                const hoursTodayText = isGps001
+                  ? formatHoursFromMsForSidebar(gps001HoursTodayMs)
+                  : (staticHoursByUnit[unitLabel]?.today ?? fallbackStaticHours.today);
+
+                const hoursTotalText = isGps001
+                  ? formatHoursFromMsForSidebar(gps001HoursTotalMs)
+                  : (staticHoursByUnit[unitLabel]?.total ?? fallbackStaticHours.total);
+
                 return (
                   <button
-                    key={eq.id}
-                    className="w-full p-3 text-left transition-colors hover:bg-white/5 border-b border-white/5 last:border-b-0"
+                    key={unit.id}
+                    onClick={() => selectUnit(unit.id)}
+                    className={`w-full p-3 text-left transition-colors ${
+                      isSelected ? "bg-[#F2A900]/10" : "hover:bg-white/5"
+                    }`}
                   >
                     <div className="flex items-center justify-between mb-1">
                       <div className="flex items-center gap-1.5">
-                        <div className="w-2 h-2 rounded-full bg-[#F2A900]" />
-                        <span className="text-xs font-medium text-[#EAEAEA]">{eq.name}</span>
+                        <div className={`w-2 h-2 rounded-full ${statusDotClass(getEffectiveStatus(unit.id, unit.telemetry.status))}`} />
+                        <span className="text-xs font-medium text-[#EAEAEA]">{eq?.unitId || unit.unitName}</span>
                       </div>
-                      <ChevronRight className="w-3 h-3 text-[#88888C]" />
+                      <ChevronRight className={`w-3 h-3 ${isSelected ? "text-[#F2A900]" : "text-[#88888C]"}`} />
                     </div>
                     <div className="text-[10px] text-[#88888C] ml-3.5 space-y-0.5">
                       <div>{client?.companyName || "—"}</div>
                       <div className="flex items-center gap-2">
-                        <span>Hours Today: {eq.hoursToday}</span>
-                        <span>Hours in Total: {eq.hoursTotal}</span>
+                        <span>Hours Today: {hoursTodayText}</span>
+                        <span>Hours in Total: {hoursTotalText}</span>
                       </div>
+                      {unit.serviceDue && (
+                        <div className="flex items-center gap-1 text-[#EF4444]">
+                          <AlertTriangle className="w-2.5 h-2.5" />
+                          <span>Service due</span>
+                        </div>
+                      )}
                     </div>
                   </button>
                 );
               })}
             </div>
-          )}
-
-          <div className="divide-y divide-white/5">
-            {units.map((unit) => {
-              const eq = equipment.find((e) => e.id === unit.equipmentId);
-              const client = clients.find((c) => c.id === eq?.clientId);
-              const isSelected = selectedUnitId === unit.id;
-              const unitLabel = (eq?.unitId || unit.unitName || "").toUpperCase();
-              const isGps001 = unit.id === 1 || unitLabel === "GPS-001";
-
-              const staticHoursByUnit: Record<string, { today: string; total: string }> = {
-                "GPS-003": { today: "4h 20m", total: "3890h 40m" },
-                "GPS-004": { today: "6h 15m", total: "2100h 40m" },
-                "GPS-010": { today: "3h 50m", total: "3450h 40m" },
-                "GPS-007": { today: "7h 10m", total: "5200h 40m" },
-                "EXC-CAT-20": { today: "5h 05m", total: "2780h 30m" },
-                "LAB-STS-01": { today: "2h 40m", total: "1120h 20m" },
-                "TST-BEAM-02": { today: "3h 25m", total: "1655h 15m" },
-              };
-
-              const fallbackStaticHours = { today: "4h 20m", total: "3890h 40m" };
-
-              const hoursTodayText = isGps001
-                ? formatHoursFromMsForSidebar(gps001HoursTodayMs)
-                : (staticHoursByUnit[unitLabel]?.today ?? fallbackStaticHours.today);
-
-              const hoursTotalText = isGps001
-                ? formatHoursFromMsForSidebar(gps001HoursTotalMs)
-                : (staticHoursByUnit[unitLabel]?.total ?? fallbackStaticHours.total);
-
-              return (
-                <button
-                  key={unit.id}
-                  onClick={() => selectUnit(unit.id)}
-                  className={`w-full p-3 text-left transition-colors ${
-                    isSelected ? "bg-[#F2A900]/10" : "hover:bg-white/5"
-                  }`}
-                >
-                  <div className="flex items-center justify-between mb-1">
-                    <div className="flex items-center gap-1.5">
-                      <div className={`w-2 h-2 rounded-full ${statusDotClass(getEffectiveStatus(unit.id, unit.telemetry.status))}`} />
-                      <span className="text-xs font-medium text-[#EAEAEA]">{eq?.unitId || unit.unitName}</span>
-                    </div>
-                    <ChevronRight className={`w-3 h-3 ${isSelected ? "text-[#F2A900]" : "text-[#88888C]"}`} />
-                  </div>
-                  <div className="text-[10px] text-[#88888C] ml-3.5 space-y-0.5">
-                    <div>{client?.companyName || "—"}</div>
-                    <div className="flex items-center gap-2">
-                      <span>Hours Today: {hoursTodayText}</span>
-                      <span>Hours in Total: {hoursTotalText}</span>
-                    </div>
-                    {unit.serviceDue && (
-                      <div className="flex items-center gap-1 text-[#EF4444]">
-                        <AlertTriangle className="w-2.5 h-2.5" />
-                        <span>Service due</span>
-                      </div>
-                    )}
-                  </div>
-                </button>
-              );
-            })}
           </div>
         </div>
       </div>
@@ -961,6 +1025,35 @@ export default function Fleet() {
         onUpdateConfiguration={handleUpdatePMSConfiguration}
         onDeleteConfiguration={handleDeletePMSConfiguration}
       />
+
+      <AlertDialog
+        open={pendingDeleteEquipmentId !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPendingDeleteEquipmentId(null);
+          }
+        }}
+      >
+        <AlertDialogContent className="bg-[#1A1A20] border border-white/10 text-[#EAEAEA]">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-[#EAEAEA]">Delete Equipment</AlertDialogTitle>
+            <AlertDialogDescription className="text-[#88888C]">
+              This action is permanent and cannot be undone. Are you sure you want to delete this equipment entry?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="border-white/10 text-[#EAEAEA] hover:bg-white/10">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmDeleteEquipment}
+              className="bg-[#EF4444] text-white hover:bg-[#EF4444]/90"
+            >
+              Delete Permanently
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

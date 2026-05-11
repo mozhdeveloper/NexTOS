@@ -55,14 +55,38 @@ export function AddEquipmentModal({
   clients,
   onAddEquipment,
 }: AddEquipmentModalProps) {
+  type RequiredFieldKey = "equipmentName" | "equipmentType" | "selectedClient" | "serialNumber";
   const [equipmentName, setEquipmentName] = useState("");
   const [equipmentType, setEquipmentType] = useState("");
   const [selectedClient, setSelectedClient] = useState("");
   const [serialNumber, setSerialNumber] = useState("");
   const [notes, setNotes] = useState("");
+  const [missingFields, setMissingFields] = useState<RequiredFieldKey[]>([]);
+
+  const getMissingRequiredFields = (): RequiredFieldKey[] => {
+    const requiredChecks: Array<{ key: RequiredFieldKey; value: string }> = [
+      { key: "equipmentName", value: equipmentName.trim() },
+      { key: "equipmentType", value: equipmentType },
+      { key: "selectedClient", value: selectedClient },
+      { key: "serialNumber", value: serialNumber.trim() },
+    ];
+
+    return requiredChecks.filter((field) => !field.value).map((field) => field.key);
+  };
+
+  const isFieldMissing = (fieldKey: RequiredFieldKey): boolean => missingFields.includes(fieldKey);
+
+  const missingFieldLabels: Record<RequiredFieldKey, string> = {
+    equipmentName: "Equipment Name",
+    equipmentType: "Equipment Type",
+    selectedClient: "Client",
+    serialNumber: "Serial Number",
+  };
 
   const handleSubmit = () => {
-    if (!equipmentName || !equipmentType || !selectedClient) {
+    const missing = getMissingRequiredFields();
+    if (missing.length > 0) {
+      setMissingFields(missing);
       return;
     }
 
@@ -89,6 +113,7 @@ export function AddEquipmentModal({
     setSelectedClient("");
     setSerialNumber("");
     setNotes("");
+    setMissingFields([]);
     onOpenChange(false);
   };
 
@@ -100,6 +125,7 @@ export function AddEquipmentModal({
       setSelectedClient("");
       setSerialNumber("");
       setNotes("");
+      setMissingFields([]);
     }
     onOpenChange(newOpen);
   };
@@ -112,22 +138,50 @@ export function AddEquipmentModal({
         </DialogHeader>
 
         <div className="space-y-4 py-4">
+          {missingFields.length > 0 && (
+            <div className="rounded border border-[#EF4444]/40 bg-[#EF4444]/10 px-3 py-2 text-xs text-[#EF4444]">
+              Missing required fields: {missingFields.map((field) => missingFieldLabels[field]).join(", ")}
+            </div>
+          )}
+
           {/* Equipment Name */}
           <div className="space-y-2">
             <Label className="text-sm text-[#EAEAEA]">Equipment Name</Label>
             <Input
               value={equipmentName}
-              onChange={(e) => setEquipmentName(e.target.value)}
+              onChange={(e) => {
+                setEquipmentName(e.target.value);
+                if (missingFields.length > 0) {
+                  setMissingFields((prev) => prev.filter((field) => field !== "equipmentName"));
+                }
+              }}
               placeholder="Enter equipment name"
-              className="bg-[#121214] border-white/10 text-[#EAEAEA] placeholder:text-[#88888C] focus-visible:border-[#F2A900] focus-visible:ring-[#F2A900]/50"
+              className={`bg-[#121214] text-[#EAEAEA] placeholder:text-[#88888C] focus-visible:border-[#F2A900] focus-visible:ring-[#F2A900]/50 ${
+                isFieldMissing("equipmentName") ? "border-[#EF4444]" : "border-white/10"
+              }`}
             />
+            {isFieldMissing("equipmentName") && (
+              <p className="text-xs text-[#EF4444]">Equipment Name is required.</p>
+            )}
           </div>
 
           {/* Equipment Type */}
           <div className="space-y-2">
             <Label className="text-sm text-[#EAEAEA]">Equipment Type</Label>
-            <Select value={equipmentType} onValueChange={setEquipmentType}>
-              <SelectTrigger className="bg-[#121214] border-white/10 text-[#EAEAEA]">
+            <Select
+              value={equipmentType}
+              onValueChange={(value) => {
+                setEquipmentType(value);
+                if (missingFields.length > 0) {
+                  setMissingFields((prev) => prev.filter((field) => field !== "equipmentType"));
+                }
+              }}
+            >
+              <SelectTrigger
+                className={`bg-[#121214] text-[#EAEAEA] ${
+                  isFieldMissing("equipmentType") ? "border-[#EF4444]" : "border-white/10"
+                }`}
+              >
                 <SelectValue placeholder="Select equipment type" />
               </SelectTrigger>
               <SelectContent className="bg-[#1A1A20] border-white/10">
@@ -138,13 +192,28 @@ export function AddEquipmentModal({
                 ))}
               </SelectContent>
             </Select>
+            {isFieldMissing("equipmentType") && (
+              <p className="text-xs text-[#EF4444]">Equipment Type is required.</p>
+            )}
           </div>
 
           {/* Client Selection */}
           <div className="space-y-2">
             <Label className="text-sm text-[#EAEAEA]">Client</Label>
-            <Select value={selectedClient} onValueChange={setSelectedClient}>
-              <SelectTrigger className="bg-[#121214] border-white/10 text-[#EAEAEA]">
+            <Select
+              value={selectedClient}
+              onValueChange={(value) => {
+                setSelectedClient(value);
+                if (missingFields.length > 0) {
+                  setMissingFields((prev) => prev.filter((field) => field !== "selectedClient"));
+                }
+              }}
+            >
+              <SelectTrigger
+                className={`bg-[#121214] text-[#EAEAEA] ${
+                  isFieldMissing("selectedClient") ? "border-[#EF4444]" : "border-white/10"
+                }`}
+              >
                 <SelectValue placeholder="Select client" />
               </SelectTrigger>
               <SelectContent className="bg-[#1A1A20] border-white/10">
@@ -155,6 +224,9 @@ export function AddEquipmentModal({
                 ))}
               </SelectContent>
             </Select>
+            {isFieldMissing("selectedClient") && (
+              <p className="text-xs text-[#EF4444]">Client is required.</p>
+            )}
           </div>
 
           {/* Image Upload */}
@@ -172,10 +244,20 @@ export function AddEquipmentModal({
             <Label className="text-sm text-[#EAEAEA]">Serial Number</Label>
             <Input
               value={serialNumber}
-              onChange={(e) => setSerialNumber(e.target.value)}
+              onChange={(e) => {
+                setSerialNumber(e.target.value);
+                if (missingFields.length > 0) {
+                  setMissingFields((prev) => prev.filter((field) => field !== "serialNumber"));
+                }
+              }}
               placeholder="Enter serial number"
-              className="bg-[#121214] border-white/10 text-[#EAEAEA] placeholder:text-[#88888C] focus-visible:border-[#F2A900] focus-visible:ring-[#F2A900]/50"
+              className={`bg-[#121214] text-[#EAEAEA] placeholder:text-[#88888C] focus-visible:border-[#F2A900] focus-visible:ring-[#F2A900]/50 ${
+                isFieldMissing("serialNumber") ? "border-[#EF4444]" : "border-white/10"
+              }`}
             />
+            {isFieldMissing("serialNumber") && (
+              <p className="text-xs text-[#EF4444]">Serial Number is required.</p>
+            )}
           </div>
 
           {/* Notes */}
