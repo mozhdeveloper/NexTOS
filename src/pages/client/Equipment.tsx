@@ -311,7 +311,7 @@ export default function ClientEquipment() {
 
       {/* Filter Bar */}
       <div className="flex items-center justify-between pt-2">
-        <div className=" flex gap-3 relative w-full max-w-md">
+        <div className=" flex items-center gap-3 relative w-full max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#88888C]" />
           <Input
             placeholder="Search serial, model, or unit ID..."
