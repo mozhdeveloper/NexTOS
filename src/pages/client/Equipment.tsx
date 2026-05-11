@@ -12,7 +12,10 @@ import {
   Printer,
   Camera,
   X,
-  Loader2
+  Loader2,
+  CheckCircle2,
+  Activity,
+  Wallet
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -26,6 +29,31 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
+function KPICard({ title, value, subtext, icon: Icon, colorClass, iconBgClass }: {
+  title: string;
+  value: string | number;
+  subtext: string;
+  icon: any;
+  colorClass: string;
+  iconBgClass: string;
+}) {
+  return (
+    <div className="group relative overflow-hidden rounded-xl bg-[#1A1A1A]/80 backdrop-blur-md border border-white/10 p-4 transition-all duration-300 hover:border-[#10B981]/50 hover:-translate-y-1 hover:shadow-[0_0_20px_rgba(16,185,129,0.1)]">
+      <div className="flex items-center justify-between relative z-10">
+        <div>
+          <p className="text-[10px] font-bold text-[#88888C] uppercase tracking-wider">{title}</p>
+          <h3 className="text-2xl font-bold text-[#EAEAEA] mt-1 font-mono-tech">{value}</h3>
+          <p className="text-[10px] text-[#88888C] mt-0.5">{subtext}</p>
+        </div>
+        <div className={`w-10 h-10 rounded-full flex items-center justify-center ${iconBgClass}`}>
+          <Icon className={`w-5 h-5 ${colorClass}`} />
+        </div>
+      </div>
+      <div className="absolute inset-0 bg-gradient-to-br from-[#10B981]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+    </div>
+  );
+}
+
 export default function ClientEquipment() {
   const { user } = useAuthStore();
   const { equipment, serviceRecords, servicePhotos } = useOperationsStore();
@@ -35,6 +63,21 @@ export default function ClientEquipment() {
   const [qrSerial, setQrSerial] = useState("");
   const [showQR, setShowQR] = useState(false);
   const [expanded, setExpanded] = useState<number | null>(null);
+  
+  const allEqRecords = serviceRecords.filter((r) => r.clientId === clientId);
+  const totalServices = allEqRecords.length;
+  const completedServices = allEqRecords.filter(r => r.status === 'completed').length;
+  const inProgressServices = allEqRecords.filter(r => r.status === 'in_progress' || r.status === 'scheduled').length;
+  const totalSpent = allEqRecords.reduce((sum, r) => sum + Number(r.cost), 0);
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-PH', {
+      style: 'currency',
+      currency: 'PHP',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(amount);
+  };
   
   // Scanning states
   const [showScanner, setShowScanner] = useState(false);
@@ -326,7 +369,7 @@ export default function ClientEquipment() {
   };
 
   return (
-    <div className="space-y-4 px-8 pt-8 pb-12">
+    <div className="space-y-6 px-8 pt-8 pb-12">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-[32px] font-bold text-[#EAEAEA] tracking-[-0.02em]" >My Equipment</h1>
@@ -335,20 +378,60 @@ export default function ClientEquipment() {
         <div className="flex items-center gap-3">
           <Button
             onClick={startScanning}
-            className="bg-[#10B981] text-white hover:bg-[#10B981]/80 font-semibold text-sm h-9"
+            className="bg-[#10B981] text-[#050505] hover:bg-[#10B981]/90 font-bold h-9"
           >
             <Camera className="w-4 h-4 mr-2" />
             Scan Equipment
           </Button>
-          <div className="relative w-64">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#88888C]" />
-            <Input
-              placeholder="Search equipment..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-8 h-9 bg-[#1A1A20] border-white/10 text-[#EAEAEA] text-xs"
-            />
-          </div>
+        </div>
+      </div>
+
+      {/* KPI Row */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <KPICard 
+          title="Total Services" 
+          value={totalServices} 
+          subtext="Lifetime fleet records" 
+          icon={Wrench} 
+          colorClass="text-[#005F73]" 
+          iconBgClass="bg-[#005F73]/20" 
+        />
+        <KPICard 
+          title="Completed" 
+          value={completedServices} 
+          subtext="Successful operations" 
+          icon={CheckCircle2} 
+          colorClass="text-[#10B981]" 
+          iconBgClass="bg-[#10B981]/20" 
+        />
+        <KPICard 
+          title="In Progress" 
+          value={inProgressServices} 
+          subtext="Active service tickets" 
+          icon={Activity} 
+          colorClass="text-[#F2A900]" 
+          iconBgClass="bg-[#F2A900]/20" 
+        />
+        <KPICard 
+          title="Total Spent" 
+          value={formatCurrency(totalSpent)} 
+          subtext="Maintenance investment" 
+          icon={Wallet} 
+          colorClass="text-[#EF4444]" 
+          iconBgClass="bg-[#EF4444]/20" 
+        />
+      </div>
+
+      {/* Filter Bar */}
+      <div className="flex items-center justify-between pt-2">
+        <div className="relative w-full max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#88888C]" />
+          <Input
+            placeholder="Search serial, model, or unit ID..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-10 h-10 bg-[#1A1A20] border-white/10 text-[#EAEAEA] text-sm focus:border-[#10B981]/50 transition-colors"
+          />
         </div>
       </div>
 
@@ -369,7 +452,7 @@ export default function ClientEquipment() {
                   equipmentRefs.current.delete(eq.id);
                 }
               }}
-              className={`data-card transition-all duration-300 ${
+              className={`data-card transition-all duration-300 hover:border-[#10B981]/30 ${
                 highlightedEquipment === eq.id 
                   ? 'equipment-highlight ring-2 ring-[#10B981] shadow-lg shadow-[#10B981]/20' 
                   : ''
