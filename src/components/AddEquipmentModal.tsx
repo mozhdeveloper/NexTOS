@@ -28,7 +28,7 @@ interface AddEquipmentModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   clients: Client[];
-  onSubmitEquipment: (equipment: Equipment) => void;
+  onSubmitEquipment: (equipment: Equipment) => void | Promise<void>;
   initialEquipment?: Equipment | null;
   equipmentTypeOptions?: Array<{ value: string; label: string }>;
 }
@@ -115,7 +115,7 @@ export function AddEquipmentModal({
       ? equipmentTypeOptions
       : EQUIPMENT_TYPES;
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     const missing = getMissingRequiredFields();
     if (missing.length > 0) {
       setMissingFields(missing);
@@ -137,7 +137,12 @@ export function AddEquipmentModal({
       hoursTotal: initialEquipment?.hoursTotal ?? hoursPreset.total,
     };
 
-    onSubmitEquipment(equipmentToSave);
+    try {
+      await onSubmitEquipment(equipmentToSave);
+    } catch (error) {
+      console.error("Failed to save equipment", error);
+      return;
+    }
 
     // Reset form
     setEquipmentName("");

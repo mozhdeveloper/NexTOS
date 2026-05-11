@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
+import type { Client } from "@/types";
 import { MapContainer, TileLayer, Marker, Popup, Circle, useMap } from "react-leaflet";
 import { useFleetStore } from "@/stores/useFleetStore";
 import { useOperationsStore } from "@/stores/useOperationsStore";
 import { useCRMStore } from "@/stores/useCRMStore";
 import { useAuthStore } from "@/stores/useAuthStore";
+import { trpc } from "@/providers/trpc";
 import seedData from "@/data/seed-data.json";
 import {
   fetchAllTimeWorkingMs,
@@ -28,7 +30,6 @@ import "leaflet/dist/leaflet.css";
 import {
   Radio,
   AlertTriangle,
-  ChevronRight,
   Pencil,
   Trash2,
   Wifi,
@@ -36,6 +37,7 @@ import {
   Plus,
   Settings,
 } from "lucide-react";
+import { toast } from "sonner";
 
 // Fix Leaflet default markers
 const defaultIcon = L.icon({
@@ -371,6 +373,10 @@ export default function Fleet() {
   
   // PMS Configurations (in-memory)
   const [pmsConfigurations, setPmsConfigurations] = useState<PMSConfiguration[]>(() => readCachedPmsConfigurations());
+  const addSeedEquipmentMutation = trpc.seedEquipment.add.useMutation();
+  const addPmsMutation = trpc.seedPms.add.useMutation();
+  const updatePmsMutation = trpc.seedPms.update.useMutation();
+  const deletePmsMutation = trpc.seedPms.delete.useMutation();
 
   const selectedUnit = units.find((u) => u.id === selectedUnitId);
   const selectedEquipment = equipment.find((e) => e.id === selectedUnit?.equipmentId);
@@ -382,6 +388,25 @@ export default function Fleet() {
       Array.from(new Set(seedData.equipment.map((entry) => entry.equipmentType)))
         .filter((type) => type.trim().length > 0)
         .map((type) => ({ value: type, label: type })),
+    []
+  );
+  const seedClientsForModal: Client[] = useMemo(() =>
+    seedData.clients.map((c, idx) => ({
+      id: Number(String(c.id).replace(/\D/g, "")) || idx + 1,
+      companyName: c.companyName,
+      industry: c.industry ?? "",
+      contactName: (c as any).mainContact ?? "",
+      email: "",
+      phone: "",
+      status: "active",
+      address: "",
+      city: c.location ?? "",
+      country: "",
+      contractValue: 0,
+      lastContact: new Date().toISOString(),
+      notes: "",
+      createdAt: new Date().toISOString(),
+    })),
     []
   );
   // Display-only backfill units (do not modify seed-data.json)
@@ -683,7 +708,26 @@ export default function Fleet() {
   };
 
   // Handlers for equipment modal
-  const handleSubmitEquipment = (equipment: ModalEquipment) => {
+  const handleSubmitEquipment = async (equipment: ModalEquipment) => {
+    const hasExisting = addedEquipment.some((entry) => entry.id === equipment.id);
+
+    if (!hasExisting) {
+      const seedClient = seedData.clients.find((entry) =>
+        Number(String(entry.id).replace(/\D/g, "")) === equipment.clientId
+      );
+
+      if (!seedClient) {
+        throw new Error("Unable to map selected client to seed data.");
+      }
+
+      await addSeedEquipmentMutation.mutateAsync({
+        name: equipment.name,
+        equipmentType: equipment.type,
+        clientId: seedClient.id,
+        serialNumber: equipment.serialNumber?.trim() || undefined,
+      });
+    }
+
     setAddedEquipment((prev) => {
       const existingIndex = prev.findIndex((entry) => entry.id === equipment.id);
 
@@ -711,17 +755,57 @@ export default function Fleet() {
 
   // Handlers for PMS configuration modal
   const handleAddPMSConfiguration = (config: PMSConfiguration) => {
-    setPmsConfigurations([...pmsConfigurations, config]);
+    void (async () => {
+      try {
+        const resp = await addPmsMutation.mutateAsync({
+          equipmentType: config.equipmentType,
+          serviceIntervalHours: config.serviceIntervalHours,
+          serviceIntervalUnit: config.serviceIntervalUnit,
+        });
+        if (resp && resp.entry) {
+          setPmsConfigurations((prev) => [...prev, resp.entry as PMSConfiguration]);
+        } else {
+          // fallback to local only if server write failed
+          setPmsConfigurations((prev) => [...prev, config]);
+        }
+      } catch (err) {
+        // On error, still keep in-memory config and surface later
+        setPmsConfigurations((prev) => [...prev, config]);
+      }
+    })();
   };
 
   const handleUpdatePMSConfiguration = (id: string, config: PMSConfiguration) => {
-    setPmsConfigurations(
-      pmsConfigurations.map((c) => (c.id === id ? config : c))
-    );
+    void (async () => {
+      try {
+        const resp = await updatePmsMutation.mutateAsync({
+          id,
+          equipmentType: config.equipmentType,
+          serviceIntervalHours: config.serviceIntervalHours,
+          serviceIntervalUnit: config.serviceIntervalUnit,
+        });
+        if (resp && resp.entry) {
+          setPmsConfigurations((prev) => prev.map((c) => (c.id === id ? (resp.entry as PMSConfiguration) : c)));
+        } else {
+          setPmsConfigurations((prev) => prev.map((c) => (c.id === id ? config : c)));
+        }
+      } catch (err) {
+        setPmsConfigurations((prev) => prev.map((c) => (c.id === id ? config : c)));
+      }
+    })();
   };
 
   const handleDeletePMSConfiguration = (id: string) => {
-    setPmsConfigurations(pmsConfigurations.filter((c) => c.id !== id));
+    void (async () => {
+      try {
+        const resp = await deletePmsMutation.mutateAsync({ id });
+        if (resp && resp.ok) {
+          setPmsConfigurations((prev) => prev.filter((c) => c.id !== id));
+        }
+      } catch (err) {
+        // ignore - do not remove locally if server delete failed
+      }
+    })();
   };
 
   return (
@@ -1074,7 +1158,7 @@ export default function Fleet() {
             {addedEquipment.length > 0 && (
               <div className="border-b border-white/5">
                 {addedEquipment.map((eq) => {
-                  const client = clients.find((c) => c.id === eq.clientId);
+                  const client = seedClientsForModal.find((c) => c.id === eq.clientId) || clients.find((c) => c.id === eq.clientId);
                   return (
                     <div
                       key={eq.id}
@@ -1111,6 +1195,7 @@ export default function Fleet() {
                       </div>
                       <div className="text-[10px] text-[#88888C] ml-3.5 space-y-0.5">
                         <div>{client?.companyName || "—"}</div>
+                        <div>Type: {eq.type}</div>
                         <div className="flex items-center gap-2">
                           <span>Hours Today: {eq.hoursToday}</span>
                           <span>Hours in Total: {eq.hoursTotal}</span>
@@ -1179,10 +1264,88 @@ export default function Fleet() {
                   >
                     <div className="flex items-center justify-between mb-1">
                         <div className="flex items-center gap-1.5">
-                        <div className={`w-2 h-2 rounded-full ${statusDotClass(getEffectiveStatus(unit.id, unit.telemetry.status))}`} />
+                        <div
+                          className={`w-2 h-2 rounded-full ${statusDotClass(getEffectiveStatus(unit.id, unit.telemetry.status))}`}
+                          onDoubleClick={(e) => {
+                            // Only trigger for Concrete Strength Tester
+                            try {
+                              const name = displayEquipmentName || "";
+                              if (name === "Concrete Strength Tester") {
+                                e.stopPropagation();
+                                const pmsList = (seedData as any).pmsConfigurations || [];
+                                const labCfg = pmsList.find((c: any) => typeof c.equipmentType === "string" && c.equipmentType.toLowerCase().includes("lab"));
+                                const hours = labCfg?.serviceIntervalHours ?? 4000;
+                                const unitText = labCfg?.serviceIntervalUnit ?? "Hours";
+                                toast(`PMS interval of ${hours} ${unitText} has been achieved`);
+                              }
+                            } catch (err) {
+                              // swallow errors to avoid affecting UI
+                            }
+                          }}
+                        />
                         <span className="text-xs font-medium text-[#EAEAEA]">{displayHeader}</span>
                       </div>
-                      <ChevronRight className={`w-3 h-3 ${isSelected ? "text-[#F2A900]" : "text-[#88888C]"}`} />
+                      <div className="flex items-center gap-1">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            // Build modal equipment object for editing
+                            const eqEntry = equipment.find((e) => e.id === unit.equipmentId);
+                            let modalEq: ModalEquipment | null = null;
+                            if (displayEquipmentName) {
+                              // Find matching seed equipment entry
+                              const seedEntry = seedData.equipment.find((s) => s.name === displayEquipmentName);
+                              const clientNum = seedClientsForModal.find((c) => c.companyName === seedEntry?.clientId || c.companyName === seedDisplay?.clientName)?.id;
+                              modalEq = {
+                                id: seedEntry?.id ? `seed-${seedEntry.id}` : `unit-${unit.id}`,
+                                name: seedEntry?.name || displayHeader || unit.unitName || "",
+                                type: seedEntry?.equipmentType || displayEquipmentType || eqEntry?.equipmentType || "",
+                                clientId: clientNum || (client?.id ?? 0),
+                                serialNumber: (seedEntry as any)?.serialNumber || "",
+                                notes: "",
+                                hoursToday: "",
+                                hoursTotal: "",
+                              };
+                            } else if (eqEntry) {
+                              modalEq = {
+                                id: String(eqEntry.id),
+                                name: eqEntry.type || eqEntry.unitId || unit.unitName || "",
+                                type: eqEntry.equipmentType || "",
+                                clientId: eqEntry.clientId || 0,
+                                serialNumber: eqEntry.serialNumber || "",
+                                notes: "",
+                                hoursToday: "",
+                                hoursTotal: "",
+                              };
+                            }
+
+                            if (modalEq) {
+                              setEditingEquipment(modalEq);
+                              setAddEquipmentOpen(true);
+                            }
+                          }}
+                          aria-label="Edit equipment"
+                          className="h-6 w-6 p-0 border-white/10 text-[#EAEAEA] hover:bg-white/10 hover:text-[#EAEAEA]"
+                        >
+                          <Pencil className="w-3 h-3" />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            // Use a synthetic id for seed/units to toggle pending delete
+                            const delId = displayEquipmentName ? `seed-${displayEquipmentName}` : String(unit.id);
+                            setPendingDeleteEquipmentId(delId);
+                          }}
+                          aria-label="Delete equipment"
+                          className="h-6 w-6 p-0 border-[#EF4444]/40 text-[#EF4444] hover:bg-[#EF4444]/15 hover:text-[#EF4444]"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </Button>
+                      </div>
                     </div>
                     <div className="text-[10px] text-[#88888C] ml-3.5 space-y-0.5">
                       <div>{clientName}</div>
@@ -1211,7 +1374,7 @@ export default function Fleet() {
       <AddEquipmentModal
         open={addEquipmentOpen}
         onOpenChange={handleEquipmentModalOpenChange}
-        clients={clients}
+        clients={seedClientsForModal}
         onSubmitEquipment={handleSubmitEquipment}
         initialEquipment={editingEquipment}
         equipmentTypeOptions={seedEquipmentTypeOptions}

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -15,6 +16,7 @@ export interface PMSConfiguration {
   id: string;
   equipmentType: string;
   serviceIntervalHours: number;
+  serviceIntervalUnit?: "Hours" | "KM";
 }
 
 interface PMSConfigurationModalProps {
@@ -37,13 +39,6 @@ const EQUIPMENT_TYPES = [
   { value: "monitoring-equipment", label: "Monitoring Equipment" },
 ];
 
-const SERVICE_HOURS = [
-  { value: "3000", label: "3,000 hours" },
-  { value: "5000", label: "5,000 hours" },
-  { value: "8000", label: "8,000 hours" },
-  { value: "10000", label: "10,000 hours" },
-];
-
 export function PMSConfigurationModal({
   open,
   onOpenChange,
@@ -54,7 +49,8 @@ export function PMSConfigurationModal({
   equipmentTypeOptions,
 }: PMSConfigurationModalProps) {
   const [selectedEquipmentType, setSelectedEquipmentType] = useState("");
-  const [selectedHours, setSelectedHours] = useState("");
+  const [serviceIntervalValue, setServiceIntervalValue] = useState("");
+  const [serviceIntervalUnit, setServiceIntervalUnit] = useState<"Hours" | "KM">("Hours");
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const availableEquipmentTypes =
@@ -63,14 +59,20 @@ export function PMSConfigurationModal({
       : EQUIPMENT_TYPES;
 
   const handleSubmit = () => {
-    if (!selectedEquipmentType || !selectedHours) {
+    if (!selectedEquipmentType || !serviceIntervalValue) {
+      return;
+    }
+
+    const numericInterval = Number(serviceIntervalValue);
+    if (!Number.isFinite(numericInterval)) {
       return;
     }
 
     const config: PMSConfiguration = {
       id: editingId || `pms-${Date.now()}`,
       equipmentType: selectedEquipmentType,
-      serviceIntervalHours: Number(selectedHours),
+      serviceIntervalHours: numericInterval,
+      serviceIntervalUnit,
     };
 
     if (editingId) {
@@ -82,12 +84,14 @@ export function PMSConfigurationModal({
 
     // Reset form
     setSelectedEquipmentType("");
-    setSelectedHours("");
+    setServiceIntervalValue("");
+    setServiceIntervalUnit("Hours");
   };
 
   const handleEdit = (config: PMSConfiguration) => {
     setSelectedEquipmentType(config.equipmentType);
-    setSelectedHours(String(config.serviceIntervalHours));
+    setServiceIntervalValue(String(config.serviceIntervalHours));
+    setServiceIntervalUnit(config.serviceIntervalUnit ?? "Hours");
     setEditingId(config.id);
   };
 
@@ -99,7 +103,8 @@ export function PMSConfigurationModal({
     if (!newOpen) {
       // Reset form when closing
       setSelectedEquipmentType("");
-      setSelectedHours("");
+      setServiceIntervalValue("");
+      setServiceIntervalUnit("Hours");
       setEditingId(null);
     }
     onOpenChange(newOpen);
@@ -134,31 +139,44 @@ export function PMSConfigurationModal({
             </Select>
           </div>
 
-          {/* Service Interval Hours */}
+          {/* Service Interval */}
           <div className="space-y-2">
-            <Label className="text-sm text-[#EAEAEA]">Service Interval Hours</Label>
-            <Select
-              value={selectedHours}
-              onValueChange={setSelectedHours}
-              disabled={!selectedEquipmentType}
-            >
-              <SelectTrigger
+            <Label className="text-sm text-[#EAEAEA]">Service Interval</Label>
+            <div className="grid grid-cols-[1fr_120px] gap-2">
+              <Input
+                type="number"
+                min="0"
+                step="any"
+                value={serviceIntervalValue}
+                onChange={(e) => setServiceIntervalValue(e.target.value)}
+                placeholder="Enter interval"
+                disabled={!selectedEquipmentType}
                 className={`bg-[#121214] border-white/10 ${
                   selectedEquipmentType
-                    ? "text-[#EAEAEA] cursor-pointer"
+                    ? "text-[#EAEAEA]"
                     : "text-[#88888C] cursor-not-allowed opacity-50"
                 }`}
+              />
+              <Select
+                value={serviceIntervalUnit}
+                onValueChange={(value: "Hours" | "KM") => setServiceIntervalUnit(value)}
+                disabled={!selectedEquipmentType}
               >
-                <SelectValue placeholder="Select service interval" />
-              </SelectTrigger>
-              <SelectContent className="bg-[#1A1A20] border-white/10">
-                {SERVICE_HOURS.map((hours) => (
-                  <SelectItem key={hours.value} value={hours.value}>
-                    {hours.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+                <SelectTrigger
+                  className={`bg-[#121214] border-white/10 ${
+                    selectedEquipmentType
+                      ? "text-[#EAEAEA] cursor-pointer"
+                      : "text-[#88888C] cursor-not-allowed opacity-50"
+                  }`}
+                >
+                  <SelectValue placeholder="Unit" />
+                </SelectTrigger>
+                <SelectContent className="bg-[#1A1A20] border-white/10">
+                  <SelectItem value="Hours">Hours</SelectItem>
+                  <SelectItem value="KM">KM</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             {!selectedEquipmentType && (
               <p className="text-xs text-[#88888C]">
                 Select an equipment type first
@@ -171,7 +189,8 @@ export function PMSConfigurationModal({
               variant="outline"
               onClick={() => {
                 setSelectedEquipmentType("");
-                setSelectedHours("");
+                setServiceIntervalValue("");
+                setServiceIntervalUnit("Hours");
                 setEditingId(null);
               }}
               className="border-white/10 text-[#EAEAEA] hover:bg-white/10 text-sm"
@@ -180,7 +199,7 @@ export function PMSConfigurationModal({
             </Button>
             <Button
               onClick={handleSubmit}
-              disabled={!selectedEquipmentType || !selectedHours}
+              disabled={!selectedEquipmentType || !serviceIntervalValue}
               className="bg-[#F2A900] text-[#050505] hover:bg-[#F2A900]/90 font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {editingId ? "Update" : "Add"} Configuration
@@ -206,7 +225,7 @@ export function PMSConfigurationModal({
                         {getEquipmentTypeLabel(config.equipmentType)}
                       </div>
                       <div className="text-xs text-[#88888C]">
-                        {config.serviceIntervalHours.toLocaleString()} hours
+                        {config.serviceIntervalHours.toLocaleString()} {config.serviceIntervalUnit ?? "Hours"}
                       </div>
                     </div>
                     <div className="flex gap-2 ml-2">

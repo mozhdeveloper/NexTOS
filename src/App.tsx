@@ -22,6 +22,7 @@ import Settings from '@/pages/Settings'
 import AssetScanner from '@/pages/AssetScanner'
 import NotFound from '@/pages/NotFound'
 import { useAuthStore } from '@/stores/useAuthStore'
+import { Toaster } from '@/components/ui/sonner'
 
 function ClientPortalRoutes() {
   return (
@@ -65,17 +66,20 @@ export default function App() {
   const { isAuthenticated, user } = useAuthStore()
 
   return (
-    <Routes>
-      <Route path="/login" element={<Login />} />
-      <Route path="/landing" element={<Landing />} />
-      <Route
-        path="/*"
-        element={
-          !isAuthenticated ? <Login /> :
-          user?.role === 'client' ? <ClientPortalRoutes /> :
-          <AuthenticatedRoutes />
-        }
-      />
-    </Routes>
-  );
+    <>
+      <Toaster />
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route path="/landing" element={<Landing />} />
+        <Route
+          path="/*"
+          element={
+            !isAuthenticated ? <Login /> :
+            user?.role === 'client' ? <ClientPortalRoutes /> :
+            <AuthenticatedRoutes />
+          }
+        />
+      </Routes>
+    </>
+  )
 }
