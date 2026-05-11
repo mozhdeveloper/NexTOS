@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useCRMStore } from "@/stores/useCRMStore";
 import { useAuthStore } from "@/stores/useAuthStore";
 import { useOperationsStore } from "@/stores/useOperationsStore";
@@ -28,6 +28,9 @@ import {
   Package as PackageIcon,
   QrCode,
   Download,
+  MoreVertical,
+  Trash2,
+  PenTool,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -70,6 +73,16 @@ export default function CRM() {
   const [dealValue, setDealValue] = useState("");
   const [dealStage, setDealStage] = useState<DealStage>("inquiry");
   const [dealClientId, setDealClientId] = useState<number | null>(clients[0]?.id ?? null);
+
+  // Deal action menu and modals
+  const [openMenuDealId, setOpenMenuDealId] = useState<number | null>(null);
+  const [selectedActionDeal, setSelectedActionDeal] = useState<Deal | null>(null);
+  const [editDealOpen, setEditDealOpen] = useState(false);
+  const [editDealClientId, setEditDealClientId] = useState<number | null>(null);
+  const [editDealTitle, setEditDealTitle] = useState("");
+  const [editDealValue, setEditDealValue] = useState("");
+  const [editDealProbability, setEditDealProbability] = useState("");
+  const [deleteDealOpen, setDeleteDealOpen] = useState(false);
 
   // Task modal state
   const [taskModalOpen, setTaskModalOpen] = useState(false);
@@ -127,6 +140,76 @@ export default function CRM() {
   ];
 
   const overdueTasks = getOverdueTasks();
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (openMenuDealId !== null) {
+        if (
+          !target.closest('[data-deal-menu-open="true"]') &&
+          !target.closest('[data-deal-menu-trigger]')
+        ) {
+          setOpenMenuDealId(null);
+        }
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpenMenuDealId(null);
+        setEditDealOpen(false);
+        setDeleteDealOpen(false);
+        setDealModalOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [openMenuDealId]);
+
+  const openDealMenu = (dealId: number) => {
+    setOpenMenuDealId((current) => (current === dealId ? null : dealId));
+  };
+
+  const openEditDealModal = (deal: Deal) => {
+    setSelectedActionDeal(deal);
+    setEditDealClientId(deal.clientId);
+    setEditDealTitle(deal.title);
+    setEditDealValue(deal.value.toString());
+    setEditDealProbability(deal.probability.toString());
+    setEditDealOpen(true);
+    setOpenMenuDealId(null);
+  };
+
+  const openDeleteDealModal = (deal: Deal) => {
+    setSelectedActionDeal(deal);
+    setDeleteDealOpen(true);
+    setOpenMenuDealId(null);
+  };
+
+  const handleSaveDealChanges = () => {
+    if (!selectedActionDeal || editDealClientId === null) return;
+    useCRMStore.getState().updateDeal(selectedActionDeal.id, {
+      clientId: editDealClientId,
+      title: editDealTitle,
+      value: Number(editDealValue) || selectedActionDeal.value,
+      probability: Number(editDealProbability) || selectedActionDeal.probability,
+    });
+    setEditDealOpen(false);
+    setSelectedActionDeal(null);
+  };
+
+  const handleConfirmDeleteDeal = () => {
+    if (!selectedActionDeal) return;
+    useCRMStore.getState().deleteDeal(selectedActionDeal.id);
+    setDeleteDealOpen(false);
+    setSelectedActionDeal(null);
+  };
 
   const handleDragStart = (dealId: number) => {
     setDraggingDeal(dealId);
@@ -293,6 +376,10 @@ export default function CRM() {
                           client={clients.find((c) => c.id === deal.clientId)}
                           draggable
                           onDragStart={() => handleDragStart(deal.id)}
+                          isMenuOpen={openMenuDealId === deal.id}
+                          onMenuToggle={() => openDealMenu(deal.id)}
+                          onEdit={() => openEditDealModal(deal)}
+                          onDelete={() => openDeleteDealModal(deal)}
                         />
                       ))}
                       {stageDeals.length === 0 && draggingDeal !== null && (
@@ -586,6 +673,79 @@ export default function CRM() {
                     Add Unit
                   </Button>
                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Deal Modal */}
+      {editDealOpen && selectedActionDeal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/60" onClick={() => setEditDealOpen(false)} />
+          <div className="relative z-10 w-full max-w-md mx-4">
+            <div className="bg-[#0A0A0C] rounded p-5">
+              <button onClick={() => setEditDealOpen(false)} className="absolute top-3 right-3 text-[#88888C]"><X className="w-4 h-4" /></button>
+              <h3 className="text-sm font-semibold text-[#EAEAEA] mb-3">Edit Deal</h3>
+              <div className="space-y-3">
+                <Select value={String(editDealClientId ?? "")} onValueChange={(v) => setEditDealClientId(Number(v))}>
+                  <SelectTrigger className="h-8 bg-[#1A1A20] border-white/10 text-[#EAEAEA] text-xs">
+                    <SelectValue placeholder="Select client" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-[#1A1A20] border-white/10">
+                    {clients.map((c) => (
+                      <SelectItem key={c.id} value={String(c.id)} className="text-xs text-[#EAEAEA]">
+                        {c.companyName}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Input
+                  placeholder="Deal title"
+                  value={editDealTitle}
+                  onChange={(e) => setEditDealTitle(e.target.value)}
+                  className="bg-[#1A1A20]"
+                />
+                <Input
+                  placeholder="Revenue"
+                  value={editDealValue}
+                  onChange={(e) => setEditDealValue(e.target.value)}
+                  className="bg-[#1A1A20]"
+                />
+                <Input
+                  placeholder="Probability (%)"
+                  value={editDealProbability}
+                  onChange={(e) => setEditDealProbability(e.target.value)}
+                  className="bg-[#1A1A20]"
+                />
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={() => setEditDealOpen(false)} className="flex-1">Cancel</Button>
+                  <Button onClick={handleSaveDealChanges} className="flex-1 bg-[#10B981] hover:bg-[#10B981]/80">
+                    Save Changes
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Deal Confirmation Modal */}
+      {deleteDealOpen && selectedActionDeal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/60" onClick={() => setDeleteDealOpen(false)} />
+          <div className="relative z-10 w-full max-w-md mx-4">
+            <div className="bg-[#0A0A0C] rounded p-5">
+              <button onClick={() => setDeleteDealOpen(false)} className="absolute top-3 right-3 text-[#88888C]"><X className="w-4 h-4" /></button>
+              <h3 className="text-sm font-semibold text-[#EAEAEA] mb-3">Delete Deal</h3>
+              <p className="text-sm text-[#EAEAEA] mb-4">
+                Are you sure you want to delete <span className="font-semibold">{selectedActionDeal.title}</span>? This action cannot be undone.
+              </p>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={() => setDeleteDealOpen(false)} className="flex-1">Cancel</Button>
+                <Button onClick={handleConfirmDeleteDeal} className="flex-1 bg-[#EF4444] hover:bg-[#EF4444]/80">
+                  Delete
+                </Button>
               </div>
             </div>
           </div>
@@ -1012,11 +1172,19 @@ function DealCard({
   client,
   draggable,
   onDragStart,
+  isMenuOpen,
+  onMenuToggle,
+  onEdit,
+  onDelete,
 }: {
   deal: Deal;
   client?: Client;
   draggable?: boolean;
   onDragStart?: () => void;
+  isMenuOpen?: boolean;
+  onMenuToggle?: () => void;
+  onEdit?: () => void;
+  onDelete?: () => void;
 }) {
   const statusColors: Record<string, string> = {
     inquiry: "#005F73",
@@ -1030,14 +1198,52 @@ function DealCard({
     <div
       draggable={draggable}
       onDragStart={onDragStart}
-      className="data-card p-3 cursor-grab active:cursor-grabbing hover:border-[#F2A900]/30 transition-all"
+      className="relative data-card p-3 cursor-grab active:cursor-grabbing hover:border-[#F2A900]/30 transition-all"
     >
-      <div className="flex items-center justify-between mb-1.5">
+      <div className="flex items-start justify-between mb-1.5 gap-2">
         <span className="text-[10px] text-[#88888C] font-mono-tech">{client?.companyName || "Unknown"}</span>
-        <div
-          className="w-1.5 h-1.5 rounded-full"
-          style={{ background: statusColors[deal.stage] }}
-        />
+        <div className="relative">
+          <button
+            type="button"
+            data-deal-menu-trigger
+            onClick={(event) => {
+              event.stopPropagation();
+              onMenuToggle?.();
+            }}
+            className="p-1 rounded-full transition-colors hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-[#F2A900]/40"
+          >
+            <MoreVertical className="w-4 h-4 text-[#88888C]" />
+          </button>
+          {isMenuOpen && (
+            <div
+              data-deal-menu-open="true"
+              className="absolute right-0 top-8 z-20 min-w-[170px] rounded-lg border border-white/10 bg-[#0A0A0C]/90 backdrop-blur-md shadow-lg py-1"
+            >
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onEdit?.();
+                }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[#EAEAEA] hover:bg-white/5"
+              >
+                <PenTool className="w-3.5 h-3.5 text-[#F2A900]" />
+                Edit Deal
+              </button>
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onDelete?.();
+                }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[#EF4444] hover:bg-[#EF4444]/10"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                Delete Deal
+              </button>
+            </div>
+          )}
+        </div>
       </div>
       <h4 className="text-xs font-semibold text-[#EAEAEA] mb-1">{deal.title}</h4>
       <div className="flex items-center justify-between">
