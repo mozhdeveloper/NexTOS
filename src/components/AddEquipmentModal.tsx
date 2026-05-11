@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -28,7 +28,9 @@ interface AddEquipmentModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   clients: Client[];
-  onAddEquipment: (equipment: Equipment) => void;
+  onSubmitEquipment: (equipment: Equipment) => void;
+  initialEquipment?: Equipment | null;
+  equipmentTypeOptions?: Array<{ value: string; label: string }>;
 }
 
 const EQUIPMENT_TYPES = [
@@ -53,7 +55,9 @@ export function AddEquipmentModal({
   open,
   onOpenChange,
   clients,
-  onAddEquipment,
+  onSubmitEquipment,
+  initialEquipment,
+  equipmentTypeOptions,
 }: AddEquipmentModalProps) {
   type RequiredFieldKey = "equipmentName" | "equipmentType" | "selectedClient" | "serialNumber";
   const [equipmentName, setEquipmentName] = useState("");
@@ -62,6 +66,29 @@ export function AddEquipmentModal({
   const [serialNumber, setSerialNumber] = useState("");
   const [notes, setNotes] = useState("");
   const [missingFields, setMissingFields] = useState<RequiredFieldKey[]>([]);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    if (initialEquipment) {
+      setEquipmentName(initialEquipment.name);
+      setEquipmentType(initialEquipment.type);
+      setSelectedClient(String(initialEquipment.clientId));
+      setSerialNumber(initialEquipment.serialNumber);
+      setNotes(initialEquipment.notes);
+      setMissingFields([]);
+      return;
+    }
+
+    setEquipmentName("");
+    setEquipmentType("");
+    setSelectedClient("");
+    setSerialNumber("");
+    setNotes("");
+    setMissingFields([]);
+  }, [initialEquipment, open]);
 
   const getMissingRequiredFields = (): RequiredFieldKey[] => {
     const requiredChecks: Array<{ key: RequiredFieldKey; value: string }> = [
@@ -83,6 +110,11 @@ export function AddEquipmentModal({
     serialNumber: "Serial Number",
   };
 
+  const availableEquipmentTypes =
+    equipmentTypeOptions && equipmentTypeOptions.length > 0
+      ? equipmentTypeOptions
+      : EQUIPMENT_TYPES;
+
   const handleSubmit = () => {
     const missing = getMissingRequiredFields();
     if (missing.length > 0) {
@@ -94,18 +126,18 @@ export function AddEquipmentModal({
     const randomSuffix = timestamp;
     const hoursPreset = HARD_CODED_HOURS_PRESETS[randomSuffix % HARD_CODED_HOURS_PRESETS.length];
 
-    const newEquipment: Equipment = {
-      id: `eq-${timestamp}`,
+    const equipmentToSave: Equipment = {
+      id: initialEquipment?.id ?? `eq-${timestamp}`,
       name: equipmentName,
       type: equipmentType,
       clientId: Number(selectedClient),
       serialNumber,
       notes,
-      hoursToday: hoursPreset.today,
-      hoursTotal: hoursPreset.total,
+      hoursToday: initialEquipment?.hoursToday ?? hoursPreset.today,
+      hoursTotal: initialEquipment?.hoursTotal ?? hoursPreset.total,
     };
 
-    onAddEquipment(newEquipment);
+    onSubmitEquipment(equipmentToSave);
 
     // Reset form
     setEquipmentName("");
@@ -134,7 +166,7 @@ export function AddEquipmentModal({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="bg-[#1A1A20] border border-white/10 max-w-md">
         <DialogHeader>
-          <DialogTitle className="text-[#EAEAEA]">Add Equipment</DialogTitle>
+          <DialogTitle className="text-[#EAEAEA]">{initialEquipment ? "Edit Equipment" : "Add Equipment"}</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4 py-4">
@@ -185,7 +217,7 @@ export function AddEquipmentModal({
                 <SelectValue placeholder="Select equipment type" />
               </SelectTrigger>
               <SelectContent className="bg-[#1A1A20] border-white/10">
-                {EQUIPMENT_TYPES.map((type) => (
+                {availableEquipmentTypes.map((type) => (
                   <SelectItem key={type.value} value={type.value}>
                     {type.label}
                   </SelectItem>
@@ -284,7 +316,7 @@ export function AddEquipmentModal({
             onClick={handleSubmit}
             className="bg-[#F2A900] text-[#050505] hover:bg-[#F2A900]/90 font-semibold"
           >
-            Add Equipment
+            {initialEquipment ? "Save Changes" : "Add Equipment"}
           </Button>
         </div>
       </DialogContent>

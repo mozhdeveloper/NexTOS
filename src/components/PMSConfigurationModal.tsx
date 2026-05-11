@@ -24,6 +24,7 @@ interface PMSConfigurationModalProps {
   onAddConfiguration: (config: PMSConfiguration) => void;
   onUpdateConfiguration: (id: string, config: PMSConfiguration) => void;
   onDeleteConfiguration: (id: string) => void;
+  equipmentTypeOptions?: Array<{ value: string; label: string }>;
 }
 
 const EQUIPMENT_TYPES = [
@@ -50,10 +51,16 @@ export function PMSConfigurationModal({
   onAddConfiguration,
   onUpdateConfiguration,
   onDeleteConfiguration,
+  equipmentTypeOptions,
 }: PMSConfigurationModalProps) {
   const [selectedEquipmentType, setSelectedEquipmentType] = useState("");
   const [selectedHours, setSelectedHours] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
+
+  const availableEquipmentTypes =
+    equipmentTypeOptions && equipmentTypeOptions.length > 0
+      ? equipmentTypeOptions
+      : EQUIPMENT_TYPES;
 
   const handleSubmit = () => {
     if (!selectedEquipmentType || !selectedHours) {
@@ -99,7 +106,7 @@ export function PMSConfigurationModal({
   };
 
   const getEquipmentTypeLabel = (value: string) => {
-    return EQUIPMENT_TYPES.find((t) => t.value === value)?.label || value;
+    return availableEquipmentTypes.find((t) => t.value === value)?.label || value;
   };
 
   return (
@@ -118,7 +125,7 @@ export function PMSConfigurationModal({
                 <SelectValue placeholder="Select equipment type" />
               </SelectTrigger>
               <SelectContent className="bg-[#1A1A20] border-white/10">
-                {EQUIPMENT_TYPES.map((type) => (
+                {availableEquipmentTypes.map((type) => (
                   <SelectItem key={type.value} value={type.value}>
                     {type.label}
                   </SelectItem>

@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { MapContainer, TileLayer, Marker, Popup, Circle, useMap } from "react-leaflet";
 import { useFleetStore } from "@/stores/useFleetStore";
 import { useOperationsStore } from "@/stores/useOperationsStore";
 import { useCRMStore } from "@/stores/useCRMStore";
 import { useAuthStore } from "@/stores/useAuthStore";
+import seedData from "@/data/seed-data.json";
 import {
   fetchAllTimeWorkingMs,
   fetchDailyHistorySummary,
@@ -28,6 +29,7 @@ import {
   Radio,
   AlertTriangle,
   ChevronRight,
+  Pencil,
   Trash2,
   Wifi,
   WifiOff,
@@ -85,6 +87,12 @@ function formatHoursMinutes(telemetry: { hours: number; stateStartTime?: number 
 
 type FleetViewMode = "gps" | "history";
 type UnitDisplayStatus = "driving" | "idle" | "parking" | "offline";
+
+type SeedEquipmentDisplay = {
+  equipmentName: string;
+  equipmentType: string;
+  clientName: string | null;
+};
 
 interface HistoryRow {
   name: string;
@@ -286,6 +294,53 @@ function buildMockHistoryRow(name: string, date: Date, unitSeed: number): Histor
   };
 }
 
+const unitIdToSeedEquipmentId: Record<string, string> = {
+  // GPS-001 — Excavator CAT 320 (EQ-001) — MetroBuild Construction Corp.
+  "EXC-320": "EQ-001",
+  "EXC-CAT-20": "EQ-003",
+  "KS199D-4G TRACKER": "EQ-001",
+  // GPS-002 — Boom Truck X500 (EQ-002) — Prime Infra Solutions
+  "TST-BEAM-02": "EQ-002",
+  // GPS-003 — Generator 500KVA (EQ-003) — GreenBuild Developers
+  "GPS-003": "EQ-003",
+  // GPS-004 — Concrete Strength Tester (LAB-001) — Delta Testing Laboratories
+  "GPS-007": "LAB-001",
+  "GPS-004": "LAB-001",
+  // GPS-005 — Steel Beam Tester (LAB-002) — MetroBuild Construction Corp.
+  "GPS-005": "LAB-002",
+  "GPS-010": "LAB-002",
+  "LAB-STS-01": "LAB-002",
+  // GPS-006 — Soil Compaction Machine (LAB-003) — Prime Infra Solutions
+  "GPS-006": "LAB-003",
+};
+
+// Temporary GPS name mapping
+const gpsNameMapping: Record<string, string> = {
+  "EXC-320": "GPS-001",
+  "TST-BEAM-02": "GPS-002",
+  "EXC-CAT-20": "GPS-003",
+  "GPS-007": "GPS-004",
+  "GPS-010": "GPS-005",
+  "GPS-003": "GPS-003",
+  "GPS-004": "GPS-004",
+};
+function getSeedDisplayForUnit(unitId: string): SeedEquipmentDisplay | null {
+  const normalizedUnitId = unitId.trim().toUpperCase();
+  const seedEquipmentId = unitIdToSeedEquipmentId[normalizedUnitId];
+  if (!seedEquipmentId) return null;
+
+  const equipment = seedData.equipment.find((entry) => entry.id === seedEquipmentId);
+  if (!equipment) return null;
+
+  const client = seedData.clients.find((entry) => entry.id === equipment.clientId);
+
+  return {
+    equipmentName: equipment.name,
+    equipmentType: equipment.equipmentType,
+    clientName: client?.companyName ?? null,
+  };
+}
+
 export default function Fleet() {
   useAuthStore();
   const { units, selectedUnitId, selectUnit, startLiveTracking, stopLiveTracking } = useFleetStore();
@@ -311,6 +366,7 @@ export default function Fleet() {
   
   // Equipment added through modal (in-memory)
   const [addedEquipment, setAddedEquipment] = useState<ModalEquipment[]>(() => readCachedAddedEquipment());
+  const [editingEquipment, setEditingEquipment] = useState<ModalEquipment | null>(null);
   const [pendingDeleteEquipmentId, setPendingDeleteEquipmentId] = useState<string | null>(null);
   
   // PMS Configurations (in-memory)
@@ -319,6 +375,81 @@ export default function Fleet() {
   const selectedUnit = units.find((u) => u.id === selectedUnitId);
   const selectedEquipment = equipment.find((e) => e.id === selectedUnit?.equipmentId);
   const selectedUnitLabel = selectedEquipment?.unitId || selectedUnit?.unitName || "Unit";
+  const selectedSeedDisplay = getSeedDisplayForUnit(selectedUnitLabel);
+
+  const seedEquipmentTypeOptions = useMemo(
+    () =>
+      Array.from(new Set(seedData.equipment.map((entry) => entry.equipmentType)))
+        .filter((type) => type.trim().length > 0)
+        .map((type) => ({ value: type, label: type })),
+    []
+  );
+  // Display-only backfill units (do not modify seed-data.json)
+  const seedBackfillUnits: any[] = [
+    {
+      id: 9006,
+      unitName: "GPS-006",
+      telemetry: { lat: undefined, lng: undefined, status: "offline", speed: 0, heading: 0, hours: 0 },
+      equipmentId: undefined,
+    },
+  ];
+  // Build display list including display-only backfill units, then sort so GPS-IDs appear in numeric order
+  const sortedUnits = useMemo(() => {
+    const displayUnits = units.slice();
+
+    // Append backfill units if not already present (match by unit label)
+    for (const bu of seedBackfillUnits) {
+      const bLabel = (bu.unitName || "").toUpperCase().split(" ")[0];
+      const exists = displayUnits.some((u) => {
+        const uEq = equipment.find((e) => e.id === u.equipmentId);
+        const rawLabel = (uEq?.unitId || u.unitName || "") as string;
+        const lookup = rawLabel.toUpperCase().split(" ")[0];
+        const displayName = (gpsNameMapping[lookup] || gpsNameMapping[rawLabel.toUpperCase()] || uEq?.unitId || u.unitName || "") as string;
+        const displayLabel = (displayName || "").toUpperCase().split(" ")[0];
+        return displayLabel === bLabel;
+      });
+      if (!exists) displayUnits.push(bu as any);
+    }
+
+    const getMappedGpsNumber = (u: typeof displayUnits[0]) => {
+      const eq = equipment.find((e) => e.id === u.equipmentId);
+      const unitLabelText = (eq?.unitId || u.unitName || "").toUpperCase();
+      const lookup = unitLabelText.split(" ")[0].trim();
+      const mapped = gpsNameMapping[lookup] || gpsNameMapping[unitLabelText] || null;
+      if (mapped && mapped.startsWith("GPS-")) {
+        const num = Number(mapped.replace(/\D/g, ""));
+        return Number.isFinite(num) ? num : Number.POSITIVE_INFINITY;
+      }
+      // Fallback: parse the unit label itself if it looks like GPS-###
+      if (unitLabelText.startsWith("GPS-")) {
+        const num = Number(unitLabelText.replace(/\D/g, ""));
+        return Number.isFinite(num) ? num : Number.POSITIVE_INFINITY;
+      }
+      return Number.POSITIVE_INFINITY;
+    };
+
+    const sorted = displayUnits.slice().sort((a, b) => {
+      const na = getMappedGpsNumber(a);
+      const nb = getMappedGpsNumber(b);
+      if (na !== nb) return na - nb;
+      return displayUnits.indexOf(a) - displayUnits.indexOf(b);
+    });
+
+    // Deduplicate: when two units resolve to the same display name, keep the one with seed data
+    const seenDisplayNames = new Set<string>();
+    return sorted.filter((u) => {
+      const uEq = equipment.find((e) => e.id === u.equipmentId);
+      const rawLabel = (uEq?.unitId || u.unitName || "").toUpperCase();
+      const lookup = rawLabel.split(" ")[0].trim();
+      const displayName = (gpsNameMapping[lookup] || gpsNameMapping[rawLabel] || uEq?.unitId || u.unitName || "").toUpperCase().split(" ")[0];
+      if (seenDisplayNames.has(displayName)) {
+        return false; // drop duplicate
+      }
+      // If not yet seen, prefer this entry (sorted order already puts seed-backed ones first via numeric order)
+      seenDisplayNames.add(displayName);
+      return true;
+    });
+  }, [units, equipment]);
   const isGps51UnitSelected = selectedUnit?.id === 1 || selectedUnitLabel.toUpperCase() === "GPS-001";
   const isGps001Unit = (unit: { id: number; unitName?: string }) =>
     unit.id === 1 || (unit.unitName ?? "").toUpperCase() === "GPS-001";
@@ -552,8 +683,24 @@ export default function Fleet() {
   };
 
   // Handlers for equipment modal
-  const handleAddEquipment = (equipment: ModalEquipment) => {
-    setAddedEquipment([...addedEquipment, equipment]);
+  const handleSubmitEquipment = (equipment: ModalEquipment) => {
+    setAddedEquipment((prev) => {
+      const existingIndex = prev.findIndex((entry) => entry.id === equipment.id);
+
+      if (existingIndex === -1) {
+        return [...prev, equipment];
+      }
+
+      return prev.map((entry) => (entry.id === equipment.id ? equipment : entry));
+    });
+    setEditingEquipment(null);
+  };
+
+  const handleEquipmentModalOpenChange = (open: boolean) => {
+    setAddEquipmentOpen(open);
+    if (!open) {
+      setEditingEquipment(null);
+    }
   };
 
   const handleConfirmDeleteEquipment = () => {
@@ -665,27 +812,34 @@ export default function Fleet() {
                   if (!hasCoordinates) return false;
                   if (isGps001Unit(unit) && hideGps001Pin) return false;
                   return true;
-                }).map((unit) => (
-                  <Marker
-                    key={unit.id}
-                    position={[unit.telemetry.lat, unit.telemetry.lng]}
-                    icon={statusIcon(getEffectiveStatus(unit.id, unit.telemetry.status))}
-                    eventHandlers={{
-                      click: () => selectUnit(unit.id),
-                    }}
-                  >
-                    <Popup className="dark-popup">
-                      <div className="bg-[#121214] p-2 min-w-[180px]">
-                        <div className="text-xs font-bold text-[#EAEAEA] mb-1">{unit.unitName}</div>
-                        <div className="text-[10px] text-[#88888C] space-y-0.5">
-                          <div>Status: <span className={statusTextClass(getEffectiveStatus(unit.id, unit.telemetry.status))}>{getEffectiveStatus(unit.id, unit.telemetry.status)}</span></div>
-                          <div>Speed: {unit.telemetry.speed} mph</div>
-                          <div>Hours: {formatHoursMinutes(unit.telemetry)}</div>
+                }).map((unit) => {
+                  const eq = equipment.find((entry) => entry.id === unit.equipmentId);
+                  const unitLabelText = eq?.unitId || unit.unitName || "";
+                  const seedDisplay = getSeedDisplayForUnit(unitLabelText);
+
+                  return (
+                    <Marker
+                      key={unit.id}
+                      position={[unit.telemetry.lat, unit.telemetry.lng]}
+                      icon={statusIcon(getEffectiveStatus(unit.id, unit.telemetry.status))}
+                      eventHandlers={{
+                        click: () => selectUnit(unit.id),
+                      }}
+                    >
+                      <Popup className="dark-popup">
+                        <div className="bg-[#121214] p-2 min-w-[180px]">
+                          <div className="text-xs font-bold text-[#EAEAEA] mb-1">{unit.unitName}</div>
+                          <div className="text-[10px] text-[#88888C] space-y-0.5">
+                            <div>Status: <span className={statusTextClass(getEffectiveStatus(unit.id, unit.telemetry.status))}>{getEffectiveStatus(unit.id, unit.telemetry.status)}</span></div>
+                            {seedDisplay?.equipmentType && <div>Type: {seedDisplay.equipmentType}</div>}
+                            <div>Speed: {unit.telemetry.speed} mph</div>
+                            <div>Hours: {formatHoursMinutes(unit.telemetry)}</div>
+                          </div>
                         </div>
-                      </div>
-                    </Popup>
-                  </Marker>
-                ))}
+                      </Popup>
+                    </Marker>
+                  );
+                })}
                 {/* Pulse effect for selected unit */}
                 {selectedUnit &&
                   typeof selectedUnit.telemetry.lat === "number" &&
@@ -726,6 +880,12 @@ export default function Fleet() {
                       <span className="text-[#88888C]">Heading</span>
                       <span className="text-[#EAEAEA]">{Math.floor(selectedUnit.telemetry.heading ?? 0)}°</span>
                     </div>
+                    {selectedSeedDisplay?.equipmentType && (
+                      <div className="flex justify-between">
+                        <span className="text-[#88888C]">Type</span>
+                        <span className="text-[#EAEAEA]">{selectedSeedDisplay.equipmentType}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between">
                       <span className="text-[#88888C]">Engine Hours</span>
                       <span className="text-[#F2A900]">{formatHoursMinutes(selectedUnit.telemetry)}</span>
@@ -891,7 +1051,10 @@ export default function Fleet() {
           {/* Action Buttons */}
           <div className="p-3 border-b border-white/5 flex gap-2">
             <Button
-              onClick={() => setAddEquipmentOpen(true)}
+              onClick={() => {
+                setEditingEquipment(null);
+                setAddEquipmentOpen(true);
+              }}
               className="flex-1 bg-[#F2A900] text-[#050505] hover:bg-[#F2A900]/90 font-semibold text-xs h-8"
             >
               <Plus className="w-3.5 h-3.5 mr-1" />
@@ -922,15 +1085,29 @@ export default function Fleet() {
                           <div className="w-2 h-2 rounded-full bg-[#F2A900]" />
                           <span className="text-xs font-medium text-[#EAEAEA]">{eq.name}</span>
                         </div>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={() => setPendingDeleteEquipmentId(eq.id)}
-                          aria-label="Delete equipment"
-                          className="h-6 w-6 p-0 border-[#EF4444]/40 text-[#EF4444] hover:bg-[#EF4444]/15 hover:text-[#EF4444]"
-                        >
-                          <Trash2 className="w-3 h-3" />
-                        </Button>
+                        <div className="flex items-center gap-1">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => {
+                              setEditingEquipment(eq);
+                              setAddEquipmentOpen(true);
+                            }}
+                            aria-label="Edit equipment"
+                            className="h-6 w-6 p-0 border-white/10 text-[#EAEAEA] hover:bg-white/10 hover:text-[#EAEAEA]"
+                          >
+                            <Pencil className="w-3 h-3" />
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => setPendingDeleteEquipmentId(eq.id)}
+                            aria-label="Delete equipment"
+                            className="h-6 w-6 p-0 border-[#EF4444]/40 text-[#EF4444] hover:bg-[#EF4444]/15 hover:text-[#EF4444]"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </Button>
+                        </div>
                       </div>
                       <div className="text-[10px] text-[#88888C] ml-3.5 space-y-0.5">
                         <div>{client?.companyName || "—"}</div>
@@ -946,12 +1123,31 @@ export default function Fleet() {
             )}
 
             <div className="divide-y divide-white/5">
-              {units.map((unit) => {
+                {sortedUnits.map((unit) => {
                 const eq = equipment.find((e) => e.id === unit.equipmentId);
                 const client = clients.find((c) => c.id === eq?.clientId);
                 const isSelected = selectedUnitId === unit.id;
-                const unitLabel = (eq?.unitId || unit.unitName || "").toUpperCase();
+                const unitLabelText = eq?.unitId || unit.unitName || "";
+                const unitLabel = unitLabelText.toUpperCase();
                 const isGps001 = unit.id === 1 || unitLabel === "GPS-001";
+                const lookupKey = unitLabel.split(" ")[0];
+                const mappedGps = (gpsNameMapping[lookupKey] || gpsNameMapping[unitLabel]) || null;
+                const seedDisplay =
+                  getSeedDisplayForUnit(unitLabelText) ||
+                  ((mappedGps === "GPS-004" || mappedGps === "GPS-005")
+                    ? getSeedDisplayForUnit(mappedGps)
+                    : null);
+                const clientName = seedDisplay?.clientName || client?.companyName || "—";
+                const displayEquipmentName = seedDisplay?.equipmentName;
+                const displayEquipmentType = seedDisplay?.equipmentType;
+                const useSeedAsTitle =
+                  mappedGps === "GPS-001" ||
+                  mappedGps === "GPS-002" ||
+                  mappedGps === "GPS-003" ||
+                  mappedGps === "GPS-004" ||
+                  mappedGps === "GPS-005" ||
+                  unitLabel === "GPS-006";
+                const displayHeader = useSeedAsTitle && seedDisplay?.equipmentName ? seedDisplay.equipmentName : (mappedGps || eq?.unitId || unit.unitName);
 
                 const staticHoursByUnit: Record<string, { today: string; total: string }> = {
                   "GPS-003": { today: "4h 20m", total: "3890h 40m" },
@@ -982,14 +1178,16 @@ export default function Fleet() {
                     }`}
                   >
                     <div className="flex items-center justify-between mb-1">
-                      <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1.5">
                         <div className={`w-2 h-2 rounded-full ${statusDotClass(getEffectiveStatus(unit.id, unit.telemetry.status))}`} />
-                        <span className="text-xs font-medium text-[#EAEAEA]">{eq?.unitId || unit.unitName}</span>
+                        <span className="text-xs font-medium text-[#EAEAEA]">{displayHeader}</span>
                       </div>
                       <ChevronRight className={`w-3 h-3 ${isSelected ? "text-[#F2A900]" : "text-[#88888C]"}`} />
                     </div>
                     <div className="text-[10px] text-[#88888C] ml-3.5 space-y-0.5">
-                      <div>{client?.companyName || "—"}</div>
+                      <div>{clientName}</div>
+                      {displayEquipmentName && !useSeedAsTitle && <div>{displayEquipmentName}</div>}
+                      {displayEquipmentType && <div>Type: {displayEquipmentType}</div>}
                       <div className="flex items-center gap-2">
                         <span>Hours Today: {hoursTodayText}</span>
                         <span>Hours in Total: {hoursTotalText}</span>
@@ -1012,9 +1210,11 @@ export default function Fleet() {
       {/* Modals */}
       <AddEquipmentModal
         open={addEquipmentOpen}
-        onOpenChange={setAddEquipmentOpen}
+        onOpenChange={handleEquipmentModalOpenChange}
         clients={clients}
-        onAddEquipment={handleAddEquipment}
+        onSubmitEquipment={handleSubmitEquipment}
+        initialEquipment={editingEquipment}
+        equipmentTypeOptions={seedEquipmentTypeOptions}
       />
 
       <PMSConfigurationModal
@@ -1024,6 +1224,7 @@ export default function Fleet() {
         onAddConfiguration={handleAddPMSConfiguration}
         onUpdateConfiguration={handleUpdatePMSConfiguration}
         onDeleteConfiguration={handleDeletePMSConfiguration}
+        equipmentTypeOptions={seedEquipmentTypeOptions}
       />
 
       <AlertDialog
