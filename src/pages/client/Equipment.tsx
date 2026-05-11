@@ -325,7 +325,7 @@ export default function ClientEquipment() {
             className="bg-[#10B981] text-[#050505] hover:bg-[#10B981]/90 font-bold h-9"
           >
             <Camera className="w-4 h-4 mr-2" />
-            Scan Equipment
+            Scan QR
           </Button>
         
         </div>
