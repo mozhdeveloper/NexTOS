@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useLocation } from "react-router";
 import { useOperationsStore } from "@/stores/useOperationsStore";
 import { useCRMStore } from "@/stores/useCRMStore";
@@ -388,35 +388,24 @@ export default function Services() {
                 className="pl-8 h-8 bg-[#1A1A20] border-white/10 text-[#EAEAEA] text-xs"
               />
             </div>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  if (selectedEquipment) {
-                    const eq = equipment.find(e => e.id === selectedEquipment);
-                    if (eq) {
-                      setQrSerial(eq.serialNumber);
-                      setShowQR(true);
-                    }
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                if (selectedEquipment) {
+                  const eq = equipment.find(e => e.id === selectedEquipment);
+                  if (eq) {
+                    setQrSerial(eq.serialNumber);
+                    setShowQR(true);
                   }
-                }}
-                className="h-8 border-white/10 bg-[#1A1A20] text-[#EAEAEA] hover:bg-[#F2A900] hover:text-[#050505]"
-                disabled={!selectedEquipment}
-              >
-                <QrCode className="w-3.5 h-3.5 mr-1.5" />
-                Generate QR
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={startScanning}
-                className="h-8 border-white/10 bg-[#1A1A20] text-[#EAEAEA] hover:bg-[#10B981] hover:text-[#050505]"
-              >
-                <Camera className="w-3.5 h-3.5 mr-1.5" />
-                Scan QR
-              </Button>
-            </div>
+                }
+              }}
+              className="h-8 border-white/10 bg-[#1A1A20] text-[#EAEAEA] hover:bg-[#F2A900] hover:text-[#050505]"
+              disabled={!selectedEquipment}
+            >
+              <QrCode className="w-3.5 h-3.5 mr-1.5" />
+              Generate QR
+            </Button>
           </div>
 
           <div className="data-card overflow-auto">
@@ -756,70 +745,6 @@ export default function Services() {
               onPrint={handlePrintReport}
             />
           )}
-        </DialogContent>
-      </Dialog>
-
-      {/* QR Scanner Dialog */}
-      <Dialog open={showScanner} onOpenChange={(open) => {
-        if (!open) stopScanning();
-      }}>
-        <DialogContent className="bg-[#0A0A0C] border-white/10 sm:max-w-lg void-glass">
-          <DialogHeader>
-            <DialogTitle className="text-[#EAEAEA] flex items-center gap-2">
-              <Camera className="w-5 h-5 text-[#10B981]" />
-              Scan Equipment QR Code
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            {scannerError && (
-              <div className="p-3 rounded-lg bg-[#EF4444]/10 border border-[#EF4444]/20">
-                <div className="flex items-center gap-2">
-                  <X className="w-4 h-4 text-[#EF4444] flex-shrink-0" />
-                  <p className="text-sm text-[#EF4444]">{scannerError}</p>
-                </div>
-              </div>
-            )}
-            <div className="relative">
-              <div
-                id="qr-reader-admin"
-                className="w-full max-w-sm mx-auto rounded-lg overflow-hidden bg-[#121214] border border-white/5"
-              ></div>
-              {scanning && !scannerError && (
-                <div className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-lg backdrop-blur-sm">
-                  <div className="text-center">
-                    <Loader2 className="w-8 h-8 text-[#10B981] animate-spin mx-auto mb-2" />
-                    <p className="text-sm text-[#EAEAEA] font-medium">Scanning...</p>
-                    <p className="text-xs text-[#88888C] mt-1">Position QR code within the frame</p>
-                  </div>
-                </div>
-              )}
-            </div>
-            <div className="space-y-3 pt-2 border-t border-white/5">
-              <div className="text-sm text-[#88888C] text-center">
-                Can't scan? Enter serial number manually:
-              </div>
-              <div className="flex gap-2">
-                <Input
-                  placeholder="Enter serial number..."
-                  value={manualSerial}
-                  onChange={(e) => setManualSerial(e.target.value)}
-                  className="bg-[#1A1A20] border-white/10 text-[#EAEAEA] text-sm focus:border-[#10B981]"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      handleManualEntry();
-                    }
-                  }}
-                />
-                <Button
-                  onClick={handleManualEntry}
-                  disabled={!manualSerial.trim() || scanning}
-                  className="bg-[#10B981] text-white hover:bg-[#10B981]/80 font-semibold px-4 disabled:opacity-50"
-                >
-                  Find
-                </Button>
-              </div>
-            </div>
-          </div>
         </DialogContent>
       </Dialog>
 
