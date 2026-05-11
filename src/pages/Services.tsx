@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useLocation } from "react-router";
 import { useOperationsStore } from "@/stores/useOperationsStore";
 import { useCRMStore } from "@/stores/useCRMStore";
@@ -20,9 +20,12 @@ import {
   ChevronDown,
   ChevronUp,
   PenTool,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Html5Qrcode } from "html5-qrcode";
+import { toast } from "sonner";
 import {
   Select,
   SelectContent,
@@ -56,6 +59,18 @@ export default function Services() {
   const [qrSerial, setQrSerial] = useState("");
   const [showQR, setShowQR] = useState(false);
 
+  // Scanning states
+  const [showScanner, setShowScanner] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const [manualSerial, setManualSerial] = useState("");
+  const [highlightedEquipment, setHighlightedEquipment] = useState<number | null>(null);
+  const [scannerError, setScannerError] = useState<string | null>(null);
+  
+  // Refs for equipment cards/rows
+  const equipmentRefs = useRef<Map<number, HTMLTableRowElement>>(new Map());
+  const scannerRef = useRef<Html5Qrcode | null>(null);
+  const initTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   // Form state
   const [formClientId, setFormClientId] = useState("");
   const [formEquipmentId, setFormEquipmentId] = useState("");
@@ -82,6 +97,136 @@ export default function Services() {
       window.history.replaceState({}, document.title);
     }
   }, [location]);
+
+  // Scanning functions
+  const checkCameraPermission = async (): Promise<boolean> => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      stream.getTracks().forEach(track => track.stop());
+      return true;
+    } catch (error) {
+      setScannerError("Camera permission denied. Please allow camera access and try again.");
+      return false;
+    }
+  };
+
+  const startScanning = async () => {
+    setShowScanner(true);
+    setScanning(true);
+    setManualSerial("");
+    setScannerError(null);
+
+    const hasPermission = await checkCameraPermission();
+    if (!hasPermission) {
+      setScanning(false);
+      return;
+    }
+
+    initTimeoutRef.current = setTimeout(() => {
+      setScannerError("Camera failed to start. Please try again or use manual entry.");
+      setScanning(false);
+      if (scannerRef.current) {
+        scannerRef.current.stop().catch(console.error);
+        scannerRef.current.clear().catch(console.error);
+        scannerRef.current = null;
+      }
+    }, 5000);
+
+    setTimeout(async () => {
+      try {
+        const readerElement = document.getElementById('qr-reader-admin');
+        if (!readerElement) return;
+
+        if (!scannerRef.current) {
+          scannerRef.current = new Html5Qrcode("qr-reader-admin");
+          try {
+            await scannerRef.current.start(
+              { facingMode: "environment" },
+              { fps: 10, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0 },
+              (decodedText) => handleScanSuccess(decodedText),
+              () => {}
+            );
+          } catch (envCameraError) {
+            await scannerRef.current.start(
+              {},
+              { fps: 10, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0 },
+              (decodedText) => handleScanSuccess(decodedText),
+              () => {}
+            );
+          }
+          
+          if (initTimeoutRef.current) {
+            clearTimeout(initTimeoutRef.current);
+            initTimeoutRef.current = null;
+          }
+          setScanning(false);
+        }
+      } catch (error) {
+        setScannerError("Failed to start camera. Please check camera permissions and try again.");
+        setScanning(false);
+      }
+    }, 500);
+  };
+
+  const stopScanning = async () => {
+    if (initTimeoutRef.current) {
+      clearTimeout(initTimeoutRef.current);
+      initTimeoutRef.current = null;
+    }
+
+    if (scannerRef.current) {
+      try {
+        await scannerRef.current.stop();
+        await scannerRef.current.clear();
+      } catch (error) {}
+      scannerRef.current = null;
+    }
+    
+    setScanning(false);
+    setShowScanner(false);
+    setScannerError(null);
+  };
+
+  const handleScanSuccess = async (scannedText: string) => {
+    await stopScanning();
+    setTimeout(() => {
+      findAndHighlightEquipment(scannedText.trim());
+    }, 100);
+  };
+
+  const handleManualEntry = async () => {
+    if (manualSerial.trim()) {
+      if (scanning) await stopScanning();
+      setTimeout(() => {
+        findAndHighlightEquipment(manualSerial.trim());
+        setShowScanner(false);
+      }, 100);
+    }
+  };
+
+  const findAndHighlightEquipment = (serialNumber: string) => {
+    const foundEquipment = equipment.find(eq => eq.serialNumber === serialNumber);
+    if (foundEquipment) {
+      const element = equipmentRefs.current.get(foundEquipment.id);
+      if (element) element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setSelectedEquipment(foundEquipment.id);
+      setHighlightedEquipment(foundEquipment.id);
+      setTimeout(() => setHighlightedEquipment(null), 3000);
+      toast.success(`Found equipment: ${foundEquipment.unitId}`);
+    } else {
+      toast.error(`Equipment not found`);
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (initTimeoutRef.current) clearTimeout(initTimeoutRef.current);
+      if (scannerRef.current) {
+        scannerRef.current.stop().catch(() => {});
+        scannerRef.current.clear().catch(() => {});
+      }
+    };
+  }, []);
 
   const filteredEquipment = equipment.filter(
     (eq: Equipment) =>
@@ -243,24 +388,35 @@ export default function Services() {
                 className="pl-8 h-8 bg-[#1A1A20] border-white/10 text-[#EAEAEA] text-xs"
               />
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                if (selectedEquipment) {
-                  const eq = equipment.find(e => e.id === selectedEquipment);
-                  if (eq) {
-                    setQrSerial(eq.serialNumber);
-                    setShowQR(true);
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  if (selectedEquipment) {
+                    const eq = equipment.find(e => e.id === selectedEquipment);
+                    if (eq) {
+                      setQrSerial(eq.serialNumber);
+                      setShowQR(true);
+                    }
                   }
-                }
-              }}
-              className="h-8 border-white/10 bg-[#1A1A20] text-[#EAEAEA] hover:bg-[#F2A900] hover:text-[#050505]"
-              disabled={!selectedEquipment}
-            >
-              <QrCode className="w-3.5 h-3.5 mr-1.5" />
-              Generate QR
-            </Button>
+                }}
+                className="h-8 border-white/10 bg-[#1A1A20] text-[#EAEAEA] hover:bg-[#F2A900] hover:text-[#050505]"
+                disabled={!selectedEquipment}
+              >
+                <QrCode className="w-3.5 h-3.5 mr-1.5" />
+                Generate QR
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={startScanning}
+                className="h-8 border-white/10 bg-[#1A1A20] text-[#EAEAEA] hover:bg-[#10B981] hover:text-[#050505]"
+              >
+                <Camera className="w-3.5 h-3.5 mr-1.5" />
+                Scan QR
+              </Button>
+            </div>
           </div>
 
           <div className="data-card overflow-auto">
@@ -600,6 +756,70 @@ export default function Services() {
               onPrint={handlePrintReport}
             />
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* QR Scanner Dialog */}
+      <Dialog open={showScanner} onOpenChange={(open) => {
+        if (!open) stopScanning();
+      }}>
+        <DialogContent className="bg-[#0A0A0C] border-white/10 sm:max-w-lg void-glass">
+          <DialogHeader>
+            <DialogTitle className="text-[#EAEAEA] flex items-center gap-2">
+              <Camera className="w-5 h-5 text-[#10B981]" />
+              Scan Equipment QR Code
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {scannerError && (
+              <div className="p-3 rounded-lg bg-[#EF4444]/10 border border-[#EF4444]/20">
+                <div className="flex items-center gap-2">
+                  <X className="w-4 h-4 text-[#EF4444] flex-shrink-0" />
+                  <p className="text-sm text-[#EF4444]">{scannerError}</p>
+                </div>
+              </div>
+            )}
+            <div className="relative">
+              <div
+                id="qr-reader-admin"
+                className="w-full max-w-sm mx-auto rounded-lg overflow-hidden bg-[#121214] border border-white/5"
+              ></div>
+              {scanning && !scannerError && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-lg backdrop-blur-sm">
+                  <div className="text-center">
+                    <Loader2 className="w-8 h-8 text-[#10B981] animate-spin mx-auto mb-2" />
+                    <p className="text-sm text-[#EAEAEA] font-medium">Scanning...</p>
+                    <p className="text-xs text-[#88888C] mt-1">Position QR code within the frame</p>
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="space-y-3 pt-2 border-t border-white/5">
+              <div className="text-sm text-[#88888C] text-center">
+                Can't scan? Enter serial number manually:
+              </div>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Enter serial number..."
+                  value={manualSerial}
+                  onChange={(e) => setManualSerial(e.target.value)}
+                  className="bg-[#1A1A20] border-white/10 text-[#EAEAEA] text-sm focus:border-[#10B981]"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      handleManualEntry();
+                    }
+                  }}
+                />
+                <Button
+                  onClick={handleManualEntry}
+                  disabled={!manualSerial.trim() || scanning}
+                  className="bg-[#10B981] text-white hover:bg-[#10B981]/80 font-semibold px-4 disabled:opacity-50"
+                >
+                  Find
+                </Button>
+              </div>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
 
