@@ -35,6 +35,7 @@ import {
   WifiOff,
   Plus,
   MoreVertical,
+  Wrench,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -392,6 +393,7 @@ export default function Fleet() {
   const [addedEquipment, setAddedEquipment] = useState<ModalEquipment[]>(() => readCachedAddedEquipmentWithoutSeedDuplicates());
   const [selectedAddedEquipmentId, setSelectedAddedEquipmentId] = useState<string | null>(null);
   const [openCardMenuId, setOpenCardMenuId] = useState<string | null>(null);
+  const [seedImageOverrides, setSeedImageOverrides] = useState<Record<string, string | undefined>>({});
   const [editingEquipment, setEditingEquipment] = useState<ModalEquipment | null>(null);
   const [pendingDeleteEquipmentId, setPendingDeleteEquipmentId] = useState<string | null>(null);
   // Demo stages per unit (0 = normal, 1 = zeroed display, 2 = intermediate)
@@ -889,14 +891,23 @@ export default function Fleet() {
     }
 
     if (isSeedEquipmentEdit && seedEquipmentId) {
-      await updateSeedEquipmentMutation.mutateAsync({
+      const updateResult = await updateSeedEquipmentMutation.mutateAsync({
         id: seedEquipmentId,
         name: equipment.name,
         equipmentType: equipment.type,
         clientId: seedClient.id,
         serialNumber: equipment.serialNumber?.trim() || undefined,
+        image: equipment.image,
         ...(pmsConfiguration ? { pmsConfiguration } : {}),
       });
+
+      if ((updateResult.entry as any)?.id) {
+        const updatedId = String((updateResult.entry as any).id);
+        setSeedImageOverrides((prev) => ({
+          ...prev,
+          [updatedId]: (updateResult.entry as any).image,
+        }));
+      }
 
       // Live-mapped seed-backed cards are rendered from the fleet store, so avoid creating local duplicates.
       if (isLiveMappedSeedEquipmentEdit) {
@@ -922,6 +933,7 @@ export default function Fleet() {
         equipmentType: equipment.type,
         clientId: seedClient.id,
         serialNumber: equipment.serialNumber?.trim() || undefined,
+        image: equipment.image,
         ...(pmsConfiguration ? { pmsConfiguration } : {}),
       });
       createdSeedEntry = {
@@ -931,6 +943,14 @@ export default function Fleet() {
         hoursToday: (addResult.entry as any).hoursToday,
         hoursTotal: (addResult.entry as any).hoursTotal,
       };
+
+      if ((addResult.entry as any)?.id) {
+        const createdId = String((addResult.entry as any).id);
+        setSeedImageOverrides((prev) => ({
+          ...prev,
+          [createdId]: (addResult.entry as any).image,
+        }));
+      }
     }
 
     setAddedEquipment((prev) => {
@@ -1416,6 +1436,9 @@ export default function Fleet() {
                 const seedEntry = displayEquipmentName
                   ? seedData.equipment.find((s) => s.name === displayEquipmentName)
                   : null;
+                const seedEntryImage = seedEntry?.id
+                  ? seedImageOverrides[seedEntry.id] ?? (seedEntry as any)?.image
+                  : undefined;
                 const isProtectedEquipment =
                   seedEntry?.id === "EQ-001" || displayEquipmentName === PROTECTED_EQUIPMENT_NAME;
                 const useSeedAsTitle =
@@ -1464,36 +1487,51 @@ export default function Fleet() {
                       isSelected ? "bg-[#F2A900]/10" : "hover:bg-white/5"
                     }`}
                   >
-                    <div className="flex items-center justify-between mb-1">
-                        <div className="flex items-center gap-1.5">
-                                <div
-                                  className={`w-2 h-2 rounded-full ${statusDotClass(getEffectiveStatus(unit.id, unit.telemetry.status))}`}
-                                  onDoubleClick={(e) => {
-                                    // Three-stage demo cycle for Concrete Strength Tester only (visual-only)
-                                    try {
-                                      const name = displayEquipmentName || "";
-                                      if (name === "Concrete Strength Tester") {
-                                        e.stopPropagation();
-                                        const current = demoStages[unit.id] ?? 0;
-                                        const next = (current + 1) % 3;
-                                        // Keep the original toast exactly on the first double-click only
-                                        if (current === 0) {
-                                          const pmsList = (seedData as any).pmsConfigurations || [];
-                                          const labCfg = pmsList.find((c: any) => typeof c.equipmentType === "string" && c.equipmentType.toLowerCase().includes("lab"));
-                                          const hours = labCfg?.serviceIntervalHours ?? 4000;
-                                          const unitText = labCfg?.serviceIntervalUnit ?? "Hours";
-                                          toast(`PMS interval of ${hours} ${unitText} has been achieved`);
-                                        }
-                                        setDemoStages((prev) => ({ ...prev, [unit.id]: next }));
-                                      }
-                                    } catch (err) {
-                                      // swallow errors to avoid affecting UI
-                                    }
-                                  }}
-                                />
-                        <span className="text-xs font-medium text-[#EAEAEA]">{displayHeader}</span>
+                    <div className="flex items-start gap-3">
+                      <div className="h-11 w-11 shrink-0 overflow-hidden rounded-md border border-white/10 bg-[#121214]">
+                        {seedEntryImage ? (
+                          <img
+                            src={seedEntryImage}
+                            alt={`${displayHeader} image`}
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center text-[#6B7280]">
+                            <Wrench className="h-4 w-4" />
+                          </div>
+                        )}
                       </div>
-                      <div className="relative" onClick={(e) => e.stopPropagation()}>
+                      <div className="min-w-0 flex-1">
+                        <div className="mb-1 flex items-start justify-between gap-2">
+                          <div className="flex min-w-0 items-center gap-1.5">
+                            <div
+                              className={`w-2 h-2 rounded-full ${statusDotClass(getEffectiveStatus(unit.id, unit.telemetry.status))}`}
+                              onDoubleClick={(e) => {
+                                // Three-stage demo cycle for Concrete Strength Tester only (visual-only)
+                                try {
+                                  const name = displayEquipmentName || "";
+                                  if (name === "Concrete Strength Tester") {
+                                    e.stopPropagation();
+                                    const current = demoStages[unit.id] ?? 0;
+                                    const next = (current + 1) % 3;
+                                    // Keep the original toast exactly on the first double-click only
+                                    if (current === 0) {
+                                      const pmsList = (seedData as any).pmsConfigurations || [];
+                                      const labCfg = pmsList.find((c: any) => typeof c.equipmentType === "string" && c.equipmentType.toLowerCase().includes("lab"));
+                                      const hours = labCfg?.serviceIntervalHours ?? 4000;
+                                      const unitText = labCfg?.serviceIntervalUnit ?? "Hours";
+                                      toast(`PMS interval of ${hours} ${unitText} has been achieved`);
+                                    }
+                                    setDemoStages((prev) => ({ ...prev, [unit.id]: next }));
+                                  }
+                                } catch (err) {
+                                  // swallow errors to avoid affecting UI
+                                }
+                              }}
+                            />
+                            <span className="truncate text-xs font-medium text-[#EAEAEA]">{displayHeader}</span>
+                          </div>
+                          <div className="relative" onClick={(e) => e.stopPropagation()}>
                         <button
                           type="button"
                           aria-label="Equipment options"
@@ -1524,6 +1562,7 @@ export default function Fleet() {
                                     type: seedEntry?.equipmentType || displayEquipmentType || eqEntry?.equipmentType || "",
                                     clientId: clientNum || (client?.id ?? 0),
                                     serialNumber: (seedEntry as any)?.serialNumber || "",
+                                    image: (seedEntry as any)?.image,
                                     notes: "",
                                     hoursToday: "",
                                     hoursTotal: "",
@@ -1536,6 +1575,7 @@ export default function Fleet() {
                                     type: eqEntry.equipmentType || "",
                                     clientId: eqEntry.clientId || 0,
                                     serialNumber: eqEntry.serialNumber || "",
+                                    image: (eqEntry as any)?.image,
                                     notes: "",
                                     hoursToday: "",
                                     hoursTotal: "",
@@ -1570,22 +1610,24 @@ export default function Fleet() {
                             </button>
                           </div>
                         )}
-                      </div>
-                    </div>
-                    <div className="text-[10px] text-[#88888C] ml-3.5 space-y-0.5">
-                      <div>{clientName}</div>
-                      {displayEquipmentName && !useSeedAsTitle && <div>{displayEquipmentName}</div>}
-                      {displayEquipmentType && <div>Type: {displayEquipmentType}</div>}
-                      <div className="flex items-center gap-2">
-                        <span>Hours Today: {hoursTodayText}</span>
-                        <span>Hours in Total: {hoursTotalText}</span>
-                      </div>
-                      {unit.serviceDue && (
-                        <div className="flex items-center gap-1 text-[#EF4444]">
-                          <AlertTriangle className="w-2.5 h-2.5" />
-                          <span>Service due</span>
+                          </div>
                         </div>
-                      )}
+                        <div className="text-[10px] text-[#88888C] space-y-0.5">
+                          <div>{clientName}</div>
+                          {displayEquipmentName && !useSeedAsTitle && <div>{displayEquipmentName}</div>}
+                          {displayEquipmentType && <div>Type: {displayEquipmentType}</div>}
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 pt-0.5">
+                            <span>Hours Today: {hoursTodayText}</span>
+                            <span>Hours in Total: {hoursTotalText}</span>
+                          </div>
+                          {unit.serviceDue && (
+                            <div className="flex items-center gap-1 text-[#EF4444]">
+                              <AlertTriangle className="w-2.5 h-2.5" />
+                              <span>Service due</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   </button>
                 );
@@ -1610,12 +1652,27 @@ export default function Fleet() {
                       isSelectedAddedEquipment ? "bg-[#F2A900]/10" : "hover:bg-white/5"
                     }`}
                   >
-                    <div className="flex items-center justify-between mb-1">
-                      <div className="flex items-center gap-1.5">
-                        <div className="w-2 h-2 rounded-full bg-[#F2A900]" />
-                        <span className="text-xs font-medium text-[#EAEAEA]">{eq.name}</span>
+                    <div className="flex items-start gap-3">
+                      <div className="h-11 w-11 shrink-0 overflow-hidden rounded-md border border-white/10 bg-[#121214]">
+                        {eq.image ? (
+                          <img
+                            src={eq.image}
+                            alt={`${eq.name} image`}
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center text-[#6B7280]">
+                            <Wrench className="h-4 w-4" />
+                          </div>
+                        )}
                       </div>
-                      <div className="relative" onClick={(e) => e.stopPropagation()}>
+                      <div className="min-w-0 flex-1">
+                        <div className="mb-1 flex items-start justify-between gap-2">
+                          <div className="flex min-w-0 items-center gap-1.5">
+                            <div className="w-2 h-2 rounded-full bg-[#F2A900]" />
+                            <span className="truncate text-xs font-medium text-[#EAEAEA]">{eq.name}</span>
+                          </div>
+                          <div className="relative" onClick={(e) => e.stopPropagation()}>
                         <button
                           type="button"
                           aria-label="Equipment options"
@@ -1660,14 +1717,16 @@ export default function Fleet() {
                             </button>
                           </div>
                         )}
-                      </div>
-                    </div>
-                    <div className="text-[10px] text-[#88888C] ml-3.5 space-y-0.5">
-                      <div>{eqClient?.companyName || "—"}</div>
-                      <div>Type: {eq.type}</div>
-                      <div className="flex items-center gap-2">
-                        <span>Hours Today: {eq.hoursToday || "—"}</span>
-                        <span>Hours in Total: {eq.hoursTotal || "—"}</span>
+                          </div>
+                        </div>
+                        <div className="text-[10px] text-[#88888C] space-y-0.5">
+                          <div>{eqClient?.companyName || "—"}</div>
+                          <div>Type: {eq.type}</div>
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 pt-0.5">
+                            <span>Hours Today: {eq.hoursToday || "—"}</span>
+                            <span>Hours in Total: {eq.hoursTotal || "—"}</span>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </button>

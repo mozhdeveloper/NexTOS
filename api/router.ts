@@ -10,6 +10,7 @@ type SeedEquipmentEntry = {
   clientId: string;
   equipmentType: string;
   serialNumber?: string;
+  image?: string;
   lat?: number;
   lng?: number;
   hoursToday?: string;
@@ -68,6 +69,7 @@ export const appRouter = createRouter({
           equipmentType: z.string().min(1),
           clientId: z.string().regex(/^CL-\d{3}$/),
           serialNumber: z.string().optional(),
+          image: z.string().optional(),
           pmsConfiguration: z
             .object({
               serviceIntervalHours: z.number().min(0),
@@ -95,6 +97,9 @@ export const appRouter = createRouter({
           ...(input.serialNumber && input.serialNumber.trim().length > 0
             ? { serialNumber: input.serialNumber.trim() }
             : {}),
+          ...(input.image && input.image.trim().length > 0
+            ? { image: input.image.trim() }
+            : {}),
           ...(input.pmsConfiguration ? { pmsConfiguration: input.pmsConfiguration } : {}),
         };
 
@@ -111,6 +116,7 @@ export const appRouter = createRouter({
           equipmentType: z.string().min(1),
           clientId: z.string().regex(/^CL-\d{3}$/),
           serialNumber: z.string().optional(),
+          image: z.string().optional(),
           pmsConfiguration: z
             .object({
               serviceIntervalHours: z.number().min(0),
@@ -139,11 +145,18 @@ export const appRouter = createRouter({
           ...(input.serialNumber && input.serialNumber.trim().length > 0
             ? { serialNumber: input.serialNumber.trim() }
             : {}),
+          ...(input.image && input.image.trim().length > 0
+            ? { image: input.image.trim() }
+            : {}),
           ...(input.pmsConfiguration ? { pmsConfiguration: input.pmsConfiguration } : {}),
         };
 
         if (!input.serialNumber || input.serialNumber.trim().length === 0) {
           delete updatedEntry.serialNumber;
+        }
+
+        if (!input.image || input.image.trim().length === 0) {
+          delete updatedEntry.image;
         }
 
         if (!input.pmsConfiguration) {

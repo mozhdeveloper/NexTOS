@@ -77,6 +77,7 @@ export function AddEquipmentModal({
   const [selectedClient, setSelectedClient] = useState("");
   const [serialNumber, setSerialNumber] = useState("");
   const [notes, setNotes] = useState("");
+  const [image, setImage] = useState<string>("");
   const [serviceIntervalValue, setServiceIntervalValue] = useState("");
   const [serviceIntervalUnit, setServiceIntervalUnit] = useState<ServiceIntervalUnit>("Hours");
   const [missingFields, setMissingFields] = useState<RequiredFieldKey[]>([]);
@@ -92,6 +93,7 @@ export function AddEquipmentModal({
       setSelectedClient(String(initialEquipment.clientId));
       setSerialNumber(initialEquipment.serialNumber);
       setNotes(initialEquipment.notes);
+      setImage(initialEquipment.image ?? "");
       setServiceIntervalValue(
         initialEquipment.pmsConfiguration?.serviceIntervalHours !== undefined
           ? String(initialEquipment.pmsConfiguration.serviceIntervalHours)
@@ -107,6 +109,7 @@ export function AddEquipmentModal({
     setSelectedClient("");
     setSerialNumber("");
     setNotes("");
+    setImage("");
     setServiceIntervalValue("");
     setServiceIntervalUnit("Hours");
     setMissingFields([]);
@@ -164,6 +167,7 @@ export function AddEquipmentModal({
       clientId: Number(selectedClient),
       serialNumber,
       notes,
+      ...(image ? { image } : {}),
       hoursToday: initialEquipment?.hoursToday ?? hoursPreset.today,
       hoursTotal: initialEquipment?.hoursTotal ?? hoursPreset.total,
       ...(pmsConfiguration ? { pmsConfiguration } : {}),
@@ -182,6 +186,7 @@ export function AddEquipmentModal({
     setSelectedClient("");
     setSerialNumber("");
     setNotes("");
+    setImage("");
     setServiceIntervalValue("");
     setServiceIntervalUnit("Hours");
     setMissingFields([]);
@@ -196,6 +201,7 @@ export function AddEquipmentModal({
       setSelectedClient("");
       setSerialNumber("");
       setNotes("");
+      setImage("");
         setServiceIntervalValue("");
         setServiceIntervalUnit("Hours");
       setMissingFields([]);
@@ -309,6 +315,18 @@ export function AddEquipmentModal({
                 <Input
                   type="file"
                   accept="image/*"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                      const result = reader.result;
+                      if (typeof result === "string") {
+                        setImage(result);
+                      }
+                    };
+                    reader.readAsDataURL(file);
+                  }}
                   className="bg-[#121214] border-white/10 text-[#EAEAEA] placeholder:text-[#88888C] focus-visible:border-[#F2A900] focus-visible:ring-[#F2A900]/50 cursor-pointer"
                 />
               </div>
