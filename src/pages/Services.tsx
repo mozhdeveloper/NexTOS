@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useLocation } from "react-router";
 import { useOperationsStore } from "@/stores/useOperationsStore";
 import { useCRMStore } from "@/stores/useCRMStore";
@@ -20,9 +20,12 @@ import {
   ChevronDown,
   ChevronUp,
   PenTool,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Html5Qrcode } from "html5-qrcode";
+import { toast } from "sonner";
 import {
   Select,
   SelectContent,
@@ -56,6 +59,18 @@ export default function Services() {
   const [qrSerial, setQrSerial] = useState("");
   const [showQR, setShowQR] = useState(false);
 
+  // Scanning states
+  const [showScanner, setShowScanner] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const [manualSerial, setManualSerial] = useState("");
+  const [highlightedEquipment, setHighlightedEquipment] = useState<number | null>(null);
+  const [scannerError, setScannerError] = useState<string | null>(null);
+  
+  // Refs for equipment cards/rows
+  const equipmentRefs = useRef<Map<number, HTMLTableRowElement>>(new Map());
+  const scannerRef = useRef<Html5Qrcode | null>(null);
+  const initTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   // Form state
   const [formClientId, setFormClientId] = useState("");
   const [formEquipmentId, setFormEquipmentId] = useState("");
@@ -82,6 +97,136 @@ export default function Services() {
       window.history.replaceState({}, document.title);
     }
   }, [location]);
+
+  // Scanning functions
+  const checkCameraPermission = async (): Promise<boolean> => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      stream.getTracks().forEach(track => track.stop());
+      return true;
+    } catch (error) {
+      setScannerError("Camera permission denied. Please allow camera access and try again.");
+      return false;
+    }
+  };
+
+  const startScanning = async () => {
+    setShowScanner(true);
+    setScanning(true);
+    setManualSerial("");
+    setScannerError(null);
+
+    const hasPermission = await checkCameraPermission();
+    if (!hasPermission) {
+      setScanning(false);
+      return;
+    }
+
+    initTimeoutRef.current = setTimeout(() => {
+      setScannerError("Camera failed to start. Please try again or use manual entry.");
+      setScanning(false);
+      if (scannerRef.current) {
+        scannerRef.current.stop().catch(console.error);
+        scannerRef.current.clear().catch(console.error);
+        scannerRef.current = null;
+      }
+    }, 5000);
+
+    setTimeout(async () => {
+      try {
+        const readerElement = document.getElementById('qr-reader-admin');
+        if (!readerElement) return;
+
+        if (!scannerRef.current) {
+          scannerRef.current = new Html5Qrcode("qr-reader-admin");
+          try {
+            await scannerRef.current.start(
+              { facingMode: "environment" },
+              { fps: 10, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0 },
+              (decodedText) => handleScanSuccess(decodedText),
+              () => {}
+            );
+          } catch (envCameraError) {
+            await scannerRef.current.start(
+              {},
+              { fps: 10, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0 },
+              (decodedText) => handleScanSuccess(decodedText),
+              () => {}
+            );
+          }
+          
+          if (initTimeoutRef.current) {
+            clearTimeout(initTimeoutRef.current);
+            initTimeoutRef.current = null;
+          }
+          setScanning(false);
+        }
+      } catch (error) {
+        setScannerError("Failed to start camera. Please check camera permissions and try again.");
+        setScanning(false);
+      }
+    }, 500);
+  };
+
+  const stopScanning = async () => {
+    if (initTimeoutRef.current) {
+      clearTimeout(initTimeoutRef.current);
+      initTimeoutRef.current = null;
+    }
+
+    if (scannerRef.current) {
+      try {
+        await scannerRef.current.stop();
+        await scannerRef.current.clear();
+      } catch (error) {}
+      scannerRef.current = null;
+    }
+    
+    setScanning(false);
+    setShowScanner(false);
+    setScannerError(null);
+  };
+
+  const handleScanSuccess = async (scannedText: string) => {
+    await stopScanning();
+    setTimeout(() => {
+      findAndHighlightEquipment(scannedText.trim());
+    }, 100);
+  };
+
+  const handleManualEntry = async () => {
+    if (manualSerial.trim()) {
+      if (scanning) await stopScanning();
+      setTimeout(() => {
+        findAndHighlightEquipment(manualSerial.trim());
+        setShowScanner(false);
+      }, 100);
+    }
+  };
+
+  const findAndHighlightEquipment = (serialNumber: string) => {
+    const foundEquipment = equipment.find(eq => eq.serialNumber === serialNumber);
+    if (foundEquipment) {
+      const element = equipmentRefs.current.get(foundEquipment.id);
+      if (element) element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setSelectedEquipment(foundEquipment.id);
+      setHighlightedEquipment(foundEquipment.id);
+      setTimeout(() => setHighlightedEquipment(null), 3000);
+      toast.success(`Found equipment: ${foundEquipment.unitId}`);
+    } else {
+      toast.error(`Equipment not found`);
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (initTimeoutRef.current) clearTimeout(initTimeoutRef.current);
+      if (scannerRef.current) {
+        scannerRef.current.stop().catch(() => {});
+        scannerRef.current.clear().catch(() => {});
+      }
+    };
+  }, []);
 
   const filteredEquipment = equipment.filter(
     (eq: Equipment) =>

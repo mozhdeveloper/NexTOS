@@ -11,6 +11,8 @@ interface CRMState {
   addClient: (client: Omit<Client, "id" | "createdAt">) => void;
   updateClient: (id: number, data: Partial<Client>) => void;
   addDeal: (deal: Omit<Deal, "id" | "createdAt">) => void;
+  updateDeal: (dealId: number, data: Partial<Deal>) => void;
+  deleteDeal: (dealId: number) => void;
   moveDealStage: (dealId: number, stage: DealStage) => void;
   addTask: (task: Omit<Task, "id" | "createdAt">) => void;
   completeTask: (taskId: number) => void;
@@ -131,6 +133,18 @@ export const useCRMStore = create<CRMState>()(
       addDeal: (deal) => {
         const newDeal = { ...deal, id: Date.now(), createdAt: new Date().toISOString() };
         set((state) => ({ deals: [...state.deals, newDeal] }));
+      },
+
+      updateDeal: (dealId, data) => {
+        set((state) => ({
+          deals: state.deals.map((d) => (d.id === dealId ? { ...d, ...data } : d)),
+        }));
+      },
+
+      deleteDeal: (dealId) => {
+        set((state) => ({
+          deals: state.deals.filter((d) => d.id !== dealId),
+        }));
       },
 
       moveDealStage: (dealId, stage) => {
