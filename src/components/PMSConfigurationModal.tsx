@@ -116,20 +116,20 @@ export function PMSConfigurationModal({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="bg-[#1A1A20] border border-white/10 max-w-md max-h-[80vh] overflow-y-auto">
+      <DialogContent className="bg-white border border-gray-200 max-w-md max-h-[80vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="text-[#EAEAEA]">PMS Configuration</DialogTitle>
+          <DialogTitle className="text-black">PMS Configuration</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4 py-4">
           {/* Equipment Type */}
           <div className="space-y-2">
-            <Label className="text-sm text-[#EAEAEA]">Equipment Type</Label>
+            <Label className="text-sm text-black">Equipment Type</Label>
             <Select value={selectedEquipmentType} onValueChange={setSelectedEquipmentType}>
-              <SelectTrigger className="bg-[#121214] border-white/10 text-[#EAEAEA]">
+              <SelectTrigger className="bg-white border-gray-200 text-black">
                 <SelectValue placeholder="Select equipment type" />
               </SelectTrigger>
-              <SelectContent className="bg-[#1A1A20] border-white/10">
+              <SelectContent className="bg-white border-gray-200">
                 {availableEquipmentTypes.map((type) => (
                   <SelectItem key={type.value} value={type.value}>
                     {type.label}
@@ -141,7 +141,7 @@ export function PMSConfigurationModal({
 
           {/* Service Interval */}
           <div className="space-y-2">
-            <Label className="text-sm text-[#EAEAEA]">Service Interval</Label>
+            <Label className="text-sm text-black">Service Interval</Label>
             <div className="grid grid-cols-[1fr_120px] gap-2">
               <Input
                 type="number"
@@ -151,10 +151,10 @@ export function PMSConfigurationModal({
                 onChange={(e) => setServiceIntervalValue(e.target.value)}
                 placeholder="Enter interval"
                 disabled={!selectedEquipmentType}
-                className={`bg-[#121214] border-white/10 ${
+                className={`bg-white border-gray-200 ${
                   selectedEquipmentType
-                    ? "text-[#EAEAEA]"
-                    : "text-[#88888C] cursor-not-allowed opacity-50"
+                    ? "text-black"
+                    : "text-gray-500 cursor-not-allowed opacity-50"
                 }`}
               />
               <Select
@@ -163,22 +163,22 @@ export function PMSConfigurationModal({
                 disabled={!selectedEquipmentType}
               >
                 <SelectTrigger
-                  className={`bg-[#121214] border-white/10 ${
+                  className={`bg-white border-gray-200 ${
                     selectedEquipmentType
-                      ? "text-[#EAEAEA] cursor-pointer"
-                      : "text-[#88888C] cursor-not-allowed opacity-50"
+                      ? "text-black cursor-pointer"
+                      : "text-gray-500 cursor-not-allowed opacity-50"
                   }`}
                 >
                   <SelectValue placeholder="Unit" />
                 </SelectTrigger>
-                <SelectContent className="bg-[#1A1A20] border-white/10">
+                <SelectContent className="bg-white border-gray-200">
                   <SelectItem value="Hours">Hours</SelectItem>
                   <SelectItem value="KM">KM</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             {!selectedEquipmentType && (
-              <p className="text-xs text-[#88888C]">
+              <p className="text-xs text-gray-500">
                 Select an equipment type first
               </p>
             )}
@@ -193,14 +193,14 @@ export function PMSConfigurationModal({
                 setServiceIntervalUnit("Hours");
                 setEditingId(null);
               }}
-              className="border-white/10 text-[#EAEAEA] hover:bg-white/10 text-sm"
+              className="border-gray-200 text-gray-600 hover:bg-gray-50 text-sm"
             >
               Clear
             </Button>
             <Button
               onClick={handleSubmit}
               disabled={!selectedEquipmentType || !serviceIntervalValue}
-              className="bg-[#F2A900] text-[#050505] hover:bg-[#F2A900]/90 font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+              className="bg-[#66B2B2] text-white hover:bg-[#66B2B2]/90 font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {editingId ? "Update" : "Add"} Configuration
             </Button>
@@ -208,8 +208,8 @@ export function PMSConfigurationModal({
 
           {/* Divider */}
           {configurations.length > 0 && (
-            <div className="pt-4 border-t border-white/10">
-              <h3 className="text-sm font-semibold text-[#EAEAEA] mb-3">
+            <div className="pt-4 border-t border-gray-200">
+              <h3 className="text-sm font-semibold text-black mb-3">
                 Configurations
               </h3>
 
@@ -218,27 +218,27 @@ export function PMSConfigurationModal({
                 {configurations.map((config) => (
                   <div
                     key={config.id}
-                    className="flex items-center justify-between p-3 bg-[#121214] rounded border border-white/5 hover:border-white/10 transition-colors"
+                    className="flex items-center justify-between p-3 bg-gray-50 rounded border border-gray-200 hover:border-gray-300 transition-colors"
                   >
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm text-[#EAEAEA] font-medium">
+                      <div className="text-sm text-black font-medium">
                         {getEquipmentTypeLabel(config.equipmentType)}
                       </div>
-                      <div className="text-xs text-[#88888C]">
+                      <div className="text-xs text-gray-600">
                         {config.serviceIntervalHours.toLocaleString()} {config.serviceIntervalUnit ?? "Hours"}
                       </div>
                     </div>
                     <div className="flex gap-2 ml-2">
                       <button
                         onClick={() => handleEdit(config)}
-                        className="p-1.5 rounded hover:bg-white/10 transition-colors"
+                        className="p-1.5 rounded hover:bg-gray-100 transition-colors"
                         title="Edit"
                       >
-                        <Edit2 className="w-4 h-4 text-[#F2A900]" />
+                        <Edit2 className="w-4 h-4 text-[#66B2B2]" />
                       </button>
                       <button
                         onClick={() => handleDelete(config.id)}
-                        className="p-1.5 rounded hover:bg-white/10 transition-colors"
+                        className="p-1.5 rounded hover:bg-gray-100 transition-colors"
                         title="Delete"
                       >
                         <Trash2 className="w-4 h-4 text-[#EF4444]" />
@@ -251,11 +251,11 @@ export function PMSConfigurationModal({
           )}
         </div>
 
-        <div className="flex gap-2 justify-end pt-4 border-t border-white/10">
+        <div className="flex gap-2 justify-end pt-4 border-t border-gray-200">
           <Button
             variant="outline"
             onClick={() => handleOpenChange(false)}
-            className="border-white/10 text-[#EAEAEA] hover:bg-white/10"
+            className="border-gray-200 text-gray-600 hover:bg-gray-50"
           >
             Close
           </Button>

@@ -240,7 +240,7 @@ export const useOperationsStore = create<OperationsState>()(
       getEquipmentByClient: (clientId) => get().equipment.filter((e) => e.clientId === clientId),
       getServiceHistory: (equipmentId) => get().serviceRecords.filter((r) => r.equipmentId === equipmentId),
       getClientServiceHistory: (clientId) => get().serviceRecords.filter((r) => r.clientId === clientId),
-      generateQRData: (serialNumber) => JSON.stringify({ serial: serialNumber, company: "NexTOS", scannedAt: new Date().toISOString() }),
+      generateQRData: (serialNumber) => JSON.stringify({ serial: serialNumber, company: "NexVision", scannedAt: new Date().toISOString() }),
       
       syncWithFleet: (fleetUnits) => {
         set((state) => ({
@@ -259,7 +259,7 @@ export const useOperationsStore = create<OperationsState>()(
       },
     }),
     {
-      name: "nextos-operations-v4",
+      name: "nexvision-operations-v4",
     }
   )
 );

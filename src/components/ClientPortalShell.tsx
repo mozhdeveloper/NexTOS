@@ -14,7 +14,6 @@ import {
   ChevronLeft,
   ChevronRight,
   LogOut,
-  Zap,
   Building2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -63,22 +62,24 @@ export default function ClientPortalShell({ children }: { children: React.ReactN
   };
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-[#050505]">
+    <div className="flex h-screen w-screen overflow-hidden bg-gray-50">
       {/* Sidebar */}
       <aside
-        className={`flex flex-col border-r-2 border-[#F2A900] bg-[#121214] transition-all duration-300 ${
+        className={`flex flex-col border-r-2 border-gray-200 bg-white transition-all duration-300 ${
           collapsed ? "w-[60px]" : "w-[220px]"
         }`}
       >
         {/* Logo */}
-        <div className="flex items-center gap-2 px-3 py-4 border-b border-white/5">
-          <div className="flex items-center justify-center w-8 h-8 rounded bg-[#F2A900] shrink-0">
-            <Zap className="w-5 h-5 text-[#050505]" />
-          </div>
+        <div className="flex items-center gap-2 px-3 py-4 border-b border-gray-200">
+          <img
+            src="/NEXTOS%20LOGO.png"
+            alt="NexVision Logo"
+            className="w-8 h-8 object-contain shrink-0"
+          />
           {!collapsed && (
             <div>
-              <div className="text-[#EAEAEA] font-bold text-sm tracking-tight">NexTOS</div>
-              <div className="text-[#88888C] text-[10px] tracking-[0.1em] uppercase font-mono-tech">
+              <div className="text-gray-900 font-bold text-sm tracking-tight">NexVision</div>
+              <div className="text-gray-500 text-[10px] tracking-[0.1em] uppercase font-mono-tech">
                 Client Portal
               </div>
             </div>
@@ -87,25 +88,25 @@ export default function ClientPortalShell({ children }: { children: React.ReactN
 
         {/* Role Selector */}
         {!collapsed && (
-          <div className="px-3 py-3 border-b border-white/5">
-            <label className="text-[10px] text-[#88888C] uppercase tracking-[0.1em] font-medium mb-1 block">
+          <div className="px-3 py-3 border-b border-gray-200">
+            <label className="text-[10px] text-gray-500 uppercase tracking-[0.1em] font-medium mb-1 block">
               Switch Role
             </label>
             <Select value={user?.role} onValueChange={(v) => handleRoleChange(v as UserRole)}>
-              <SelectTrigger className="h-8 bg-[#1A1A20] border-white/10 text-[#EAEAEA] text-xs">
+              <SelectTrigger className="h-8 bg-white border-gray-200 text-gray-900 text-xs">
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent className="bg-[#1A1A20] border-white/10">
-                <SelectItem value="admin" className="text-xs text-[#EAEAEA]">
+              <SelectContent className="bg-white border-gray-200">
+                <SelectItem value="admin" className="text-xs text-gray-900">
                   Administrator
                 </SelectItem>
-                <SelectItem value="sales" className="text-xs text-[#EAEAEA]">
+                <SelectItem value="sales" className="text-xs text-gray-900">
                   Sales
                 </SelectItem>
-                <SelectItem value="tech" className="text-xs text-[#EAEAEA]">
+                <SelectItem value="tech" className="text-xs text-gray-900">
                   Technician
                 </SelectItem>
-                <SelectItem value="client" className="text-xs text-[#EAEAEA]">
+                <SelectItem value="client" className="text-xs text-gray-900">
                   Client
                 </SelectItem>
               </SelectContent>
@@ -115,11 +116,11 @@ export default function ClientPortalShell({ children }: { children: React.ReactN
 
         {/* Client Company Badge */}
         {!collapsed && (
-          <div className="px-3 py-3 border-b border-white/5">
+          <div className="px-3 py-3 border-b border-gray-200">
             <div className="flex items-center gap-2">
-              <Building2 className="w-4 h-4 text-[#F2A900] shrink-0" />
+              <Building2 className="w-4 h-4 text-[#66B2B2] shrink-0" />
               <div className="min-w-0">
-                <div className="text-[11px] text-[#EAEAEA] font-semibold leading-tight truncate">
+                <div className="text-[11px] text-gray-900 font-semibold leading-tight truncate">
                   {companyName}
                 </div>
                 <div className="text-[9px] text-[#10B981] uppercase tracking-[0.1em] font-mono-tech">
@@ -140,11 +141,11 @@ export default function ClientPortalShell({ children }: { children: React.ReactN
                 onClick={() => navigate(item.path)}
                 className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm transition-all duration-200 ${
                   isActive
-                    ? "bg-[#F2A900]/10 text-[#F2A900] border-l-2 border-[#F2A900]"
-                    : "text-[#88888C] hover:text-[#EAEAEA] hover:bg-white/5 border-l-2 border-transparent"
+                    ? "bg-[#66B2B2]/10 text-[#66B2B2] border-l-2 border-[#66B2B2]"
+                    : "text-gray-500 hover:text-gray-900 hover:bg-gray-50 border-l-2 border-transparent"
                 } ${collapsed ? "justify-center" : ""}`}
               >
-                <item.icon className={`w-4 h-4 shrink-0 ${isActive ? "text-[#F2A900]" : ""}`} />
+                <item.icon className={`w-4 h-4 shrink-0 ${isActive ? "text-[#66B2B2]" : ""}`} />
                 {!collapsed && <span className="text-xs font-medium">{item.label}</span>}
               </button>
             );
@@ -152,10 +153,10 @@ export default function ClientPortalShell({ children }: { children: React.ReactN
         </nav>
 
         {/* Collapse Toggle */}
-        <div className="px-3 py-2 border-t border-white/5">
+        <div className="px-3 py-2 border-t border-gray-200">
           <button
             onClick={() => setCollapsed(!collapsed)}
-            className="w-full flex items-center justify-center h-7 rounded text-[#88888C] hover:text-[#EAEAEA] hover:bg-white/5 transition-colors"
+            className="w-full flex items-center justify-center h-7 rounded text-gray-500 hover:text-gray-900 hover:bg-gray-100 transition-colors"
           >
             {collapsed ? (
               <ChevronRight className="w-4 h-4" />
@@ -166,15 +167,15 @@ export default function ClientPortalShell({ children }: { children: React.ReactN
         </div>
 
         {/* User Profile */}
-        <div className="px-3 py-3 border-t border-white/5">
+        <div className="px-3 py-3 border-t border-gray-200">
           <div className={`flex items-center gap-2 ${collapsed ? "justify-center" : ""}`}>
-            <div className="w-7 h-7 rounded-full bg-[#005F73] flex items-center justify-center text-[#EAEAEA] text-[10px] font-bold shrink-0">
+            <div className="w-7 h-7 rounded-full bg-[#66B2B2] flex items-center justify-center text-white text-[10px] font-bold shrink-0">
               {user?.avatar}
             </div>
             {!collapsed && (
               <div className="flex-1 min-w-0">
-                <div className="text-[11px] text-[#EAEAEA] font-medium truncate">{user?.name}</div>
-                <div className="text-[9px] text-[#88888C] truncate">{user?.email}</div>
+                <div className="text-[11px] text-gray-900 font-medium truncate">{user?.name}</div>
+                <div className="text-[9px] text-gray-500 truncate">{user?.email}</div>
               </div>
             )}
           </div>

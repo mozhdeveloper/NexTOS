@@ -203,9 +203,9 @@ export function AddEquipmentModal({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="bg-[#1A1A20] border border-white/10 max-w-4xl">
+      <DialogContent className="bg-white border border-gray-200 max-w-4xl">
         <DialogHeader>
-          <DialogTitle className="text-[#EAEAEA]">{initialEquipment ? "Edit Equipment" : "Add Equipment"}</DialogTitle>
+          <DialogTitle className="text-black">{initialEquipment ? "Edit Equipment" : "Add Equipment"}</DialogTitle>
         </DialogHeader>
 
         <div className="py-4">
@@ -218,7 +218,7 @@ export function AddEquipmentModal({
             <div className="space-y-4">
               {/* Equipment Name */}
               <div className="space-y-2">
-                <Label className="text-sm text-[#EAEAEA]">Equipment Name</Label>
+                <Label className="text-sm text-black">Equipment Name</Label>
                 <Input
                   value={equipmentName}
                   onChange={(e) => {
@@ -228,8 +228,8 @@ export function AddEquipmentModal({
                     }
                   }}
                   placeholder="Enter equipment name"
-                  className={`bg-[#121214] text-[#EAEAEA] placeholder:text-[#88888C] focus-visible:border-[#F2A900] focus-visible:ring-[#F2A900]/50 ${
-                    isFieldMissing("equipmentName") ? "border-[#EF4444]" : "border-white/10"
+                  className={`bg-white text-black placeholder:text-gray-400 focus-visible:border-[#66B2B2] focus-visible:ring-[#66B2B2]/30 ${
+                    isFieldMissing("equipmentName") ? "border-[#EF4444]" : "border-gray-200"
                   }`}
                 />
                 {isFieldMissing("equipmentName") && (
@@ -239,7 +239,7 @@ export function AddEquipmentModal({
 
               {/* Equipment Type */}
               <div className="space-y-2">
-                <Label className="text-sm text-[#EAEAEA]">Equipment Type</Label>
+                <Label className="text-sm text-black">Equipment Type</Label>
                 <Select
                   value={equipmentType}
                   onValueChange={(value) => {
@@ -250,13 +250,13 @@ export function AddEquipmentModal({
                   }}
                 >
                   <SelectTrigger
-                    className={`w-full truncate bg-[#121214] text-[#EAEAEA] ${
-                      isFieldMissing("equipmentType") ? "border-[#EF4444]" : "border-white/10"
+                    className={`w-full truncate bg-white text-black ${
+                      isFieldMissing("equipmentType") ? "border-[#EF4444]" : "border-gray-200"
                     }`}
                   >
                     <SelectValue placeholder="Select equipment type" />
                   </SelectTrigger>
-                  <SelectContent className="bg-[#1A1A20] border-white/10">
+                  <SelectContent className="bg-white border-gray-200">
                     {availableEquipmentTypes.map((type) => (
                       <SelectItem key={type.value} value={type.value}>
                         {type.label}
@@ -271,7 +271,7 @@ export function AddEquipmentModal({
 
               {/* Client Selection */}
               <div className="space-y-2">
-                <Label className="text-sm text-[#EAEAEA]">Client</Label>
+                <Label className="text-sm text-black">Client</Label>
                 <Select
                   value={selectedClient}
                   onValueChange={(value) => {
@@ -282,13 +282,13 @@ export function AddEquipmentModal({
                   }}
                 >
                   <SelectTrigger
-                    className={`w-full truncate bg-[#121214] text-[#EAEAEA] ${
-                      isFieldMissing("selectedClient") ? "border-[#EF4444]" : "border-white/10"
+                    className={`w-full truncate bg-white text-black ${
+                      isFieldMissing("selectedClient") ? "border-[#EF4444]" : "border-gray-200"
                     }`}
                   >
                     <SelectValue placeholder="Select client" />
                   </SelectTrigger>
-                  <SelectContent className="bg-[#1A1A20] border-white/10">
+                  <SelectContent className="bg-white border-gray-200">
                     {clients.map((client) => (
                       <SelectItem key={client.id} value={String(client.id)}>
                         {client.companyName}
@@ -303,17 +303,17 @@ export function AddEquipmentModal({
 
               {/* Image Upload */}
               <div className="space-y-2">
-                <Label className="text-sm text-[#EAEAEA]">Equipment Photo</Label>
+                <Label className="text-sm text-black">Equipment Photo</Label>
                 <Input
                   type="file"
                   accept="image/*"
-                  className="bg-[#121214] border-white/10 text-[#EAEAEA] placeholder:text-[#88888C] focus-visible:border-[#F2A900] focus-visible:ring-[#F2A900]/50 cursor-pointer"
+                  className="bg-white border-gray-200 text-black placeholder:text-gray-400 focus-visible:border-[#66B2B2] focus-visible:ring-[#66B2B2]/30 cursor-pointer"
                 />
               </div>
 
               {/* Serial Number */}
               <div className="space-y-2">
-                <Label className="text-sm text-[#EAEAEA]">Serial Number</Label>
+                <Label className="text-sm text-black">Serial Number</Label>
                 <Input
                   value={serialNumber}
                   onChange={(e) => {
@@ -323,8 +323,8 @@ export function AddEquipmentModal({
                     }
                   }}
                   placeholder="Enter serial number"
-                  className={`bg-[#121214] text-[#EAEAEA] placeholder:text-[#88888C] focus-visible:border-[#F2A900] focus-visible:ring-[#F2A900]/50 ${
-                    isFieldMissing("serialNumber") ? "border-[#EF4444]" : "border-white/10"
+                  className={`bg-white text-black placeholder:text-gray-400 focus-visible:border-[#66B2B2] focus-visible:ring-[#66B2B2]/30 ${
+                    isFieldMissing("serialNumber") ? "border-[#EF4444]" : "border-gray-200"
                   }`}
                 />
                 {isFieldMissing("serialNumber") && (
@@ -336,18 +336,18 @@ export function AddEquipmentModal({
             <div className="space-y-4">
               {/* Notes */}
               <div className="space-y-2">
-                <Label className="text-sm text-[#EAEAEA]">Notes</Label>
+                <Label className="text-sm text-black">Notes</Label>
                 <textarea
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   placeholder="Add any additional notes"
-                  className="w-full h-40 rounded-md bg-[#121214] border border-white/10 px-3 py-2 text-sm text-[#EAEAEA] placeholder:text-[#88888C] focus-visible:border-[#F2A900] focus-visible:ring-[#F2A900]/50 outline-none transition-colors resize-none"
+                  className="w-full h-40 rounded-md bg-white border border-gray-200 px-3 py-2 text-sm text-black placeholder:text-gray-400 focus-visible:border-[#66B2B2] focus-visible:ring-[#66B2B2]/30 outline-none transition-colors resize-none"
                 />
               </div>
 
               {/* PMS Configuration */}
               <div className="space-y-2 pt-0">
-                <Label className="text-sm text-[#EAEAEA]">PMS Configuration</Label>
+                <Label className="text-sm text-black">PMS Configuration</Label>
                 <div className="grid grid-cols-[1.6fr_120px] gap-2">
                   <Input
                     type="number"
@@ -356,13 +356,13 @@ export function AddEquipmentModal({
                     value={serviceIntervalValue}
                     onChange={(e) => setServiceIntervalValue(e.target.value)}
                     placeholder="Service interval"
-                    className="bg-[#121214] border-white/10 text-[#EAEAEA] placeholder:text-[#88888C] focus-visible:border-[#F2A900] focus-visible:ring-[#F2A900]/50"
+                    className="bg-white border-gray-200 text-black placeholder:text-gray-400 focus-visible:border-[#66B2B2] focus-visible:ring-[#66B2B2]/30"
                   />
                   <Select value={serviceIntervalUnit} onValueChange={(value: ServiceIntervalUnit) => setServiceIntervalUnit(value)}>
-                    <SelectTrigger className="w-full bg-[#121214] border-white/10 text-[#EAEAEA]">
+                    <SelectTrigger className="w-full bg-white border-gray-200 text-black">
                       <SelectValue placeholder="Unit" />
                     </SelectTrigger>
-                    <SelectContent className="bg-[#1A1A20] border-white/10">
+                    <SelectContent className="bg-white border-gray-200">
                       {SERVICE_INTERVAL_UNITS.map((unit) => (
                         <SelectItem key={unit} value={unit}>
                           {unit}
@@ -380,13 +380,13 @@ export function AddEquipmentModal({
           <Button
             variant="outline"
             onClick={() => handleOpenChange(false)}
-            className="border-white/10 text-[#EAEAEA] hover:bg-white/10"
+            className="border-gray-200 text-gray-600 hover:bg-gray-50"
           >
             Cancel
           </Button>
           <Button
             onClick={handleSubmit}
-            className="bg-[#F2A900] text-[#050505] hover:bg-[#F2A900]/90 font-semibold"
+            className="bg-[#66B2B2] text-white hover:bg-[#66B2B2]/90 font-semibold"
           >
             {initialEquipment ? "Save Changes" : "Add Equipment"}
           </Button>

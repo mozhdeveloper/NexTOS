@@ -204,7 +204,7 @@ function statusTextClass(status: UnitDisplayStatus): string {
     case "idle":
       return "text-[#3B82F6]";
     case "parking":
-      return "text-[#F2A900]";
+      return "text-[#66B2B2]";
     default:
       return "text-[#EF4444]";
   }
@@ -217,7 +217,7 @@ function statusDotClass(status: UnitDisplayStatus): string {
     case "idle":
       return "bg-[#3B82F6]";
     case "parking":
-      return "bg-[#F2A900]";
+      return "bg-[#66B2B2]";
     default:
       return "bg-[#EF4444]";
   }
@@ -740,8 +740,8 @@ export default function Fleet() {
       {/* Header */}
       <div className="flex items-center justify-between shrink-0">
         <div>
-          <h1 className="text-[32px] font-bold text-[#EAEAEA] tracking-[-0.02em]">Fleet Intelligence</h1>
-          <p className="text-sm text-[#88888C] mt-0.5">Real-time GPS tracking and telemetry</p>
+          <h1 className="text-[32px] font-bold text-black tracking-[-0.02em]">Fleet Intelligence</h1>
+          <p className="text-sm text-gray-600 mt-0.5">Real-time GPS tracking and telemetry</p>
         </div>
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded bg-[#10B981]/10 border border-[#10B981]/20">
@@ -756,9 +756,9 @@ export default function Fleet() {
               {idleCount} idle
             </span>
           </div>
-          <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded bg-[#F2A900]/10 border border-[#F2A900]/20">
-            <WifiOff className="w-3 h-3 text-[#F2A900]" />
-            <span className="text-xs text-[#F2A900] font-medium">
+          <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded bg-[#66B2B2]/10 border border-[#66B2B2]/20">
+            <WifiOff className="w-3 h-3 text-[#66B2B2]" />
+            <span className="text-xs text-[#66B2B2] font-medium">
               {parkingCount} parking
             </span>
           </div>
@@ -768,9 +768,9 @@ export default function Fleet() {
               {offlineCount} offline
             </span>
           </div>
-          <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded bg-[#14B8A6]/10 border border-[#14B8A6]/20">
-            <Radio className="w-3 h-3 text-[#14B8A6]" />
-            <span className="text-xs text-[#14B8A6] font-medium">
+          <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded bg-[#66B2B2]/10 border border-[#66B2B2]/20">
+            <Radio className="w-3 h-3 text-[#66B2B2]" />
+            <span className="text-xs text-[#66B2B2] font-medium">
               {workingCount} working
             </span>
           </div>
@@ -780,14 +780,14 @@ export default function Fleet() {
       <div className="flex gap-4 flex-1 min-h-0 overflow-hidden">
         {/* Map */}
         <div className="flex-1 data-card overflow-hidden relative min-h-0">
-          <div className="absolute top-3 left-3 z-[1000] flex items-center rounded border border-white/10 bg-[#050505]/70 p-1 backdrop-blur">
+          <div className="absolute top-3 left-3 z-[1000] flex items-center rounded border border-gray-200 bg-white/80 p-1 backdrop-blur">
             <button
               type="button"
               onClick={() => setViewMode("gps")}
               className={`px-3 py-1.5 text-xs font-semibold rounded transition-colors ${
                 viewMode === "gps"
-                  ? "bg-[#F2A900] text-[#050505]"
-                  : "text-[#EAEAEA] hover:bg-white/10"
+                  ? "bg-[#66B2B2] text-white"
+                  : "text-gray-600 hover:bg-gray-100"
               }`}
             >
               GPS
@@ -797,8 +797,8 @@ export default function Fleet() {
               onClick={() => setViewMode("history")}
               className={`px-3 py-1.5 text-xs font-semibold rounded transition-colors ${
                 viewMode === "history"
-                  ? "bg-[#F2A900] text-[#050505]"
-                  : "text-[#EAEAEA] hover:bg-white/10"
+                  ? "bg-[#66B2B2] text-white"
+                  : "text-gray-600 hover:bg-gray-100"
               }`}
             >
               History
@@ -810,12 +810,12 @@ export default function Fleet() {
               <MapContainer
                 center={mapCenter}
                 zoom={13}
-                style={{ height: "100%", width: "100%", background: "#1A1A20" }}
+                style={{ height: "100%", width: "100%", background: "#F3F4F6" }}
                 zoomControl={false}
               >
                 <TileLayer
                   attribution='&copy; <a href="https://carto.com/">CARTO</a>'
-                  url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+                  url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
                 />
                 <MapCenter center={mapCenter} />
                 {units.filter((unit) => {
@@ -838,9 +838,9 @@ export default function Fleet() {
                       }}
                     >
                       <Popup className="dark-popup">
-                        <div className="bg-[#121214] p-2 min-w-[180px]">
-                          <div className="text-xs font-bold text-[#EAEAEA] mb-1">{unit.unitName}</div>
-                          <div className="text-[10px] text-[#88888C] space-y-0.5">
+                        <div className="bg-white p-2 min-w-[180px]">
+                          <div className="text-xs font-bold text-black mb-1">{unit.unitName}</div>
+                          <div className="text-[10px] text-gray-600 space-y-0.5">
                             <div>Status: <span className={statusTextClass(getEffectiveStatus(unit.id, unit.telemetry.status))}>{getEffectiveStatus(unit.id, unit.telemetry.status)}</span></div>
                             {seedDisplay?.equipmentType && <div>Type: {seedDisplay.equipmentType}</div>}
                             <div>Speed: {unit.telemetry.speed} mph</div>
@@ -860,8 +860,8 @@ export default function Fleet() {
                     center={[selectedUnit.telemetry.lat, selectedUnit.telemetry.lng]}
                     radius={500}
                     pathOptions={{
-                      color: "#F2A900",
-                      fillColor: "#F2A900",
+                      color: "#66B2B2",
+                      fillColor: "#66B2B2",
                       fillOpacity: 0.1,
                       weight: 1,
                     }}
@@ -874,35 +874,35 @@ export default function Fleet() {
                 <div className="absolute bottom-4 left-4 void-glass rounded p-3 min-w-[200px]">
                   <div className="flex items-center gap-2 mb-2">
                     <Radio className={`w-3.5 h-3.5 ${statusTextClass(getEffectiveStatus(selectedUnit.id, selectedUnit.telemetry.status))}`} />
-                    <span className="text-xs font-semibold text-[#EAEAEA]">{selectedUnit.unitName}</span>
+                    <span className="text-xs font-semibold text-black">{selectedUnit.unitName}</span>
                   </div>
                   <div className="space-y-1 font-mono-tech text-[10px]">
                     <div className="flex justify-between">
-                      <span className="text-[#88888C]">Coordinates</span>
-                      <span className="text-[#EAEAEA]">
+                      <span className="text-gray-600">Coordinates</span>
+                      <span className="text-black">
                         {(selectedUnit.telemetry.lat ?? 0).toFixed(4)}, {(selectedUnit.telemetry.lng ?? 0).toFixed(4)}
                       </span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-[#88888C]">Speed</span>
-                      <span className="text-[#EAEAEA]">{selectedUnit.telemetry.speed} mph</span>
+                      <span className="text-gray-600">Speed</span>
+                      <span className="text-black">{selectedUnit.telemetry.speed} mph</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-[#88888C]">Heading</span>
-                      <span className="text-[#EAEAEA]">{Math.floor(selectedUnit.telemetry.heading ?? 0)}°</span>
+                      <span className="text-gray-600">Heading</span>
+                      <span className="text-black">{Math.floor(selectedUnit.telemetry.heading ?? 0)}°</span>
                     </div>
                     {selectedSeedDisplay?.equipmentType && (
                       <div className="flex justify-between">
-                        <span className="text-[#88888C]">Type</span>
-                        <span className="text-[#EAEAEA]">{selectedSeedDisplay.equipmentType}</span>
+                        <span className="text-gray-600">Type</span>
+                        <span className="text-black">{selectedSeedDisplay.equipmentType}</span>
                       </div>
                     )}
                     <div className="flex justify-between">
-                      <span className="text-[#88888C]">Engine Hours</span>
-                      <span className="text-[#F2A900]">{formatHoursMinutes(selectedUnit.telemetry)}</span>
+                      <span className="text-gray-600">Engine Hours</span>
+                      <span className="text-[#66B2B2]">{formatHoursMinutes(selectedUnit.telemetry)}</span>
                     </div>
                     {selectedUnit.serviceDue && (
-                      <div className="flex items-center gap-1 mt-1 pt-1 border-t border-white/5">
+                      <div className="flex items-center gap-1 mt-1 pt-1 border-t border-gray-200">
                         <AlertTriangle className="w-3 h-3 text-[#EF4444]" />
                         <span className="text-[#EF4444]">Service Due</span>
                       </div>
@@ -912,8 +912,8 @@ export default function Fleet() {
               )}
             </>
           ) : (
-            <div className="h-full overflow-auto p-4 pt-16 bg-[#121214]">
-              <div className="rounded border border-white/10 bg-[#1A1A20] p-3 mb-3">
+            <div className="h-full overflow-auto p-4 pt-16 bg-white">
+              <div className="rounded border border-gray-200 bg-white p-3 mb-3">
                 <div className="flex items-center justify-between mb-3">
                   <button
                     type="button"
@@ -922,11 +922,11 @@ export default function Fleet() {
                       setHistoryMonth(prevMonth);
                       setSelectedHistoryDate(prevMonth);
                     }}
-                    className="px-3 py-1.5 text-xs font-medium rounded border border-white/10 text-[#EAEAEA] hover:bg-white/10"
+                    className="px-3 py-1.5 text-xs font-medium rounded border border-gray-200 text-gray-600 hover:bg-gray-100"
                   >
                     Last Month
                   </button>
-                  <div className="text-sm font-semibold text-[#F2A900]">
+                  <div className="text-sm font-semibold text-[#66B2B2]">
                     {historyMonth.toLocaleDateString(undefined, { month: "long", year: "numeric" })}
                   </div>
                   <button
@@ -936,13 +936,13 @@ export default function Fleet() {
                       setHistoryMonth(nextMonth);
                       setSelectedHistoryDate(nextMonth);
                     }}
-                    className="px-3 py-1.5 text-xs font-medium rounded border border-white/10 text-[#EAEAEA] hover:bg-white/10"
+                    className="px-3 py-1.5 text-xs font-medium rounded border border-gray-200 text-gray-600 hover:bg-gray-100"
                   >
                     Next Month
                   </button>
                 </div>
 
-                <div className="grid grid-cols-7 gap-1 text-center text-[10px] text-[#88888C] mb-1">
+                <div className="grid grid-cols-7 gap-1 text-center text-[10px] text-gray-600 mb-1">
                   {[
                     "Sun",
                     "Mon",
@@ -971,10 +971,10 @@ export default function Fleet() {
                         onClick={() => setSelectedHistoryDate(dateValue)}
                         className={`h-8 rounded text-xs border transition-colors ${
                           isSelected
-                            ? "bg-[#F2A900] border-[#F2A900] text-[#050505] font-semibold"
+                            ? "bg-[#66B2B2] border-[#66B2B2] text-white font-semibold"
                             : isToday
                             ? "border-[#10B981] text-[#10B981]"
-                            : "border-white/10 text-[#EAEAEA] hover:bg-white/10"
+                            : "border-gray-200 text-gray-700 hover:bg-gray-100"
                         }`}
                       >
                         {dateValue.getDate()}
@@ -984,9 +984,9 @@ export default function Fleet() {
                 </div>
               </div>
 
-              <div className="rounded border border-white/10 bg-[#1A1A20] overflow-auto">
+              <div className="rounded border border-gray-200 bg-white overflow-auto">
                 <table className="min-w-full text-[11px]">
-                  <thead className="bg-[#050505]/70 text-[#F2A900]">
+                  <thead className="bg-gray-50 text-gray-600">
                     <tr>
                       <th className="px-3 py-2 text-left font-semibold">Name</th>
                       <th className="px-3 py-2 text-left font-semibold">Mileage</th>
@@ -1003,7 +1003,7 @@ export default function Fleet() {
                   <tbody>
                     {historyLoading && (
                       <tr>
-                        <td colSpan={10} className="px-3 py-6 text-center text-[#88888C]">
+                        <td colSpan={10} className="px-3 py-6 text-center text-gray-600">
                           Loading history data...
                         </td>
                       </tr>
@@ -1016,7 +1016,7 @@ export default function Fleet() {
                       </tr>
                     )}
                     {!historyLoading && !historyError && historyRows.map((row, index) => (
-                      <tr key={`${row.name}-${index}`} className="border-t border-white/5 text-[#EAEAEA]">
+                      <tr key={`${row.name}-${index}`} className="border-t border-gray-200 text-black">
                         <td className="px-3 py-2">{row.name}</td>
                         <td className="px-3 py-2">{row.mileage}</td>
                         <td className="px-3 py-2">{row.maxSpeed}</td>
@@ -1027,17 +1027,17 @@ export default function Fleet() {
                         <td className="px-3 py-2">{row.idle}</td>
                         <td className="px-3 py-2">
                           <div>{row.startAddress}</div>
-                          <div className="text-[#88888C]">{row.startTime}</div>
+                          <div className="text-gray-600">{row.startTime}</div>
                         </td>
                         <td className="px-3 py-2">
                           <div>{row.endAddress}</div>
-                          <div className="text-[#88888C]">{row.endTime}</div>
+                          <div className="text-gray-600">{row.endTime}</div>
                         </td>
                       </tr>
                     ))}
                     {!historyLoading && !historyError && historyRows.length === 0 && (
                       <tr>
-                        <td colSpan={10} className="px-3 py-6 text-center text-[#88888C]">
+                        <td colSpan={10} className="px-3 py-6 text-center text-gray-600">
                           No data for {toYmd(selectedHistoryDate)}
                         </td>
                       </tr>
@@ -1051,43 +1051,43 @@ export default function Fleet() {
 
         {/* Asset List Sidebar */}
         <div className="w-[280px] data-card flex h-full min-h-0 flex-col overflow-hidden">
-          <div className="p-3 border-b border-white/5">
+          <div className="p-3 border-b border-gray-200">
             <div className="flex items-center justify-between gap-2">
-              <h3 className="text-sm font-semibold text-[#EAEAEA]">Fleet Units</h3>
-              <span className="text-[10px] text-[#88888C]">{sidebarDateWithPrefix}</span>
+              <h3 className="text-sm font-semibold text-black">Fleet Units</h3>
+              <span className="text-[10px] text-gray-600">{sidebarDateWithPrefix}</span>
             </div>
-            <p className="text-[10px] text-[#88888C]">{units.length} units tracked</p>
+            <p className="text-[10px] text-gray-600">{units.length} units tracked</p>
           </div>
 
           {/* Action Buttons */}
-          <div className="p-3 border-b border-white/5 flex gap-2">
+          <div className="p-3 border-b border-gray-200 flex gap-2">
             <Button
               onClick={() => {
                 setEditingEquipment(null);
                 setAddEquipmentOpen(true);
               }}
-              className="flex-1 bg-[#F2A900] text-[#050505] hover:bg-[#F2A900]/90 font-semibold text-xs h-8"
+              className="flex-1 bg-[#66B2B2] text-white hover:bg-[#66B2B2]/90 font-semibold text-xs h-8"
             >
               <Plus className="w-3.5 h-3.5 mr-1" />
               Add Equipment
             </Button>
           </div>
 
-          <div className="flex flex-1 min-h-0 flex-col overflow-y-auto overscroll-contain divide-y divide-white/5">
+          <div className="flex flex-1 min-h-0 flex-col overflow-y-auto overscroll-contain divide-y divide-gray-200">
             {/* Added Equipment Section */}
             {addedEquipment.length > 0 && (
-              <div className="border-b border-white/5">
+              <div className="border-b border-gray-200">
                 {addedEquipment.map((eq) => {
                   const client = seedClientsForModal.find((c) => c.id === eq.clientId) || clients.find((c) => c.id === eq.clientId);
                   return (
                     <div
                       key={eq.id}
-                      className="w-full p-3 text-left transition-colors hover:bg-white/5 border-b border-white/5 last:border-b-0"
+                      className="w-full p-3 text-left transition-colors hover:bg-gray-50 border-b border-gray-200 last:border-b-0"
                     >
                       <div className="flex items-center justify-between mb-1">
                         <div className="flex items-center gap-1.5">
-                          <div className="w-2 h-2 rounded-full bg-[#F2A900]" />
-                          <span className="text-xs font-medium text-[#EAEAEA]">{eq.name}</span>
+                          <div className="w-2 h-2 rounded-full bg-[#66B2B2]" />
+                          <span className="text-xs font-medium text-black">{eq.name}</span>
                         </div>
                         <div className="flex items-center gap-1">
                           <Button
@@ -1098,7 +1098,7 @@ export default function Fleet() {
                               setAddEquipmentOpen(true);
                             }}
                             aria-label="Edit equipment"
-                            className="h-6 w-6 p-0 border-white/10 text-[#EAEAEA] hover:bg-white/10 hover:text-[#EAEAEA]"
+                            className="h-6 w-6 p-0 border-gray-200 text-gray-600 hover:bg-gray-100 hover:text-black"
                           >
                             <Pencil className="w-3 h-3" />
                           </Button>
@@ -1113,7 +1113,7 @@ export default function Fleet() {
                           </Button>
                         </div>
                       </div>
-                      <div className="text-[10px] text-[#88888C] ml-3.5 space-y-0.5">
+                      <div className="text-[10px] text-gray-600 ml-3.5 space-y-0.5">
                         <div>{client?.companyName || "—"}</div>
                         <div>Type: {eq.type}</div>
                         <div className="flex items-center gap-2">
@@ -1127,7 +1127,7 @@ export default function Fleet() {
               </div>
             )}
 
-            <div className="divide-y divide-white/5">
+            <div className="divide-y divide-gray-200">
                 {sortedUnits.map((unit) => {
                 const eq = equipment.find((e) => e.id === unit.equipmentId);
                 const client = clients.find((c) => c.id === eq?.clientId);
@@ -1185,7 +1185,7 @@ export default function Fleet() {
                     key={unit.id}
                     onClick={() => selectUnit(unit.id)}
                     className={`w-full p-3 text-left transition-colors ${
-                      isSelected ? "bg-[#F2A900]/10" : "hover:bg-white/5"
+                      isSelected ? "bg-[#66B2B2]/10" : "hover:bg-gray-50"
                     }`}
                   >
                     <div className="flex items-center justify-between mb-1">
@@ -1215,7 +1215,7 @@ export default function Fleet() {
                                     }
                                   }}
                                 />
-                        <span className="text-xs font-medium text-[#EAEAEA]">{displayHeader}</span>
+                        <span className="text-xs font-medium text-black">{displayHeader}</span>
                       </div>
                       <div className="flex items-center gap-1">
                         <Button
@@ -1261,7 +1261,7 @@ export default function Fleet() {
                             }
                           }}
                           aria-label="Edit equipment"
-                          className="h-6 w-6 p-0 border-white/10 text-[#EAEAEA] hover:bg-white/10 hover:text-[#EAEAEA]"
+                          className="h-6 w-6 p-0 border-gray-200 text-gray-600 hover:bg-gray-100 hover:text-black"
                         >
                           <Pencil className="w-3 h-3" />
                         </Button>
@@ -1281,7 +1281,7 @@ export default function Fleet() {
                         </Button>
                       </div>
                     </div>
-                    <div className="text-[10px] text-[#88888C] ml-3.5 space-y-0.5">
+                    <div className="text-[10px] text-gray-600 ml-3.5 space-y-0.5">
                       <div>{clientName}</div>
                       {displayEquipmentName && !useSeedAsTitle && <div>{displayEquipmentName}</div>}
                       {displayEquipmentType && <div>Type: {displayEquipmentType}</div>}
@@ -1322,15 +1322,15 @@ export default function Fleet() {
           }
         }}
       >
-        <AlertDialogContent className="bg-[#1A1A20] border border-white/10 text-[#EAEAEA]">
+        <AlertDialogContent className="bg-white border border-gray-200 text-black">
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-[#EAEAEA]">Delete Equipment</AlertDialogTitle>
-            <AlertDialogDescription className="text-[#88888C]">
+            <AlertDialogTitle className="text-black">Delete Equipment</AlertDialogTitle>
+            <AlertDialogDescription className="text-gray-600">
               This action is permanent and cannot be undone. Are you sure you want to delete this equipment entry?
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className="border-white/10 text-[#EAEAEA] hover:bg-white/10">
+            <AlertDialogCancel className="border-gray-200 text-gray-700 hover:bg-gray-100">
               Cancel
             </AlertDialogCancel>
             <AlertDialogAction

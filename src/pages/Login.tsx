@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useAuthStore } from "@/stores/useAuthStore";
 import type { UserRole } from "@/types";
 import { Button } from "@/components/ui/button";
-import { Zap, Shield, TrendingUp, Wrench, Radio } from "lucide-react";
+import { Shield, TrendingUp, Wrench, Radio } from "lucide-react";
 
 export default function Login() {
   const { login } = useAuthStore();
@@ -16,14 +16,14 @@ export default function Login() {
   ];
 
   return (
-    <div className="min-h-screen w-full bg-[#050505] flex items-center justify-center relative overflow-hidden">
+    <div className="min-h-screen w-full bg-gray-50 flex items-center justify-center relative overflow-hidden">
       {/* Background grid */}
       <div
         className="absolute inset-0 pointer-events-none"
         style={{
           backgroundImage: `
-            repeating-linear-gradient(0deg, transparent, transparent 49px, rgba(255,255,255,0.015) 49px, rgba(255,255,255,0.015) 50px),
-            repeating-linear-gradient(90deg, transparent, transparent 49px, rgba(255,255,255,0.015) 49px, rgba(255,255,255,0.015) 50px)
+            repeating-linear-gradient(0deg, transparent, transparent 49px, rgba(0,0,0,0.03) 49px, rgba(0,0,0,0.03) 50px),
+            repeating-linear-gradient(90deg, transparent, transparent 49px, rgba(0,0,0,0.03) 49px, rgba(0,0,0,0.03) 50px)
           `,
         }}
       />
@@ -31,24 +31,25 @@ export default function Login() {
       <div
         className="absolute inset-0 pointer-events-none"
         style={{
-          background: "radial-gradient(ellipse at 30% 50%, rgba(242,169,0,0.03) 0%, transparent 60%)",
+          background: "radial-gradient(ellipse at 30% 50%, rgba(102,178,178,0.2) 0%, transparent 60%)",
         }}
       />
 
       <div className="relative z-10 w-full max-w-md mx-4">
         {/* Logo */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-lg bg-[#F2A900] mb-4 shadow-lg shadow-[#F2A900]/20">
-            <Zap className="w-9 h-9 text-[#050505]" />
-          </div>
-          <h1 className="text-3xl font-bold text-[#EAEAEA] tracking-tight">NexTOS</h1>
-          <p className="text-sm text-[#88888C] mt-1 font-mono-tech">Security & Management Intelligence</p>
+          <img
+            src="/NEXTOS%20NAME.png"
+            alt="NexVision Logo"
+            className="h-20 w-auto mx-auto mb-3 object-contain"
+          />
+          <p className="text-sm text-gray-600 mt-1">Security & Management Intelligence</p>
         </div>
 
         {/* Login Card */}
         <div className="void-glass rounded-lg p-6">
-          <h2 className="text-lg font-semibold text-[#EAEAEA] mb-1">Select Role</h2>
-          <p className="text-xs text-[#88888C] mb-4">Choose your role to access the platform</p>
+          <h2 className="text-lg font-semibold text-black mb-1">Select Role</h2>
+          <p className="text-xs text-gray-600 mb-4">Choose your role to access the platform</p>
 
           <div className="space-y-2 mb-6">
             {roles.map((role) => {
@@ -59,29 +60,29 @@ export default function Login() {
                   onClick={() => setSelectedRole(role.value)}
                   className={`w-full flex items-center gap-3 p-3 rounded border transition-all duration-200 ${
                     isSelected
-                      ? "border-[#F2A900] bg-[#F2A900]/10 shadow-md shadow-[#F2A900]/5"
-                      : "border-white/5 bg-[#1A1A20]/50 hover:border-white/10 hover:bg-[#1A1A20]"
+                      ? "border-[#66B2B2] bg-[#66B2B2]/10 shadow-md shadow-[#66B2B2]/10"
+                      : "border-gray-200 bg-white/60 hover:border-gray-300 hover:bg-white"
                   }`}
                 >
                   <div
                     className={`w-9 h-9 rounded flex items-center justify-center ${
-                      isSelected ? "bg-[#F2A900]" : "bg-[#2A2A30]"
+                      isSelected ? "bg-[#66B2B2]" : "bg-gray-200"
                     }`}
                   >
                     <role.icon
-                      className={`w-4 h-4 ${isSelected ? "text-[#050505]" : "text-[#88888C]"}`}
+                      className={`w-4 h-4 ${isSelected ? "text-white" : "text-gray-600"}`}
                     />
                   </div>
                   <div className="text-left">
                     <div
-                      className={`text-sm font-medium ${isSelected ? "text-[#F2A900]" : "text-[#EAEAEA]"}`}
+                      className={`text-sm font-medium ${isSelected ? "text-[#66B2B2]" : "text-black"}`}
                     >
                       {role.label}
                     </div>
-                    <div className="text-[11px] text-[#88888C]">{role.desc}</div>
+                    <div className="text-[11px] text-gray-600">{role.desc}</div>
                   </div>
                   {isSelected && (
-                    <div className="ml-auto w-2 h-2 rounded-full bg-[#F2A900] shadow-sm shadow-[#F2A900]/50" />
+                    <div className="ml-auto w-2 h-2 rounded-full bg-[#66B2B2] shadow-sm shadow-[#66B2B2]/40" />
                   )}
                 </button>
               );
@@ -90,13 +91,13 @@ export default function Login() {
 
           <Button
             onClick={() => login(selectedRole, selectedRole === "client" ? 1 : undefined)}
-            className="w-full h-10 bg-[#F2A900] hover:bg-[#F2A900]/80 text-[#050505] font-bold text-sm"
+            className="w-full h-10 bg-[#66B2B2] hover:bg-[#66B2B2]/80 text-white font-bold text-sm"
           >
             Access Platform
           </Button>
 
           <div className="mt-4 text-center">
-            <p className="text-[10px] text-[#88888C] font-mono-tech">
+            <p className="text-[10px] text-gray-600 font-mono-tech">
               Demo Mode — No credentials required
             </p>
           </div>

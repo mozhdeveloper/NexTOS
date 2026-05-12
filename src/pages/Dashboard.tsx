@@ -73,7 +73,7 @@ function formatHoursMinutes(hours: number): string {
 
   const pieData = [
     { name: "On-Time", value: tasks.filter((t) => t.status === "pending" || t.status === "in_progress").length, color: "#10B981" },
-    { name: "Completed", value: tasks.filter((t) => t.status === "completed").length, color: "#005F73" },
+    { name: "Completed", value: tasks.filter((t) => t.status === "completed").length, color: "#66B2B2" },
     { name: "Overdue", value: overdueFollowups, color: "#EF4444" },
   ];
 
@@ -86,14 +86,14 @@ function formatHoursMinutes(hours: number): string {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-[32px] font-bold text-[#EAEAEA] tracking-[-0.02em]">
+          <h1 className="text-[32px] font-bold text-black tracking-[-0.02em]">
             Dashboard
           </h1>
-          <p className="text-sm text-[#88888C] mt-0.5">
+          <p className="text-sm text-gray-600 mt-0.5">
             Welcome back, {user?.name}. Here&apos;s your command overview.
           </p>
         </div>
-        <div className="flex items-center gap-2 text-[#88888C] font-mono-tech text-xs">
+        <div className="flex items-center gap-2 text-gray-600 font-mono-tech text-xs">
           <Activity className="w-3.5 h-3.5 text-[#10B981]" />
           <span>All systems operational</span>
         </div>
@@ -137,53 +137,53 @@ function formatHoursMinutes(hours: number): string {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
         {/* Bar Chart */}
         <div className="data-card p-4">
-          <h3 className="text-base font-semibold text-[#EAEAEA] mb-1">Sales Performance</h3>
-          <p className="text-xs text-[#88888C] mb-3">Deals closed vs target by person</p>
+          <h3 className="text-base font-semibold text-black mb-1">Sales Performance</h3>
+          <p className="text-xs text-gray-600 mb-3">Deals closed vs target by person</p>
           <ResponsiveContainer width="100%" height={200}>
             <BarChart data={salesByPerson} barGap={4}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#2A2A30" />
-              <XAxis dataKey="name" stroke="#88888C" fontSize={11} />
-              <YAxis stroke="#88888C" fontSize={11} />
+              <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+              <XAxis dataKey="name" stroke="#6B7280" fontSize={11} />
+              <YAxis stroke="#6B7280" fontSize={11} />
               <Tooltip
                 contentStyle={{
-                  background: "#1E1E22",
-                  border: "1px solid rgba(255,255,255,0.1)",
+                  background: "#FFFFFF",
+                  border: "1px solid #E5E7EB",
                   borderRadius: 4,
                   fontSize: 12,
                 }}
               />
-              <Bar dataKey="deals" fill="#F2A900" radius={[2, 2, 0, 0]} />
-              <Bar dataKey="target" fill="#2A2A30" radius={[2, 2, 0, 0]} />
+              <Bar dataKey="deals" fill="#66B2B2" radius={[2, 2, 0, 0]} />
+              <Bar dataKey="target" fill="#E5E7EB" radius={[2, 2, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
 
         {/* Funnel Chart */}
         <div className="data-card p-4">
-          <h3 className="text-base font-semibold text-[#EAEAEA] mb-1">Pipeline Funnel</h3>
-          <p className="text-xs text-[#88888C] mb-3">Lead to close progression</p>
+          <h3 className="text-base font-semibold text-black mb-1">Pipeline Funnel</h3>
+          <p className="text-xs text-gray-600 mb-3">Lead to close progression</p>
           <ResponsiveContainer width="100%" height={200}>
             <BarChart data={funnelData} layout="vertical" barGap={2}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#2A2A30" />
-              <XAxis type="number" stroke="#88888C" fontSize={11} />
-              <YAxis dataKey="name" type="category" stroke="#88888C" fontSize={11} width={70} />
+              <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+              <XAxis type="number" stroke="#6B7280" fontSize={11} />
+              <YAxis dataKey="name" type="category" stroke="#6B7280" fontSize={11} width={70} />
               <Tooltip
                 contentStyle={{
-                  background: "#1E1E22",
-                  border: "1px solid rgba(255,255,255,0.1)",
+                  background: "#FFFFFF",
+                  border: "1px solid #E5E7EB",
                   borderRadius: 4,
                   fontSize: 12,
                 }}
               />
-              <Bar dataKey="value" fill="#005F73" radius={[0, 2, 2, 0]} />
+              <Bar dataKey="value" fill="#66B2B2" radius={[0, 2, 2, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
 
         {/* Pie Chart */}
         <div className="data-card p-4">
-          <h3 className="text-base font-semibold text-[#EAEAEA] mb-1">Task Status</h3>
-          <p className="text-xs text-[#88888C] mb-3">Current task distribution</p>
+          <h3 className="text-base font-semibold text-black mb-1">Task Status</h3>
+          <p className="text-xs text-gray-600 mb-3">Current task distribution</p>
           <ResponsiveContainer width="100%" height={160}>
             <PieChart>
               <Pie
@@ -201,8 +201,8 @@ function formatHoursMinutes(hours: number): string {
               </Pie>
               <Tooltip
                 contentStyle={{
-                  background: "#1E1E22",
-                  border: "1px solid rgba(255,255,255,0.1)",
+                  background: "#FFFFFF",
+                  border: "1px solid #E5E7EB",
                   borderRadius: 4,
                   fontSize: 12,
                 }}
@@ -213,7 +213,7 @@ function formatHoursMinutes(hours: number): string {
             {pieData.map((d) => (
               <div key={d.name} className="flex items-center gap-1.5">
                 <div className="w-2 h-2 rounded-full" style={{ background: d.color }} />
-                <span className="text-[10px] text-[#88888C]">{d.name}</span>
+                <span className="text-[10px] text-gray-600">{d.name}</span>
               </div>
             ))}
           </div>
@@ -223,49 +223,49 @@ function formatHoursMinutes(hours: number): string {
       {/* Trend Line + Recent Deals */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         <div className="data-card p-4">
-          <h3 className="text-base font-semibold text-[#EAEAEA] mb-1">Revenue Trend</h3>
-          <p className="text-xs text-[#88888C] mb-3">Monthly revenue vs target</p>
+          <h3 className="text-base font-semibold text-black mb-1">Revenue Trend</h3>
+          <p className="text-xs text-gray-600 mb-3">Monthly revenue vs target</p>
           <ResponsiveContainer width="100%" height={220}>
             <LineChart data={trendData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#2A2A30" />
-              <XAxis dataKey="month" stroke="#88888C" fontSize={11} />
-              <YAxis stroke="#88888C" fontSize={11} />
+              <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+              <XAxis dataKey="month" stroke="#6B7280" fontSize={11} />
+              <YAxis stroke="#6B7280" fontSize={11} />
               <Tooltip
                 contentStyle={{
-                  background: "#1E1E22",
-                  border: "1px solid rgba(255,255,255,0.1)",
+                  background: "#FFFFFF",
+                  border: "1px solid #E5E7EB",
                   borderRadius: 4,
                   fontSize: 12,
                 }}
               />
-              <Line type="monotone" dataKey="revenue" stroke="#F2A900" strokeWidth={2} dot={{ fill: "#F2A900", r: 3 }} />
-              <Line type="monotone" dataKey="target" stroke="#2A2A30" strokeWidth={1.5} strokeDasharray="5 5" dot={false} />
+              <Line type="monotone" dataKey="revenue" stroke="#66B2B2" strokeWidth={2} dot={{ fill: "#66B2B2", r: 3 }} />
+              <Line type="monotone" dataKey="target" stroke="#CBD5E1" strokeWidth={1.5} strokeDasharray="5 5" dot={false} />
             </LineChart>
           </ResponsiveContainer>
         </div>
 
         {/* Recent Deals Table */}
         <div className="data-card p-4">
-          <h3 className="text-base font-semibold text-[#EAEAEA] mb-1">Recent Deals</h3>
-          <p className="text-xs text-[#88888C] mb-3">Latest pipeline activity</p>
+          <h3 className="text-base font-semibold text-black mb-1">Recent Deals</h3>
+          <p className="text-xs text-gray-600 mb-3">Latest pipeline activity</p>
           <div className="overflow-auto">
             <table className="w-full text-xs">
               <thead>
-                <tr className="border-b border-white/5">
-                  <th className="text-left py-2 text-[#88888C] font-medium">Deal</th>
-                  <th className="text-left py-2 text-[#88888C] font-medium">Value</th>
-                  <th className="text-left py-2 text-[#88888C] font-medium">Stage</th>
-                  <th className="text-left py-2 text-[#88888C] font-medium">Status</th>
+                <tr className="border-b border-gray-200">
+                  <th className="text-left py-2 text-gray-600 font-medium">Deal</th>
+                  <th className="text-left py-2 text-gray-600 font-medium">Value</th>
+                  <th className="text-left py-2 text-gray-600 font-medium">Stage</th>
+                  <th className="text-left py-2 text-gray-600 font-medium">Status</th>
                 </tr>
               </thead>
               <tbody>
                 {recentDeals.map((deal) => (
-                  <tr key={deal.id} className="border-b border-white/5 hover:bg-white/5">
-                    <td className="py-2 text-[#EAEAEA]">{deal.title}</td>
-                    <td className="py-2 text-[#F2A900] font-mono-tech">
+                  <tr key={deal.id} className="border-b border-gray-200 hover:bg-gray-50">
+                    <td className="py-2 text-black">{deal.title}</td>
+                    <td className="py-2 text-[#66B2B2] font-mono-tech">
                       ₱{deal.value.toLocaleString()}
                     </td>
-                    <td className="py-2 text-[#88888C] capitalize">{deal.stage.replace("_", " ")}</td>
+                    <td className="py-2 text-gray-600 capitalize">{deal.stage.replace("_", " ")}</td>
                     <td className="py-2">
                       <StageBadge stage={deal.stage} />
                     </td>
@@ -291,9 +291,9 @@ function formatHoursMinutes(hours: number): string {
                     : "text-[#EF4444]"
                 }`}
               />
-              <span className="text-xs text-[#EAEAEA] font-medium truncate">{unit.unitName}</span>
+              <span className="text-xs text-black font-medium truncate">{unit.unitName}</span>
             </div>
-            <div className="font-mono-tech text-[10px] text-[#88888C] space-y-0.5">
+            <div className="font-mono-tech text-[10px] text-gray-600 space-y-0.5">
               <div>Lat: {unit.telemetry.lat.toFixed(4)}</div>
               <div>Lng: {unit.telemetry.lng.toFixed(4)}</div>
               <div>Hours: {formatHoursMinutes(unit.telemetry.hours)}</div>
@@ -333,23 +333,23 @@ function KPICard({
   return (
     <div className={`data-card p-4 ${laser ? "laser-scan" : ""}`}>
       <div className="flex items-center justify-between mb-2">
-        <span className="text-[10px] text-[#88888C] uppercase tracking-[0.1em] font-medium">
+        <span className="text-[10px] text-gray-600 uppercase tracking-[0.1em] font-medium">
           {label}
         </span>
         <Icon
-          className={`w-4 h-4 ${alert ? "text-[#EF4444]" : "text-[#88888C]"}`}
+          className={`w-4 h-4 ${alert ? "text-[#EF4444]" : "text-gray-500"}`}
         />
       </div>
-      <div className={`text-4xl font-bold tracking-[-0.03em] mb-1 ${alert ? "text-[#EF4444]" : "text-[#EAEAEA] kpi-glow"}`}>
+      <div className={`text-4xl font-bold tracking-[-0.03em] mb-1 ${alert ? "text-[#EF4444]" : "text-black kpi-glow"}`}>
         {value}
       </div>
       <div className="flex items-center gap-1">
         {deltaUp ? (
           <ArrowUpRight className="w-3 h-3 text-[#10B981]" />
         ) : (
-          <ArrowDownRight className={`w-3 h-3 ${alert ? "text-[#EF4444]" : "text-[#F2A900]"}`} />
+          <ArrowDownRight className={`w-3 h-3 ${alert ? "text-[#EF4444]" : "text-[#66B2B2]"}`} />
         )}
-        <span className={`text-xs font-medium ${alert ? "text-[#EF4444]" : deltaUp ? "text-[#10B981]" : "text-[#F2A900]"}`}>
+        <span className={`text-xs font-medium ${alert ? "text-[#EF4444]" : deltaUp ? "text-[#10B981]" : "text-[#66B2B2]"}`}>
           {delta}
         </span>
       </div>
@@ -359,14 +359,14 @@ function KPICard({
 
 function StageBadge({ stage }: { stage: string }) {
   const colors: Record<string, string> = {
-    inquiry: "bg-[#005F73]/20 text-[#005F73]",
+    inquiry: "bg-[#66B2B2]/20 text-[#66B2B2]",
     proposal: "bg-[#8B5CF6]/20 text-[#8B5CF6]",
-    negotiation: "bg-[#F2A900]/20 text-[#F2A900]",
+    negotiation: "bg-[#66B2B2]/20 text-[#66B2B2]",
     closed_won: "bg-[#10B981]/20 text-[#10B981]",
     closed_lost: "bg-[#EF4444]/20 text-[#EF4444]",
   };
   return (
-    <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${colors[stage] || "bg-[#2A2A30] text-[#88888C]"}`}>
+    <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${colors[stage] || "bg-gray-100 text-gray-600"}`}>
       {stage.replace("_", " ")}
     </span>
   );

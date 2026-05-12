@@ -25,13 +25,13 @@ export default function AssetScanner() {
   }, [serial, equipment, navigate]);
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-[#050505] text-[#EAEAEA]">
+    <div className="flex flex-col items-center justify-center min-h-screen bg-white text-black">
       <div className="relative">
-        <div className="absolute inset-0 bg-[#F2A900]/20 blur-xl rounded-full animate-pulse" />
-        <Loader2 className="w-12 h-12 text-[#F2A900] animate-spin relative z-10" />
+        <div className="absolute inset-0 bg-[#66B2B2]/20 blur-xl rounded-full animate-pulse" />
+        <Loader2 className="w-12 h-12 text-[#66B2B2] animate-spin relative z-10" />
       </div>
       <h2 className="mt-6 text-xl font-bold tracking-tight">Syncing Asset...</h2>
-      <p className="mt-2 text-sm text-[#88888C] font-mono-tech">Serial: {serial}</p>
+      <p className="mt-2 text-sm text-gray-600 font-mono-tech">Serial: {serial}</p>
     </div>
   );
 }
