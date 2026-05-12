@@ -13,24 +13,24 @@ import {
 import { History, ChevronDown, ChevronUp, Wrench, Search, Camera, FileText, FilterX, CheckCircle2, Clock3, AlertCircle, Wallet } from "lucide-react";
 
 const serviceTypeColors: Record<string, string> = {
-  pms:          "bg-[#005F73]/20 text-[#005F73]",
+  pms:          "bg-[#66B2B2]/20 text-[#66B2B2]",
   repair:       "bg-[#EF4444]/20 text-[#EF4444]",
   inspection:   "bg-[#8B5CF6]/20 text-[#8B5CF6]",
-  installation: "bg-[#F2A900]/20 text-[#F2A900]",
+  installation: "bg-[#66B2B2]/20 text-[#66B2B2]",
   calibration:  "bg-[#10B981]/20 text-[#10B981]",
 };
 
 const statusColors: Record<string, string> = {
   completed:   "bg-[#10B981]/20 text-[#10B981]",
-  in_progress: "bg-[#F2A900]/20 text-[#F2A900]",
-  pending:     "bg-[#88888C]/20 text-[#88888C]",
+  in_progress: "bg-[#66B2B2]/20 text-[#66B2B2]",
+  pending:     "bg-[#6B7280]/20 text-gray-500",
   cancelled:   "bg-[#EF4444]/20 text-[#EF4444]",
-  scheduled:   "bg-[#005F73]/20 text-[#005F73]",
+  scheduled:   "bg-[#66B2B2]/20 text-[#66B2B2]",
 };
 
 const nextServiceStateColors = {
   ok: "bg-[#10B981]/20 text-[#10B981]",
-  near: "bg-[#F2A900]/20 text-[#F2A900]",
+  near: "bg-[#66B2B2]/20 text-[#66B2B2]",
   overdue: "bg-[#EF4444]/20 text-[#EF4444]",
 } as const;
 
@@ -265,8 +265,8 @@ export default function ClientServiceHistory() {
     <div className="space-y-4 px-8 pt-8">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-[32px] font-bold text-[#EAEAEA] tracking-[-0.02em]">Service History</h1>
-          <p className="text-sm text-[#88888C] mt-0.5">
+          <h1 className="text-[32px] font-bold text-gray-900 tracking-[-0.02em]">Service History</h1>
+          <p className="text-sm text-gray-500 mt-0.5">
             {clientEquipment.length} equipment units · {filteredRecords.length} matching service records
           </p>
         </div>
@@ -275,20 +275,20 @@ export default function ClientServiceHistory() {
       <div className="data-card p-4">
         <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.6fr)_repeat(3,minmax(0,1fr))_minmax(0,0.9fr)_minmax(0,0.9fr)_auto] gap-3">
           <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#88888C]" />
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500" />
             <Input
               placeholder="Search by equipment, technician, or work done"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="pl-8 h-9 bg-[#1A1A20] border-white/10 text-[#EAEAEA] text-xs placeholder:text-[#88888C]/50"
+              className="pl-8 h-9 bg-white border-gray-200 text-gray-900 text-xs placeholder:text-gray-500/50"
             />
           </div>
 
           <Select value={equipmentFilter} onValueChange={setEquipmentFilter}>
-            <SelectTrigger className="w-full h-9 border-white/10 bg-[#1A1A20] text-[#EAEAEA] text-xs">
+            <SelectTrigger className="w-full h-9 border-gray-200 bg-white text-gray-900 text-xs">
               <SelectValue placeholder="All Equipment" />
             </SelectTrigger>
-            <SelectContent className="border-white/10 bg-[#111216] text-[#EAEAEA]">
+            <SelectContent className="border-gray-200 bg-white text-gray-900">
               <SelectItem value="all">All Equipment</SelectItem>
               {clientEquipment.map((asset) => (
                 <SelectItem key={asset.id} value={String(asset.id)}>
@@ -299,10 +299,10 @@ export default function ClientServiceHistory() {
           </Select>
 
           <Select value={serviceTypeFilter} onValueChange={setServiceTypeFilter}>
-            <SelectTrigger className="w-full h-9 border-white/10 bg-[#1A1A20] text-[#EAEAEA] text-xs">
+            <SelectTrigger className="w-full h-9 border-gray-200 bg-white text-gray-900 text-xs">
               <SelectValue placeholder="All Service Types" />
             </SelectTrigger>
-            <SelectContent className="border-white/10 bg-[#111216] text-[#EAEAEA]">
+            <SelectContent className="border-gray-200 bg-white text-gray-900">
               <SelectItem value="all">All Service Types</SelectItem>
               {serviceTypes
                 .filter((serviceType) => typeof serviceType === "string" && serviceType.trim().length > 0)
@@ -318,10 +318,10 @@ export default function ClientServiceHistory() {
           </Select>
 
           <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-full h-9 border-white/10 bg-[#1A1A20] text-[#EAEAEA] text-xs">
+            <SelectTrigger className="w-full h-9 border-gray-200 bg-white text-gray-900 text-xs">
               <SelectValue placeholder="All Statuses" />
             </SelectTrigger>
-            <SelectContent className="border-white/10 bg-[#111216] text-[#EAEAEA]">
+            <SelectContent className="border-gray-200 bg-white text-gray-900">
               <SelectItem value="all">All Statuses</SelectItem>
               <SelectItem value="completed">Completed</SelectItem>
               <SelectItem value="in_progress">In Progress</SelectItem>
@@ -334,14 +334,14 @@ export default function ClientServiceHistory() {
             type="date"
             value={dateFrom}
             onChange={(e) => setDateFrom(e.target.value)}
-            className="h-9 bg-[#1A1A20] border-white/10 text-[#EAEAEA] text-xs"
+            className="h-9 bg-white border-gray-200 text-gray-900 text-xs"
           />
 
           <Input
             type="date"
             value={dateTo}
             onChange={(e) => setDateTo(e.target.value)}
-            className="h-9 bg-[#1A1A20] border-white/10 text-[#EAEAEA] text-xs"
+            className="h-9 bg-white border-gray-200 text-gray-900 text-xs"
           />
 
           <Button
@@ -349,7 +349,7 @@ export default function ClientServiceHistory() {
             variant="outline"
             size="sm"
             onClick={resetFilters}
-            className="h-9 border-white/10 bg-[#111216] text-[#EAEAEA] hover:bg-[#1A1A20]"
+            className="h-9 border-gray-200 bg-white text-gray-900 hover:bg-white"
           >
             <FilterX className="w-3.5 h-3.5" />
             Reset
@@ -361,12 +361,12 @@ export default function ClientServiceHistory() {
         <div className="data-card p-4">
           <div className="flex items-start justify-between">
             <div>
-              <div className="text-xs text-[#88888C]">Total Services</div>
-              <div className="text-3xl font-bold text-[#EAEAEA] mt-1 font-mono-tech">{totalServices}</div>
-              <div className="text-[11px] text-[#88888C] mt-1">All time</div>
+              <div className="text-xs text-gray-500">Total Services</div>
+              <div className="text-3xl font-bold text-gray-900 mt-1 font-mono-tech">{totalServices}</div>
+              <div className="text-[11px] text-gray-500 mt-1">All time</div>
             </div>
-            <div className="w-9 h-9 rounded-full bg-[#1D9BF0]/20 flex items-center justify-center">
-              <Wrench className="w-4 h-4 text-[#1D9BF0]" />
+            <div className="w-9 h-9 rounded-full bg-white shadow-sm flex items-center justify-center">
+              <Wrench className="w-4 h-4 text-[#2563EB]" />
             </div>
           </div>
         </div>
@@ -374,14 +374,14 @@ export default function ClientServiceHistory() {
         <div className="data-card p-4">
           <div className="flex items-start justify-between">
             <div>
-              <div className="text-xs text-[#88888C]">Completed</div>
-              <div className="text-3xl font-bold text-[#EAEAEA] mt-1 font-mono-tech">{completedServices}</div>
-              <div className="text-[11px] text-[#88888C] mt-1">
+              <div className="text-xs text-gray-500">Completed</div>
+              <div className="text-3xl font-bold text-gray-900 mt-1 font-mono-tech">{completedServices}</div>
+              <div className="text-[11px] text-gray-500 mt-1">
                 {totalServices > 0 ? `${Math.round((completedServices / totalServices) * 100)}%` : "0%"}
               </div>
             </div>
-            <div className="w-9 h-9 rounded-full bg-[#10B981]/20 flex items-center justify-center">
-              <CheckCircle2 className="w-4 h-4 text-[#10B981]" />
+            <div className="w-9 h-9 rounded-full bg-white shadow-sm flex items-center justify-center">
+              <CheckCircle2 className="w-4 h-4 text-[#059669]" />
             </div>
           </div>
         </div>
@@ -389,14 +389,14 @@ export default function ClientServiceHistory() {
         <div className="data-card p-4">
           <div className="flex items-start justify-between">
             <div>
-              <div className="text-xs text-[#88888C]">In Progress</div>
-              <div className="text-3xl font-bold text-[#EAEAEA] mt-1 font-mono-tech">{inProgressServices}</div>
-              <div className="text-[11px] text-[#88888C] mt-1">
+              <div className="text-xs text-gray-500">In Progress</div>
+              <div className="text-3xl font-bold text-gray-900 mt-1 font-mono-tech">{inProgressServices}</div>
+              <div className="text-[11px] text-gray-500 mt-1">
                 {totalServices > 0 ? `${Math.round((inProgressServices / totalServices) * 100)}%` : "0%"}
               </div>
             </div>
-            <div className="w-9 h-9 rounded-full bg-[#F2A900]/20 flex items-center justify-center">
-              <Clock3 className="w-4 h-4 text-[#F2A900]" />
+            <div className="w-9 h-9 rounded-full bg-white shadow-sm flex items-center justify-center">
+              <Clock3 className="w-4 h-4 text-[#66B2B2]" />
             </div>
           </div>
         </div>
@@ -404,14 +404,14 @@ export default function ClientServiceHistory() {
         <div className="data-card p-4">
           <div className="flex items-start justify-between">
             <div>
-              <div className="text-xs text-[#88888C]">Cancelled</div>
-              <div className="text-3xl font-bold text-[#EAEAEA] mt-1 font-mono-tech">{cancelledServices}</div>
-              <div className="text-[11px] text-[#88888C] mt-1">
+              <div className="text-xs text-gray-500">Cancelled</div>
+              <div className="text-3xl font-bold text-gray-900 mt-1 font-mono-tech">{cancelledServices}</div>
+              <div className="text-[11px] text-gray-500 mt-1">
                 {totalServices > 0 ? `${Math.round((cancelledServices / totalServices) * 100)}%` : "0%"}
               </div>
             </div>
-            <div className="w-9 h-9 rounded-full bg-[#EF4444]/20 flex items-center justify-center">
-              <AlertCircle className="w-4 h-4 text-[#EF4444]" />
+            <div className="w-9 h-9 rounded-full bg-white shadow-sm flex items-center justify-center">
+              <AlertCircle className="w-4 h-4 text-[#DC2626]" />
             </div>
           </div>
         </div>
@@ -419,12 +419,12 @@ export default function ClientServiceHistory() {
         <div className="data-card p-4">
           <div className="flex items-start justify-between">
             <div>
-              <div className="text-xs text-[#88888C]">Total Spent</div>
-              <div className="text-3xl font-bold text-[#EAEAEA] mt-1 font-mono-tech">{formatMoneyPeso(totalSpent)}</div>
-              <div className="text-[11px] text-[#88888C] mt-1">All time</div>
+              <div className="text-xs text-gray-500">Total Spent</div>
+              <div className="text-3xl font-bold text-gray-900 mt-1 font-mono-tech">{formatMoneyPeso(totalSpent)}</div>
+              <div className="text-[11px] text-gray-500 mt-1">All time</div>
             </div>
-            <div className="w-9 h-9 rounded-full bg-[#8B5CF6]/20 flex items-center justify-center">
-              <Wallet className="w-4 h-4 text-[#8B5CF6]" />
+            <div className="w-9 h-9 rounded-full bg-white shadow-sm flex items-center justify-center">
+              <Wallet className="w-4 h-4 text-[#7C3AED]" />
             </div>
           </div>
         </div>
@@ -434,16 +434,16 @@ export default function ClientServiceHistory() {
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
-              <tr className="bg-[#0F1116] border-b border-white/10">
-                <th className="text-left py-3 px-3 text-[#9AA0AE] font-medium">Equipment</th>
-                <th className="text-left py-3 px-3 text-[#9AA0AE] font-medium">Service Type</th>
-                <th className="text-left py-3 px-3 text-[#9AA0AE] font-medium">Date</th>
-                <th className="text-left py-3 px-3 text-[#9AA0AE] font-medium">Technician</th>
-                <th className="text-left py-3 px-3 text-[#9AA0AE] font-medium">Current Hours</th>
-                <th className="text-left py-3 px-3 text-[#9AA0AE] font-medium">Next Service At</th>
-                <th className="text-left py-3 px-3 text-[#9AA0AE] font-medium">Status</th>
-                <th className="text-left py-3 px-3 text-[#9AA0AE] font-medium">Amount</th>
-                <th className="text-left py-3 px-3 text-[#9AA0AE] font-medium">Actions</th>
+              <tr className="bg-gray-50 border-b border-gray-200">
+                <th className="text-left py-3 px-3 text-gray-500 font-medium">Equipment</th>
+                <th className="text-left py-3 px-3 text-gray-500 font-medium">Service Type</th>
+                <th className="text-left py-3 px-3 text-gray-500 font-medium">Date</th>
+                <th className="text-left py-3 px-3 text-gray-500 font-medium">Technician</th>
+                <th className="text-left py-3 px-3 text-gray-500 font-medium">Current Hours</th>
+                <th className="text-left py-3 px-3 text-gray-500 font-medium">Next Service At</th>
+                <th className="text-left py-3 px-3 text-gray-500 font-medium">Status</th>
+                <th className="text-left py-3 px-3 text-gray-500 font-medium">Amount</th>
+                <th className="text-left py-3 px-3 text-gray-500 font-medium">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -451,8 +451,8 @@ export default function ClientServiceHistory() {
                 <tr>
                   <td colSpan={9} className="py-10 px-3">
                     <div className="flex flex-col items-center justify-center gap-2">
-                      <History className="w-8 h-8 text-[#88888C]" />
-                      <p className="text-sm text-[#88888C]">No service records match the current filters</p>
+                      <History className="w-8 h-8 text-gray-500" />
+                      <p className="text-sm text-gray-500">No service records match the current filters</p>
                     </div>
                   </td>
                 </tr>
@@ -474,49 +474,49 @@ export default function ClientServiceHistory() {
 
                 return (
                   <Fragment key={record.id}>
-                    <tr className="border-b border-[#1A2230] hover:bg-[#101722]/70">
+                    <tr className="border-b border-gray-100 hover:bg-gray-50">
                       <td className="py-3 px-3">
                         <div className="flex items-center gap-2.5">
-                          <div className="w-11 h-11 rounded-md bg-[#0D1820] border border-white/10 flex items-center justify-center shrink-0">
-                            <Wrench className="w-4 h-4 text-[#1D9BF0]" />
+                          <div className="w-11 h-11 rounded-md bg-white shadow-sm border border-gray-200 flex items-center justify-center shrink-0">
+                            <Wrench className="w-4 h-4 text-[#2563EB]" />
                           </div>
                           <div>
-                            <div className="text-base font-semibold text-[#EAEAEA] leading-tight">{asset?.unitId ?? "Unknown Unit"}</div>
-                            <div className="text-sm text-[#8E95A3]">SN: {asset?.serialNumber ?? "—"}</div>
+                            <div className="text-base font-semibold text-gray-900 leading-tight">{asset?.unitId ?? "Unknown Unit"}</div>
+                            <div className="text-sm text-gray-400">SN: {asset?.serialNumber ?? "—"}</div>
                           </div>
                         </div>
                       </td>
 
                       <td className="py-3 px-3">
-                        <div className="text-[#EAEAEA] font-semibold">{serviceTypeLabel}</div>
-                        <div className={`inline-flex mt-1 px-1.5 py-0.5 rounded text-[10px] font-medium ${serviceTypeColors[serviceTypeKey] ?? "bg-[#88888C]/20 text-[#88888C]"}`}>
+                        <div className="text-gray-900 font-semibold">{serviceTypeLabel}</div>
+                        <div className={`inline-flex mt-1 px-1.5 py-0.5 rounded text-[10px] font-medium ${serviceTypeColors[serviceTypeKey] ?? "bg-[#6B7280]/20 text-gray-500"}`}>
                           {serviceTypeKey ? serviceTypeKey.toUpperCase() : "UNKNOWN"}
                         </div>
                       </td>
 
                       <td className="py-3 px-3">
-                        <div className="text-[#EAEAEA] font-semibold">{formatDate(getServiceDate(record))}</div>
-                        <div className="text-[#8E95A3] mt-0.5">
+                        <div className="text-gray-900 font-semibold">{formatDate(getServiceDate(record))}</div>
+                        <div className="text-gray-400 mt-0.5">
                           {new Date(getServiceDate(record)).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}
                         </div>
                       </td>
 
                       <td className="py-3 px-3">
                         <div className="flex items-center gap-2">
-                          <div className="w-7 h-7 rounded-full bg-[#2E3B4F] text-[#D6DBE4] flex items-center justify-center text-[10px] font-semibold">
+                          <div className="w-7 h-7 rounded-full bg-[#66B2B2] text-white flex items-center justify-center text-[10px] font-semibold">
                             {getInitials(record.technician)}
                           </div>
-                          <span className="text-[#EAEAEA]">{record.technician}</span>
+                          <span className="text-gray-900">{record.technician}</span>
                         </div>
                       </td>
 
                       <td className="py-3 px-3">
-                        <div className="text-[#4ADE80] font-semibold font-mono-tech">{formatHours(asset?.currentHours ?? 0)}</div>
+                        <div className="text-[#059669] font-semibold font-mono-tech">{formatHours(asset?.currentHours ?? 0)}</div>
                       </td>
 
                       <td className="py-3 px-3">
-                        <div className="text-[#EAEAEA] font-semibold font-mono-tech">{formatHours(asset?.nextPMSHours ?? 0)}</div>
-                        <div className={`mt-0.5 ${nextService.remainingHours <= 0 ? "text-[#EF4444]" : "text-[#4ADE80]"}`}>
+                        <div className="text-gray-900 font-semibold font-mono-tech">{formatHours(asset?.nextPMSHours ?? 0)}</div>
+                        <div className={`mt-0.5 ${nextService.remainingHours <= 0 ? "text-[#EF4444]" : "text-[#059669]"}`}>
                           {nextService.remainingHours > 0
                             ? `${nextService.remainingHours.toLocaleString()} hrs remaining`
                             : `${Math.abs(nextService.remainingHours).toLocaleString()} hrs overdue`}
@@ -524,12 +524,12 @@ export default function ClientServiceHistory() {
                       </td>
 
                       <td className="py-3 px-3">
-                        <span className={`inline-flex px-2 py-0.5 rounded text-[11px] font-medium capitalize ${statusColors[statusKey] ?? "bg-[#88888C]/20 text-[#88888C]"}`}>
+                        <span className={`inline-flex px-2 py-0.5 rounded text-[11px] font-medium capitalize ${statusColors[statusKey] ?? "bg-[#6B7280]/20 text-gray-500"}`}>
                           {statusLabel}
                         </span>
                       </td>
 
-                      <td className="py-3 px-3 text-[#EAEAEA] font-semibold">{formatMoneyPeso(record.cost)}</td>
+                      <td className="py-3 px-3 text-gray-900 font-semibold">{formatMoneyPeso(record.cost)}</td>
 
                       <td className="py-3 px-3">
                         <div className="flex items-center gap-2">
@@ -538,7 +538,7 @@ export default function ClientServiceHistory() {
                             size="sm"
                             variant="outline"
                             onClick={() => setExpanded(isExpanded ? null : record.id)}
-                            className="h-8 border-[#1F4F86] bg-[#0D1820] text-[#EAEAEA] hover:bg-[#11232C]"
+                            className="h-8 border-[#66B2B2] bg-gray-50 text-gray-900 hover:bg-gray-100"
                           >
                             <FileText className="w-3.5 h-3.5" />
                             View
@@ -548,7 +548,7 @@ export default function ClientServiceHistory() {
                             size="icon-sm"
                             variant="outline"
                             onClick={() => setExpanded(isExpanded ? null : record.id)}
-                            className="h-8 w-8 border-white/10 bg-[#0A0A0C] text-[#9AA0AE] hover:text-[#EAEAEA]"
+                            className="h-8 w-8 border-gray-200 bg-gray-50 text-gray-500 hover:text-gray-900"
                           >
                             {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                           </Button>
@@ -557,45 +557,45 @@ export default function ClientServiceHistory() {
                     </tr>
 
                     {isExpanded && (
-                      <tr className="border-b border-[#1A2230]">
-                        <td colSpan={9} className="p-3 bg-[#0C1320]">
-                          <div className="rounded-xl border border-[#1F4F86]/40 bg-gradient-to-r from-[#0C1627] to-[#0A111B]">
-                            <div className="p-4 grid grid-cols-1 xl:grid-cols-[minmax(0,1.4fr)_repeat(5,minmax(0,0.8fr))_auto] gap-4 border-b border-white/10">
+                      <tr className="border-b border-gray-100">
+                        <td colSpan={9} className="p-3 bg-gray-50">
+                          <div className="rounded-xl border border-[#66B2B2]/40 bg-white">
+                            <div className="p-4 grid grid-cols-1 xl:grid-cols-[minmax(0,1.4fr)_repeat(5,minmax(0,0.8fr))_auto] gap-4 border-b border-gray-200">
                               <div className="flex items-center gap-3">
-                                <div className="w-20 h-14 rounded-md bg-[#0D1820] border border-white/10 flex items-center justify-center shrink-0">
-                                  <Wrench className="w-5 h-5 text-[#1D9BF0]" />
+                                <div className="w-20 h-14 rounded-md bg-white shadow-sm border border-gray-200 flex items-center justify-center shrink-0">
+                                  <Wrench className="w-5 h-5 text-[#2563EB]" />
                                 </div>
                                 <div>
-                                  <div className="text-2xl font-semibold text-[#EAEAEA] leading-tight">{asset?.unitId ?? "Unknown Unit"}</div>
-                                  <div className="text-sm text-[#8E95A3] mt-0.5">SN: {asset?.serialNumber ?? "—"}</div>
-                                  <span className={`inline-flex mt-2 px-2 py-0.5 rounded text-[11px] font-medium capitalize ${statusColors[statusKey] ?? "bg-[#88888C]/20 text-[#88888C]"}`}>
+                                  <div className="text-2xl font-semibold text-gray-900 leading-tight">{asset?.unitId ?? "Unknown Unit"}</div>
+                                  <div className="text-sm text-gray-400 mt-0.5">SN: {asset?.serialNumber ?? "—"}</div>
+                                  <span className={`inline-flex mt-2 px-2 py-0.5 rounded text-[11px] font-medium capitalize ${statusColors[statusKey] ?? "bg-[#6B7280]/20 text-gray-500"}`}>
                                     {statusLabel}
                                   </span>
                                 </div>
                               </div>
 
                               <div>
-                                <div className="text-[10px] text-[#8E95A3] uppercase">Service Date</div>
-                                <div className="text-2xl text-[#EAEAEA] mt-0.5">{formatDate(getServiceDate(record))}</div>
-                                <div className="text-sm text-[#8E95A3] mt-0.5">
+                                <div className="text-[10px] text-gray-400 uppercase">Service Date</div>
+                                <div className="text-2xl text-gray-900 mt-0.5">{formatDate(getServiceDate(record))}</div>
+                                <div className="text-sm text-gray-400 mt-0.5">
                                   {new Date(getServiceDate(record)).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}
                                 </div>
                               </div>
 
                               <div>
-                                <div className="text-[10px] text-[#8E95A3] uppercase">Technician</div>
-                                <div className="text-2xl text-[#EAEAEA] mt-0.5">{record.technician}</div>
+                                <div className="text-[10px] text-gray-400 uppercase">Technician</div>
+                                <div className="text-2xl text-gray-900 mt-0.5">{record.technician}</div>
                               </div>
 
                               <div>
-                                <div className="text-[10px] text-[#8E95A3] uppercase">Current Hours</div>
-                                <div className="text-2xl text-[#4ADE80] mt-0.5 font-mono-tech">{formatHours(asset?.currentHours ?? 0)}</div>
+                                <div className="text-[10px] text-gray-400 uppercase">Current Hours</div>
+                                <div className="text-2xl text-[#059669] mt-0.5 font-mono-tech">{formatHours(asset?.currentHours ?? 0)}</div>
                               </div>
 
                               <div>
-                                <div className="text-[10px] text-[#8E95A3] uppercase">Next Service At</div>
-                                <div className="text-2xl text-[#EAEAEA] mt-0.5 font-mono-tech">{formatHours(asset?.nextPMSHours ?? 0)}</div>
-                                <div className="text-sm text-[#4ADE80] mt-0.5">
+                                <div className="text-[10px] text-gray-400 uppercase">Next Service At</div>
+                                <div className="text-2xl text-gray-900 mt-0.5 font-mono-tech">{formatHours(asset?.nextPMSHours ?? 0)}</div>
+                                <div className="text-sm text-[#059669] mt-0.5">
                                   {nextService.remainingHours > 0
                                     ? `${nextService.remainingHours.toLocaleString()} hrs remaining`
                                     : `${Math.abs(nextService.remainingHours).toLocaleString()} hrs overdue`}
@@ -603,15 +603,15 @@ export default function ClientServiceHistory() {
                               </div>
 
                               <div>
-                                <div className="text-[10px] text-[#8E95A3] uppercase">Amount</div>
-                                <div className="text-2xl text-[#EAEAEA] mt-0.5">{formatMoneyPeso(record.cost)}</div>
+                                <div className="text-[10px] text-gray-400 uppercase">Amount</div>
+                                <div className="text-2xl text-gray-900 mt-0.5">{formatMoneyPeso(record.cost)}</div>
                               </div>
 
                               <div className="flex flex-col gap-2 items-stretch xl:items-end">
                                 <Button
                                   type="button"
                                   variant="outline"
-                                  className="h-9 border-[#1F4F86] bg-[#0D1820] text-[#EAEAEA] hover:bg-[#11232C]"
+                                  className="h-9 border-[#66B2B2] bg-gray-50 text-gray-900 hover:bg-gray-100"
                                 >
                                   <FileText className="w-3.5 h-3.5" />
                                   View Report
@@ -620,7 +620,7 @@ export default function ClientServiceHistory() {
                                   type="button"
                                   variant="outline"
                                   disabled={photos.length === 0}
-                                  className="h-9 border-white/20 bg-[#0A0A0C] text-[#EAEAEA] hover:bg-[#17171B] disabled:opacity-40"
+                                  className="h-9 border-gray-200 bg-gray-50 text-gray-900 hover:bg-gray-100 disabled:opacity-40"
                                 >
                                   <Camera className="w-3.5 h-3.5" />
                                   View Photos ({photos.length})
@@ -630,7 +630,7 @@ export default function ClientServiceHistory() {
 
                             <div className="p-4 grid grid-cols-1 lg:grid-cols-4 gap-4 text-xs">
                               <div className="space-y-2">
-                                <div className="text-[11px] text-[#8E95A3] uppercase">Service Details</div>
+                                <div className="text-[11px] text-gray-400 uppercase">Service Details</div>
                                 <RowDetail label="Service Type" value={formatServiceType(record.serviceType)} />
                                 <RowDetail label="Service Category" value={record.serviceType === "pms" ? "Preventive Maintenance" : formatServiceType(record.serviceType)} />
                                 <RowDetail label="Priority" value={record.status === "in_progress" ? "High" : "Normal"} />
@@ -639,33 +639,33 @@ export default function ClientServiceHistory() {
                               </div>
 
                               <div>
-                                <div className="text-[11px] text-[#8E95A3] uppercase mb-2">Work Performed</div>
+                                <div className="text-[11px] text-gray-400 uppercase mb-2">Work Performed</div>
                                 <div className="space-y-2">
                                   {workDoneItems.length > 0 ? workDoneItems.map((item) => (
-                                    <div key={item} className="flex items-start gap-2 text-[#EAEAEA]">
+                                    <div key={item} className="flex items-start gap-2 text-gray-900">
                                       <span className="mt-1 w-1.5 h-1.5 rounded-full bg-[#10B981] shrink-0" />
                                       <span>{item}</span>
                                     </div>
                                   )) : (
-                                    <div className="text-[#8E95A3]">No detailed work log attached.</div>
+                                    <div className="text-gray-400">No detailed work log attached.</div>
                                   )}
                                 </div>
                               </div>
 
                               <div>
-                                <div className="text-[11px] text-[#8E95A3] uppercase mb-2">Findings / Notes</div>
-                                <p className="text-[#EAEAEA] leading-relaxed">{findingsSummary}</p>
-                                <div className="text-[#8E95A3] mt-3">{record.description}</div>
+                                <div className="text-[11px] text-gray-400 uppercase mb-2">Findings / Notes</div>
+                                <p className="text-gray-900 leading-relaxed">{findingsSummary}</p>
+                                <div className="text-gray-400 mt-3">{record.description}</div>
                               </div>
 
                               <div className="space-y-2">
-                                <div className="text-[11px] text-[#8E95A3] uppercase">Next Service Information</div>
+                                <div className="text-[11px] text-gray-400 uppercase">Next Service Information</div>
                                 <RowDetail label="Next Service Type" value={serviceTypeLabel} />
                                 <RowDetail label="Next Service At" value={formatHours(asset?.nextPMSHours ?? 0)} />
                                 <RowDetail label="Before / After" value={`${beforePhotos.length} / ${afterPhotos.length}`} />
                                 <RowDetail label="Reminder" value="30 days before" />
-                                <div className="mt-3 p-2 rounded-md bg-[#101A2A] border border-white/10 flex items-center justify-between">
-                                  <span className="text-[#8E95A3]">Status</span>
+                                <div className="mt-3 p-2 rounded-md bg-gray-50 border border-gray-200 flex items-center justify-between">
+                                  <span className="text-gray-400">Status</span>
                                   <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${nextServiceStateColors[nextService.tone]}`}>
                                     {nextService.label}
                                   </span>
@@ -690,8 +690,8 @@ export default function ClientServiceHistory() {
 function RowDetail({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-start justify-between gap-3">
-      <span className="text-[#8E95A3]">{label}</span>
-      <span className="text-[#EAEAEA] text-right">{value}</span>
+      <span className="text-gray-400">{label}</span>
+      <span className="text-gray-900 text-right">{value}</span>
     </div>
   );
 }

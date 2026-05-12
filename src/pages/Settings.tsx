@@ -16,7 +16,7 @@ export default function Settings() {
     <div className="space-y-4 max-w-2xl">
       <div>
         <h1 className="text-[32px] font-bold text-black tracking-[-0.02em]">Settings</h1>
-        <p className="text-sm text-gray-600 mt-0.5">Configure your NexVision instance</p>
+        <p className="text-sm text-gray-600 mt-0.5">Configure your NexTOS instance</p>
       </div>
 
       {/* Profile */}

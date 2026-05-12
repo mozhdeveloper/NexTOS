@@ -73,12 +73,12 @@ export default function ClientPortalShell({ children }: { children: React.ReactN
         <div className="flex items-center gap-2 px-3 py-4 border-b border-gray-200">
           <img
             src="/NEXTOS%20LOGO.png"
-            alt="NexVision Logo"
+            alt="NexTOS Logo"
             className="w-8 h-8 object-contain shrink-0"
           />
           {!collapsed && (
             <div>
-              <div className="text-gray-900 font-bold text-sm tracking-tight">NexVision</div>
+              <div className="text-gray-900 font-bold text-sm tracking-tight">NexTOS</div>
               <div className="text-gray-500 text-[10px] tracking-[0.1em] uppercase font-mono-tech">
                 Client Portal
               </div>
@@ -184,7 +184,7 @@ export default function ClientPortalShell({ children }: { children: React.ReactN
               onClick={handleLogout}
               variant="ghost"
               size="sm"
-              className="w-full mt-2 h-6 text-[10px] text-[#88888C] hover:text-[#EF4444] hover:bg-[#EF4444]/10"
+              className="w-full mt-2 h-6 text-[10px] text-gray-500 hover:text-[#EF4444] hover:bg-[#EF4444]/10"
             >
               <LogOut className="w-3 h-3 mr-1" />
               Logout
@@ -194,7 +194,7 @@ export default function ClientPortalShell({ children }: { children: React.ReactN
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-auto bg-[#050505]">
+      <main className="flex-1 overflow-auto bg-gray-50">
         {children}
       </main>
     </div>

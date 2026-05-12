@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router";
 import { useAuthStore } from "@/stores/useAuthStore";
+import { useFleetStore } from "@/stores/useFleetStore";
 import type { UserRole } from "@/types";
 import {
   LayoutDashboard,
@@ -14,7 +15,6 @@ import {
   LogOut,
   ClipboardList,
   CreditCard,
-  Megaphone,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -39,18 +39,25 @@ const navItems: NavItem[] = [
   { label: "Fleet", path: "/fleet", icon: MapPin, roles: ["admin", "tech", "client"] },
   { label: "Client Portal", path: "/portal", icon: Shield, roles: ["admin", "client"] },
   { label: "Billing", path: "/billing", icon: CreditCard, roles: ["admin", "client"] },
-  { label: "Marketing", path: "/marketing", icon: Megaphone, roles: ["admin", "sales"] },
   { label: "Reports", path: "/reports", icon: ClipboardList, roles: ["admin", "sales", "tech"] },
   { label: "Settings", path: "/settings", icon: Settings, roles: ["admin", "sales", "tech", "client"] },
 ];
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
-  const { user, switchRole, logout, isAuthenticated } = useAuthStore();
+  const { user, login, switchRole, logout, isAuthenticated } = useAuthStore();
+  const { startSimulation, stopSimulation } = useFleetStore();
   const navigate = useNavigate();
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(false);
   const [magicLinkEmail, setMagicLinkEmail] = useState("");
   const [magicLinkGenerated, setMagicLinkGenerated] = useState("");
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      startSimulation();
+    }
+    return () => stopSimulation();
+  }, [isAuthenticated, startSimulation, stopSimulation]);
 
   const handleRoleChange = (role: UserRole) => {
     switchRole(role);
@@ -65,11 +72,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const handleLogout = () => {
-    logout();
-    navigate("/");
-  };
-
   const filteredNav = navItems.filter((item) =>
     user ? item.roles.includes(user.role) : false
   );
@@ -82,23 +84,18 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     <div className="flex h-screen w-screen overflow-hidden bg-gray-50">
       {/* Sidebar */}
       <aside
-        className={`flex flex-col border-r-2 border-gray-200 bg-white transition-all duration-300 ${
-          collapsed ? "w-[60px]" : "w-[200px]"
-        }`}
+        className={`flex flex-col border-r border-gray-200 bg-white transition-all duration-300 ${collapsed ? "w-[60px]" : "w-[200px]"
+          }`}
       >
         {/* Logo */}
-        <div className="flex items-center gap-2 px-3 py-4 border-b border-gray-200 min-h-[64px]">
-          <img 
-            src="/NEXTOS%20LOGO.png" 
-            alt="NexVision Logo" 
-            className="w-8 h-8 object-contain shrink-0" 
-          />
+        <div className="flex items-center gap-2 px-3 py-4 border-b border-gray-200">
+          <div className="flex items-center justify-center w-8 h-8 rounded shrink-0">
+            <img src="/NEXTOS%20LOGO.png" alt="NexTOS" className="w-8 h-8 object-contain" />
+          </div>
           {!collapsed && (
-            <div className="flex flex-col justify-center">
-              <div className="text-gray-900 font-bold text-sm tracking-tight leading-none">
-                NexTOS
-              </div>
-              <div className="text-gray-500 text-[10px] tracking-[0.1em] uppercase mt-1">
+            <div>
+              <div className="text-gray-900 font-bold text-sm tracking-tight">NexTOS</div>
+              <div className="text-gray-500 text-[10px] tracking-[0.1em] uppercase font-mono-tech">
                 SMI Platform
               </div>
             </div>
@@ -112,7 +109,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               Role
             </label>
             <Select value={user.role} onValueChange={(v) => handleRoleChange(v as UserRole)}>
-              <SelectTrigger className="h-8 bg-white border-gray-200 text-gray-900 text-xs">
+              <SelectTrigger className="h-8 bg-gray-50 border-gray-200 text-gray-900 text-xs">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent className="bg-white border-gray-200">
@@ -141,11 +138,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               <button
                 key={item.path}
                 onClick={() => navigate(item.path)}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm transition-all duration-200 ${
-                  isActive
+                className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm transition-all duration-200 ${isActive
                     ? "bg-[#66B2B2]/10 text-[#66B2B2] border-l-2 border-[#66B2B2]"
                     : "text-gray-500 hover:text-gray-900 hover:bg-gray-50 border-l-2 border-transparent"
-                } ${collapsed ? "justify-center" : ""}`}
+                  } ${collapsed ? "justify-center" : ""}`}
               >
                 <item.icon className={`w-4 h-4 shrink-0 ${isActive ? "text-[#66B2B2]" : ""}`} />
                 {!collapsed && <span className="text-xs font-medium">{item.label}</span>}
@@ -165,7 +161,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               value={magicLinkEmail}
               onChange={(e) => setMagicLinkEmail(e.target.value)}
               placeholder="client@email.com"
-              className="w-full h-7 px-2 text-[11px] bg-white border border-gray-200 rounded text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-[#66B2B2]/60"
+              className="w-full h-7 px-2 text-[11px] bg-gray-50 border border-gray-200 rounded text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-[#66B2B2]/50"
             />
             <Button
               onClick={handleMagicLink}
@@ -197,7 +193,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           </div>
           {!collapsed && (
             <Button
-              onClick={handleLogout}
+              onClick={logout}
               variant="ghost"
               size="sm"
               className="w-full mt-2 h-6 text-[10px] text-gray-500 hover:text-[#EF4444] hover:bg-[#EF4444]/10"
@@ -211,7 +207,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         {/* Collapse Toggle */}
         <button
           onClick={() => setCollapsed(!collapsed)}
-          className="absolute top-1/2 -right-3 w-6 h-6 bg-white border border-[#66B2B2]/30 rounded-full flex items-center justify-center text-[#66B2B2] hover:bg-[#66B2B2]/10 transition-colors"
+          className="absolute top-1/2 -right-3 w-6 h-6 bg-white border border-gray-200 rounded-full flex items-center justify-center text-[#66B2B2] hover:bg-[#66B2B2]/10 transition-colors shadow-sm"
         >
           {collapsed ? <ChevronRight className="w-3 h-3" /> : <ChevronLeft className="w-3 h-3" />}
         </button>
@@ -219,16 +215,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* Main Content */}
       <main className="flex-1 overflow-auto bg-gray-50 relative">
-        {/* Subtle grid overlay */}
-        <div
-          className="absolute inset-0 pointer-events-none opacity-30"
-          style={{
-            backgroundImage: `
-              repeating-linear-gradient(0deg, transparent, transparent 49px, rgba(0,0,0,0.03) 49px, rgba(0,0,0,0.03) 50px),
-              repeating-linear-gradient(90deg, transparent, transparent 49px, rgba(0,0,0,0.03) 49px, rgba(0,0,0,0.03) 50px)
-            `,
-          }}
-        />
         <div className="relative z-10 p-5">{children}</div>
       </main>
     </div>

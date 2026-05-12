@@ -114,9 +114,9 @@ export default function ClientPackages() {
   const expiringSoon = activePackages.filter((pkg) => new Date(pkg.endDate) <= upcomingThreshold && new Date(pkg.endDate) >= now);
 
   const summaryData = [
-    { name: "Used", value: visitsUsed, color: "#F2A900" },
+    { name: "Used", value: visitsUsed, color: "#66B2B2" },
     { name: "Remaining", value: visitsRemaining, color: "#10B981" },
-    { name: "Expired", value: activePackages.filter((pkg) => pkg.status === "expired").length, color: "#88888C" },
+    { name: "Expired", value: activePackages.filter((pkg) => pkg.status === "expired").length, color: "#6B7280" },
   ];
 
   const formatDate = (value: string) => new Date(value).toLocaleDateString("en-US", { month: "short", day: "numeric" });
@@ -161,7 +161,7 @@ export default function ClientPackages() {
 
   const getPackageIcon = (type: string) => {
     if (type === "Heavy Equipment PMS Package") return <Activity className="w-4 h-4 text-[#81E6D9]" />;
-    if (type === "Calibration Package") return <FlaskConical className="w-4 h-4 text-[#F2A900]" />;
+    if (type === "Calibration Package") return <FlaskConical className="w-4 h-4 text-[#66B2B2]" />;
     return <ClipboardList className="w-4 h-4 text-[#A78BFA]" />;
   };
 
@@ -169,14 +169,14 @@ export default function ClientPackages() {
     <div className="space-y-6 px-8 pt-8">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <h1 className="text-[32px] font-bold text-[#EAEAEA] tracking-[-0.02em]">Packages & Subscriptions</h1>
-          <p className="text-sm text-[#88888C] mt-1">Manage your service packages, usage and renewals</p>
+          <h1 className="text-[32px] font-bold text-gray-900 tracking-[-0.02em]">Packages & Subscriptions</h1>
+          <p className="text-sm text-gray-500 mt-1">Manage your service packages, usage and renewals</p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row">
-          <Button className="bg-[#111827] border border-white/10 text-[#EAEAEA] hover:bg-[#141A2B] px-4 py-2 text-xs font-semibold">
+          <Button className="bg-gray-100 border border-gray-200 text-gray-900 hover:bg-gray-100 px-4 py-2 text-xs font-semibold">
             <Info className="w-4 h-4 mr-2" /> How Packages Work
           </Button>
-          <Button className="bg-[#F2A900] text-[#050505] px-4 py-2 text-xs font-semibold hover:bg-[#D69E02]">
+          <Button className="bg-[#66B2B2] text-white px-4 py-2 text-xs font-semibold hover:bg-[#5A9E9E]">
             <PackagePlus className="w-4 h-4 mr-2" /> Purchase New Package
           </Button>
         </div>
@@ -184,110 +184,110 @@ export default function ClientPackages() {
 
       <div className="grid gap-3 lg:grid-cols-[repeat(5,_minmax(0,1fr))]">
         <div className="data-card p-4 lg:col-span-1">
-          <div className="text-[10px] text-[#88888C] uppercase tracking-wider mb-3 flex items-center gap-2">
+          <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-2">
             <ShieldCheck className="w-3 h-3" /> Active Packages
           </div>
-          <div className="text-3xl font-bold text-[#EAEAEA]">{activePackages.length}</div>
-          <div className="text-[10px] text-[#88888C] mt-2">View details of your current packages</div>
+          <div className="text-3xl font-bold text-gray-900">{activePackages.length}</div>
+          <div className="text-[10px] text-gray-500 mt-2">View details of your current packages</div>
         </div>
         <div className="data-card p-4 lg:col-span-1">
-          <div className="text-[10px] text-[#88888C] uppercase tracking-wider mb-3 flex items-center gap-2">
+          <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-2">
             <ClipboardList className="w-3 h-3" /> Total Services Included
           </div>
-          <div className="text-3xl font-bold text-[#EAEAEA]">{totalServicesIncluded}</div>
-          <div className="text-[10px] text-[#88888C] mt-2">Across all active packages</div>
+          <div className="text-3xl font-bold text-gray-900">{totalServicesIncluded}</div>
+          <div className="text-[10px] text-gray-500 mt-2">Across all active packages</div>
         </div>
         <div className="data-card p-4 lg:col-span-1">
-          <div className="text-[10px] text-[#88888C] uppercase tracking-wider mb-3 flex items-center gap-2">
+          <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-2">
             <TrendingUp className="w-3 h-3" /> Services Used
           </div>
-          <div className="text-3xl font-bold text-[#EAEAEA]">{visitsUsed}</div>
-          <div className="text-[10px] text-[#88888C] mt-2">{totalVisits > 0 ? `${Math.round((visitsUsed / totalVisits) * 100)}% of total` : "No usage yet"}</div>
+          <div className="text-3xl font-bold text-gray-900">{visitsUsed}</div>
+          <div className="text-[10px] text-gray-500 mt-2">{totalVisits > 0 ? `${Math.round((visitsUsed / totalVisits) * 100)}% of total` : "No usage yet"}</div>
         </div>
         <div className="data-card p-4 lg:col-span-1">
-          <div className="text-[10px] text-[#88888C] uppercase tracking-wider mb-3 flex items-center gap-2">
+          <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-2">
             <Clock className="w-3 h-3" /> Expiring Soon
           </div>
-          <div className="text-3xl font-bold text-[#EAEAEA]">{expiringSoon.length}</div>
-          <div className="text-[10px] text-[#88888C] mt-2">Within 30 days</div>
+          <div className="text-3xl font-bold text-gray-900">{expiringSoon.length}</div>
+          <div className="text-[10px] text-gray-500 mt-2">Within 30 days</div>
         </div>
         <div className="data-card p-4 lg:col-span-1">
-          <div className="text-[10px] text-[#88888C] uppercase tracking-wider mb-3 flex items-center gap-2">
+          <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-2">
             <DollarSign className="w-3 h-3" /> Total Value
           </div>
-          <div className="text-3xl font-bold text-[#F2A900]">₱{activeValue.toLocaleString()}</div>
-          <div className="text-[10px] text-[#88888C] mt-2">Of active packages</div>
+          <div className="text-3xl font-bold text-[#66B2B2]">₱{activeValue.toLocaleString()}</div>
+          <div className="text-[10px] text-gray-500 mt-2">Of active packages</div>
         </div>
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[2fr_1fr]">
         <div className="space-y-4">
           <div className="data-card overflow-hidden">
-            <div className="flex flex-col gap-3 border-b border-white/10 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-col gap-3 border-b border-gray-200 p-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h3 className="text-sm font-semibold text-[#EAEAEA]">Active Packages</h3>
-                <p className="text-[10px] text-[#88888C] mt-1">Overview of your currently subscribed packages</p>
+                <h3 className="text-sm font-semibold text-gray-900">Active Packages</h3>
+                <p className="text-[10px] text-gray-500 mt-1">Overview of your currently subscribed packages</p>
               </div>
-              <Button className="inline-flex items-center gap-2 text-[10px] font-semibold bg-[#111827] border border-white/10 text-[#EAEAEA] hover:bg-[#141A2B] px-4 py-2">
+              <Button className="inline-flex items-center gap-2 text-[10px] font-semibold bg-gray-100 border border-gray-200 text-gray-900 hover:bg-gray-100 px-4 py-2">
                 View all active <ChevronRight className="w-4 h-4" />
               </Button>
             </div>
             <div className="overflow-auto">
               <table className="min-w-full text-left text-[11px]">
-                <thead className="bg-[#0D111D]">
+                <thead className="bg-gray-50">
                   <tr>
-                    <th className="py-3 px-3 text-[#88888C] font-medium">Package</th>
-                    <th className="py-3 px-3 text-[#88888C] font-medium">Linked Service</th>
-                    <th className="py-3 px-3 text-[#88888C] font-medium">Inclusions</th>
-                    <th className="py-3 px-3 text-[#88888C] font-medium">Usage</th>
-                    <th className="py-3 px-3 text-[#88888C] font-medium">Validity</th>
-                    <th className="py-3 px-3 text-[#88888C] font-medium">Status</th>
-                    <th className="py-3 px-3 text-[#88888C] font-medium">Action</th>
+                    <th className="py-3 px-3 text-gray-500 font-medium">Package</th>
+                    <th className="py-3 px-3 text-gray-500 font-medium">Linked Service</th>
+                    <th className="py-3 px-3 text-gray-500 font-medium">Inclusions</th>
+                    <th className="py-3 px-3 text-gray-500 font-medium">Usage</th>
+                    <th className="py-3 px-3 text-gray-500 font-medium">Validity</th>
+                    <th className="py-3 px-3 text-gray-500 font-medium">Status</th>
+                    <th className="py-3 px-3 text-gray-500 font-medium">Action</th>
                   </tr>
                 </thead>
                 <tbody>
                   {activePackages.map((pkg) => {
                     const used = pkg.totalVisits - pkg.visitsRemaining;
                     return (
-                      <tr key={pkg.id} className="border-b border-white/10 hover:bg-white/5">
+                      <tr key={pkg.id} className="border-b border-gray-200 hover:bg-gray-50">
                         <td className="py-4 px-3 align-top">
                           <div className="flex items-start gap-3">
                             {getPackageIcon(pkg.packageType)}
                             <div>
-                              <div className="font-semibold text-[#EAEAEA] text-sm">{pkg.name}</div>
-                              <div className="text-[10px] text-[#88888C]">{pkg.packageType}</div>
-                              <div className="text-[10px] text-[#F2A900] mt-1">₱{pkg.price.toLocaleString()} / {pkg.billingCycle}</div>
+                              <div className="font-semibold text-gray-900 text-sm">{pkg.name}</div>
+                              <div className="text-[10px] text-gray-500">{pkg.packageType}</div>
+                              <div className="text-[10px] text-[#66B2B2] mt-1">₱{pkg.price.toLocaleString()} / {pkg.billingCycle}</div>
                             </div>
                           </div>
                         </td>
-                        <td className="py-4 px-3 align-top text-[#EAEAEA]">
-                          <div className="text-[10px] text-[#88888C]">{pkg.linkedServiceCategory || "Primary Equipment"}</div>
+                        <td className="py-4 px-3 align-top text-gray-900">
+                          <div className="text-[10px] text-gray-500">{pkg.linkedServiceCategory || "Primary Equipment"}</div>
                         </td>
-                        <td className="py-4 px-3 align-top text-[#EAEAEA]">
+                        <td className="py-4 px-3 align-top text-gray-900">
                           <div className="flex flex-col gap-1 text-[10px]">
                             {pkg.includedServices.slice(0, 3).map((service, idx) => (
-                              <span key={idx} className="inline-flex rounded bg-white/5 px-2 py-1">{service}</span>
+                              <span key={idx} className="inline-flex rounded bg-gray-50 px-2 py-1">{service}</span>
                             ))}
                           </div>
                         </td>
                         <td className="py-4 px-3 align-top">
-                          <div className="text-sm font-semibold text-[#EAEAEA]">{used}/{pkg.totalVisits}</div>
-                          <div className="text-[10px] text-[#88888C]">PMS Visits Used</div>
-                          <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/10">
-                            <div className="h-full rounded-full bg-[#F2A900]" style={{ width: `${Math.round((used / pkg.totalVisits) * 100)}%` }} />
+                          <div className="text-sm font-semibold text-gray-900">{used}/{pkg.totalVisits}</div>
+                          <div className="text-[10px] text-gray-500">PMS Visits Used</div>
+                          <div className="mt-2 h-2 overflow-hidden rounded-full bg-gray-100">
+                            <div className="h-full rounded-full bg-[#66B2B2]" style={{ width: `${Math.round((used / pkg.totalVisits) * 100)}%` }} />
                           </div>
                         </td>
-                        <td className="py-4 px-3 align-top text-[#EAEAEA]">
-                          <div className="text-[10px] text-[#88888C]">Start</div>
+                        <td className="py-4 px-3 align-top text-gray-900">
+                          <div className="text-[10px] text-gray-500">Start</div>
                           <div className="font-semibold">{formatDate(pkg.startDate)}</div>
-                          <div className="text-[10px] text-[#88888C] mt-2">Expiry</div>
+                          <div className="text-[10px] text-gray-500 mt-2">Expiry</div>
                           <div className="font-semibold">{formatDate(pkg.endDate)}</div>
                         </td>
                         <td className="py-4 px-3 align-top">
                           <span className="inline-flex rounded-full bg-[#10B981]/20 px-2.5 py-1 text-[10px] font-semibold text-[#10B981]">Active</span>
                         </td>
                         <td className="py-4 px-3 align-top">
-                          <Button className="bg-[#F2A900] text-[#050505] text-[10px] font-semibold px-3 py-2 hover:bg-[#D69E02]">
+                          <Button className="bg-[#66B2B2] text-white text-[10px] font-semibold px-3 py-2 hover:bg-[#5A9E9E]">
                             Use Package
                           </Button>
                         </td>
@@ -302,10 +302,10 @@ export default function ClientPackages() {
           <div className="data-card p-4">
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h3 className="text-sm font-semibold text-[#EAEAEA]">Available Packages</h3>
-                <p className="text-[10px] text-[#88888C] mt-1">Choose a package that fits your equipment and service needs</p>
+                <h3 className="text-sm font-semibold text-gray-900">Available Packages</h3>
+                <p className="text-[10px] text-gray-500 mt-1">Choose a package that fits your equipment and service needs</p>
               </div>
-              <button className="text-[10px] text-[#F2A900] font-semibold flex items-center gap-1">
+              <button className="text-[10px] text-[#66B2B2] font-semibold flex items-center gap-1">
                 Compare Packages <ArrowRight className="w-3 h-3" />
               </button>
             </div>
@@ -313,22 +313,22 @@ export default function ClientPackages() {
               {displayPackages.map((pkg) => (
                 <div
                   key={pkg.id}
-                  className={`rounded-xl border p-4 text-sm shadow-sm ${pkg.tier === "enterprise" ? "border-[#F2A900] bg-[#141A2B]" : "border-white/10 bg-[#0A0A0C]"}`}
+                  className={`rounded-xl border p-4 text-sm shadow-sm ${pkg.tier === "enterprise" ? "border-[#66B2B2] bg-gray-100" : "border-gray-200 bg-gray-50"}`}
                 >
                   <div className="flex items-center justify-between mb-3">
                     <div>
-                      <div className="text-xs font-semibold text-[#EAEAEA]">{pkg.name}</div>
-                      <div className="text-[10px] text-[#88888C] uppercase tracking-[0.18em] mt-1">{pkg.tier === "enterprise" ? "Enterprise" : pkg.tier === "professional" ? "Professional" : "Basic"}</div>
+                      <div className="text-xs font-semibold text-gray-900">{pkg.name}</div>
+                      <div className="text-[10px] text-gray-500 uppercase tracking-[0.18em] mt-1">{pkg.tier === "enterprise" ? "Enterprise" : pkg.tier === "professional" ? "Professional" : "Basic"}</div>
                     </div>
                     {pkg.tier === "enterprise" && (
-                      <span className="rounded-full bg-[#F2A900] px-2 py-1 text-[10px] font-semibold text-[#050505]">Most Popular</span>
+                      <span className="rounded-full bg-[#66B2B2] px-2 py-1 text-[10px] font-semibold text-white">Most Popular</span>
                     )}
                   </div>
-                  <div className="text-[#F2A900] font-bold text-lg mb-2">₱{pkg.price.toLocaleString()} / {pkg.billingCycle === "annual" ? "year" : pkg.billingCycle}</div>
-                  <div className="text-[10px] text-[#88888C] mb-3">{pkg.description}</div>
+                  <div className="text-[#66B2B2] font-bold text-lg mb-2">₱{pkg.price.toLocaleString()} / {pkg.billingCycle === "annual" ? "year" : pkg.billingCycle}</div>
+                  <div className="text-[10px] text-gray-500 mb-3">{pkg.description}</div>
                   <div className="space-y-2 mb-4">
                     {pkg.includedServices.slice(0, 4).map((service, idx) => (
-                      <div key={idx} className="flex items-center gap-2 text-[10px] text-[#EAEAEA]">
+                      <div key={idx} className="flex items-center gap-2 text-[10px] text-gray-900">
                         <CheckCircle2 className="w-3 h-3 text-[#10B981]" />
                         {service}
                       </div>
@@ -338,7 +338,7 @@ export default function ClientPackages() {
                     size="sm"
                     onClick={() => handlePackagePurchase(pkg.id, pkg.name)}
                     disabled={purchaseProcessing && selectedPackage === pkg.id}
-                    className="w-full rounded-md bg-[#F2A900] text-[#050505] text-[10px] font-semibold py-2 hover:bg-[#D69E02]"
+                    className="w-full rounded-md bg-[#66B2B2] text-white text-[10px] font-semibold py-2 hover:bg-[#5A9E9E]"
                   >
                     Select Equipment
                   </Button>
@@ -352,8 +352,8 @@ export default function ClientPackages() {
           <div className="data-card p-4">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h3 className="text-sm font-semibold text-[#EAEAEA]">Package Usage Summary</h3>
-                <p className="text-[10px] text-[#88888C] mt-1">Used, remaining and expired visits</p>
+                <h3 className="text-sm font-semibold text-gray-900">Package Usage Summary</h3>
+                <p className="text-[10px] text-gray-500 mt-1">Used, remaining and expired visits</p>
               </div>
               <div className="w-24 h-24">
                 <ResponsiveContainer width="100%" height="100%">
@@ -369,7 +369,7 @@ export default function ClientPackages() {
             </div>
             <div className="space-y-2 mt-4">
               {summaryData.map((segment) => (
-                <div key={segment.name} className="flex items-center justify-between text-[10px] text-[#EAEAEA]">
+                <div key={segment.name} className="flex items-center justify-between text-[10px] text-gray-900">
                   <span className="inline-flex items-center gap-2">
                     <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: segment.color }} />
                     {segment.name}
@@ -382,25 +382,25 @@ export default function ClientPackages() {
 
           <div className="data-card p-4">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold text-[#EAEAEA]">Upcoming Expirations</h3>
-              <span className="text-[10px] text-[#F2A900]">{expiringSoon.length} soon</span>
+              <h3 className="text-sm font-semibold text-gray-900">Upcoming Expirations</h3>
+              <span className="text-[10px] text-[#66B2B2]">{expiringSoon.length} soon</span>
             </div>
             <div className="space-y-3">
               {expiringSoon.length > 0 ? (
                 expiringSoon.map((pkg) => (
-                  <div key={pkg.id} className="rounded-xl border border-white/10 bg-[#0A0A0C] p-3">
+                  <div key={pkg.id} className="rounded-xl border border-gray-200 bg-gray-50 p-3">
                     <div className="flex items-center justify-between gap-2">
                       <div>
-                        <div className="text-sm font-semibold text-[#EAEAEA]">{pkg.name}</div>
-                        <div className="text-[10px] text-[#88888C]">{pkg.linkedServiceCategory || "Primary Equipment"}</div>
+                        <div className="text-sm font-semibold text-gray-900">{pkg.name}</div>
+                        <div className="text-[10px] text-gray-500">{pkg.linkedServiceCategory || "Primary Equipment"}</div>
                       </div>
-                      <div className="text-[10px] text-[#F2A900] font-semibold">{formatDays(pkg.endDate)}</div>
+                      <div className="text-[10px] text-[#66B2B2] font-semibold">{formatDays(pkg.endDate)}</div>
                     </div>
-                    <div className="text-[10px] text-[#88888C] mt-2">Expires {formatDate(pkg.endDate)}</div>
+                    <div className="text-[10px] text-gray-500 mt-2">Expires {formatDate(pkg.endDate)}</div>
                   </div>
                 ))
               ) : (
-                <div className="text-[10px] text-[#88888C]">No packages expiring in the next 30 days.</div>
+                <div className="text-[10px] text-gray-500">No packages expiring in the next 30 days.</div>
               )}
             </div>
           </div>
@@ -408,43 +408,43 @@ export default function ClientPackages() {
           <div className="data-card p-4">
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h3 className="text-sm font-semibold text-[#EAEAEA]">Need a Custom Package?</h3>
-                <p className="text-[10px] text-[#88888C] mt-1">Tell us your requirements and we’ll create a custom plan.</p>
+                <h3 className="text-sm font-semibold text-gray-900">Need a Custom Package?</h3>
+                <p className="text-[10px] text-gray-500 mt-1">Tell us your requirements and we’ll create a custom plan.</p>
               </div>
             </div>
-            <Button className="w-full rounded-md bg-[#111827] border border-white/10 text-[#EAEAEA] text-[10px] font-semibold py-2 hover:bg-[#141A2B]">
+            <Button className="w-full rounded-md bg-gray-100 border border-gray-200 text-gray-900 text-[10px] font-semibold py-2 hover:bg-gray-100">
               Request Custom Package
             </Button>
           </div>
 
           <div className="data-card p-4">
-            <h3 className="text-sm font-semibold text-[#EAEAEA] mb-4">How it Works</h3>
-            <div className="space-y-3 text-[10px] text-[#88888C]">
+            <h3 className="text-sm font-semibold text-gray-900 mb-4">How it Works</h3>
+            <div className="space-y-3 text-[10px] text-gray-500">
               <div className="flex items-start gap-3">
-                <div className="mt-1 h-6 w-6 rounded-full bg-[#F2A900]/20 text-[#F2A900] flex items-center justify-center">1</div>
+                <div className="mt-1 h-6 w-6 rounded-full bg-[#66B2B2]/20 text-[#66B2B2] flex items-center justify-center">1</div>
                 <div>
-                  <div className="font-semibold text-[#EAEAEA]">Choose a Package</div>
+                  <div className="font-semibold text-gray-900">Choose a Package</div>
                   Select the package that best fits your equipment and needs.
                 </div>
               </div>
               <div className="flex items-start gap-3">
-                <div className="mt-1 h-6 w-6 rounded-full bg-[#F2A900]/20 text-[#F2A900] flex items-center justify-center">2</div>
+                <div className="mt-1 h-6 w-6 rounded-full bg-[#66B2B2]/20 text-[#66B2B2] flex items-center justify-center">2</div>
                 <div>
-                  <div className="font-semibold text-[#EAEAEA]">Link Your Equipment</div>
+                  <div className="font-semibold text-gray-900">Link Your Equipment</div>
                   Choose the equipment you want this package for.
                 </div>
               </div>
               <div className="flex items-start gap-3">
-                <div className="mt-1 h-6 w-6 rounded-full bg-[#F2A900]/20 text-[#F2A900] flex items-center justify-center">3</div>
+                <div className="mt-1 h-6 w-6 rounded-full bg-[#66B2B2]/20 text-[#66B2B2] flex items-center justify-center">3</div>
                 <div>
-                  <div className="font-semibold text-[#EAEAEA]">Confirm & Schedule</div>
+                  <div className="font-semibold text-gray-900">Confirm & Schedule</div>
                   Confirm details and schedule your service.
                 </div>
               </div>
               <div className="flex items-start gap-3">
-                <div className="mt-1 h-6 w-6 rounded-full bg-[#F2A900]/20 text-[#F2A900] flex items-center justify-center">4</div>
+                <div className="mt-1 h-6 w-6 rounded-full bg-[#66B2B2]/20 text-[#66B2B2] flex items-center justify-center">4</div>
                 <div>
-                  <div className="font-semibold text-[#EAEAEA]">Start Using</div>
+                  <div className="font-semibold text-gray-900">Start Using</div>
                   Book services and track usage in real-time.
                 </div>
               </div>
