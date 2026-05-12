@@ -118,6 +118,7 @@ const GPS51_PASSWORD = import.meta.env.VITE_GPS51_PASSWORD ?? "";
 const FLEET_HISTORY_DEBUG = true;
 const GPS001_TOTAL_HOURS_CACHE_KEY = "nextos-gps001-total-hours-ms";
 const ADDED_EQUIPMENT_STORAGE_KEY = "nextos-fleet-added-equipment";
+const HISTORY_DOT_STATUS_CACHE_KEY = "nextos-fleet-history-dot-statuses";
 const PROTECTED_EQUIPMENT_NAME = "Excavator CAT 320";
 
 function readCachedGps001TotalHoursMs(): number {
@@ -143,6 +144,57 @@ function readCachedAddedEquipment(): ModalEquipment[] {
   } catch {
     return [];
   }
+}
+
+function isPastYmd(ymd: string): boolean {
+  const [yearText, monthText, dayText] = ymd.split("-");
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) {
+    return false;
+  }
+
+  const candidate = new Date(year, month - 1, day);
+  candidate.setHours(0, 0, 0, 0);
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return candidate.getTime() < today.getTime();
+}
+
+function isHistoryKeyPastDate(key: string): boolean {
+  const separatorIndex = key.indexOf(":");
+  if (separatorIndex === -1) return false;
+  const ymd = key.slice(separatorIndex + 1);
+  return isPastYmd(ymd);
+}
+
+function readCachedHistoryDotStatuses(): Record<string, HistoryDateStatus> {
+  if (typeof window === "undefined") return {};
+
+  try {
+    const rawValue = window.localStorage.getItem(HISTORY_DOT_STATUS_CACHE_KEY);
+    if (!rawValue) return {};
+
+    const parsed = JSON.parse(rawValue) as Record<string, unknown>;
+    const sanitized: Record<string, HistoryDateStatus> = {};
+
+    for (const [key, value] of Object.entries(parsed)) {
+      if ((value === "has-data" || value === "no-data") && isHistoryKeyPastDate(key)) {
+        sanitized[key] = value;
+      }
+    }
+
+    return sanitized;
+  } catch {
+    return {};
+  }
+}
+
+function writeCachedHistoryDotStatuses(data: Record<string, HistoryDateStatus>): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(HISTORY_DOT_STATUS_CACHE_KEY, JSON.stringify(data));
 }
 
 function isLiveMappedSeedEquipmentEntry(entry: ModalEquipment): boolean {
@@ -379,7 +431,9 @@ export default function Fleet() {
   });
   const [selectedHistoryDate, setSelectedHistoryDate] = useState<Date>(() => new Date());
   const [historyRows, setHistoryRows] = useState<HistoryRow[]>([]);
-  const [historyDataByDate, setHistoryDataByDate] = useState<Record<string, HistoryDateStatus>>({});
+  const [historyDataByDate, setHistoryDataByDate] = useState<Record<string, HistoryDateStatus>>(() =>
+    readCachedHistoryDotStatuses()
+  );
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [historyDateStatus, setHistoryDateStatus] = useState<"parking" | "offline" | null>(null);
@@ -562,6 +616,18 @@ export default function Fleet() {
     const sanitizedEquipment = addedEquipment.filter((entry) => !isLiveMappedSeedEquipmentEntry(entry));
     window.localStorage.setItem(ADDED_EQUIPMENT_STORAGE_KEY, JSON.stringify(sanitizedEquipment));
   }, [addedEquipment]);
+
+  useEffect(() => {
+    const persisted: Record<string, HistoryDateStatus> = {};
+
+    for (const [key, status] of Object.entries(historyDataByDate)) {
+      if ((status === "has-data" || status === "no-data") && isHistoryKeyPastDate(key)) {
+        persisted[key] = status;
+      }
+    }
+
+    writeCachedHistoryDotStatuses(persisted);
+  }, [historyDataByDate]);
 
   useEffect(() => {
     setAddedEquipment((prev) => {
