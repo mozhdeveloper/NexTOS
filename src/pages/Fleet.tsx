@@ -97,6 +97,7 @@ type SeedEquipmentDisplay = {
 };
 
 interface HistoryRow {
+  id: string;
   name: string;
   mileage: string;
   maxSpeed: string;
@@ -119,6 +120,8 @@ const FLEET_HISTORY_DEBUG = true;
 const GPS001_TOTAL_HOURS_CACHE_KEY = "nextos-gps001-total-hours-ms";
 const ADDED_EQUIPMENT_STORAGE_KEY = "nextos-fleet-added-equipment";
 const HISTORY_DOT_STATUS_CACHE_KEY = "nextos-fleet-history-dot-statuses";
+const HISTORY_TABLE_DATA_CACHE_KEY = "nextos-fleet-history-table-data";
+const HISTORY_TABLE_TODAY_TIMESTAMP_KEY = "nextos-fleet-history-table-today-timestamps";
 const PROTECTED_EQUIPMENT_NAME = "Excavator CAT 320";
 
 function readCachedGps001TotalHoursMs(): number {
@@ -195,6 +198,38 @@ function readCachedHistoryDotStatuses(): Record<string, HistoryDateStatus> {
 function writeCachedHistoryDotStatuses(data: Record<string, HistoryDateStatus>): void {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(HISTORY_DOT_STATUS_CACHE_KEY, JSON.stringify(data));
+}
+
+function readCachedHistoryTableData(): Record<string, HistoryRow[]> {
+  if (typeof window === "undefined") return {};
+  try {
+    const rawValue = window.localStorage.getItem(HISTORY_TABLE_DATA_CACHE_KEY);
+    return rawValue ? (JSON.parse(rawValue) as Record<string, HistoryRow[]>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeCachedHistoryTableData(data: Record<string, HistoryRow[]>): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(HISTORY_TABLE_DATA_CACHE_KEY, JSON.stringify(data));
+}
+
+function readCachedHistoryTableTodayTimestamps(): Record<string, number> {
+  if (typeof window === "undefined") return {};
+  try {
+    const rawValue = window.localStorage.getItem(HISTORY_TABLE_TODAY_TIMESTAMP_KEY);
+    return rawValue ? (JSON.parse(rawValue) as Record<string, number>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeCachedHistoryTableTodayTimestamps(data: Record<string, number>): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(HISTORY_TABLE_TODAY_TIMESTAMP_KEY, JSON.stringify(data));
+
+
 }
 
 function isLiveMappedSeedEquipmentEntry(entry: ModalEquipment): boolean {
@@ -310,7 +345,7 @@ function statusDotClass(status: UnitDisplayStatus): string {
   }
 }
 
-function buildHistoryRowFromSummary(name: string, summary: GPS51DailyHistorySummary): HistoryRow {
+function buildHistoryRowFromSummary(id: string, name: string, summary: GPS51DailyHistorySummary): HistoryRow {
   const metersToKm = (value: number) => value / 1000;
   const normalizeSpeedToKph = (value: number) => {
     const numeric = Number(value);
@@ -321,6 +356,7 @@ function buildHistoryRowFromSummary(name: string, summary: GPS51DailyHistorySumm
     (summary.parkingText ?? "").trim() || formatDurationFromMs(summary.parkingMs);
 
   return {
+    id,
     name,
     mileage: `${metersToKm(summary.mileageMeters).toFixed(2)} km`,
     maxSpeed: `${Math.round(normalizeSpeedToKph(summary.maxSpeedMps))} km/h`,
@@ -342,7 +378,7 @@ function buildHistoryRowFromSummary(name: string, summary: GPS51DailyHistorySumm
   };
 }
 
-function buildMockHistoryRow(name: string, date: Date, unitSeed: number): HistoryRow {
+function buildMockHistoryRow(id: string, name: string, date: Date, unitSeed: number): HistoryRow {
   const base = date.getDate() + date.getMonth() * 7 + unitSeed * 11;
   const mileage = 25 + (base % 80);
   const maxSpeed = 35 + (base % 28);
@@ -353,6 +389,7 @@ function buildMockHistoryRow(name: string, date: Date, unitSeed: number): Histor
   const dateText = toYmd(date);
 
   return {
+    id,
     name,
     mileage: `${mileage.toFixed(1)} mi`,
     maxSpeed: `${maxSpeed} mph`,
@@ -553,7 +590,11 @@ export default function Fleet() {
       return true;
     });
   }, [units, equipment]);
-  const isGps51UnitSelected = selectedUnit?.id === 1 || selectedUnitLabel.toUpperCase() === "GPS-001";
+  const selectedSeedEquipmentId = unitIdToSeedEquipmentId[selectedUnitLabel.trim().toUpperCase()];
+  const isGps51UnitSelected =
+    selectedSeedEquipmentId === "EQ-001" ||
+    selectedUnit?.id === 1 ||
+    selectedUnitLabel.toUpperCase() === "GPS-001";
   const isGps001Unit = (unit: { id: number; unitName?: string }) =>
     unit.id === 1 || (unit.unitName ?? "").toUpperCase() === "GPS-001";
   const selectedHistoryDay = toYmd(selectedHistoryDate);
@@ -824,7 +865,43 @@ export default function Fleet() {
         return;
       }
 
-      setHistoryLoading(true);
+      const isTodaySelection = selectedHistoryDay === toYmd(new Date());
+      const allCachedTableData = readCachedHistoryTableData();
+      const allCachedTimestamps = readCachedHistoryTableTodayTimestamps();
+
+      // Check if we can use cached data (past dates: always, today: within 5 minutes)
+      const cachedRows = allCachedTableData[selectedHistoryKey];
+      const cachedTimestamp = allCachedTimestamps[selectedHistoryKey];
+      const now = Date.now();
+      const isPastDate = isHistoryKeyPastDate(selectedHistoryKey);
+      const isCacheValid = cachedRows && (
+        isPastDate || 
+        (isTodaySelection && cachedTimestamp && (now - cachedTimestamp) < 5 * 60 * 1000)
+      );
+
+      // Use cached data if available and valid
+      if (isCacheValid && cachedRows) {
+        setHistoryLoading(false);
+        setHistoryError(null);
+        setHistoryRows(cachedRows);
+        setHistoryDateStatus("parking");
+        setHistoryDataByDate((prev) => ({
+          ...prev,
+          [selectedHistoryKey]: "has-data",
+        }));
+        return;
+      }
+
+      // For today, if cache is expired, still show cached data while fetching in background
+      if (isTodaySelection && cachedRows && cachedTimestamp && !isPastDate) {
+        // Show cached data immediately while refreshing in background
+        setHistoryLoading(false);
+        setHistoryError(null);
+        setHistoryRows(cachedRows);
+        setHistoryDateStatus("parking");
+      } else {
+        setHistoryLoading(true);
+      }
       setHistoryError(null);
       try {
         if (isGps51UnitSelected) {
@@ -834,7 +911,6 @@ export default function Fleet() {
           const summary = await fetchDailyHistorySummary(GPS51_USERNAME, GPS51_PASSWORD, selectedHistoryDay);
           if (!ignore) {
             if (summary) {
-              const isTodaySelection = selectedHistoryDay === toYmd(new Date());
               if (isTodaySelection) {
                 if (
                   typeof selectedUnit?.telemetry.lat === "number" &&
@@ -850,7 +926,17 @@ export default function Fleet() {
                 }
               }
               setHistoryDateStatus("parking");
-              setHistoryRows([buildHistoryRowFromSummary(selectedUnitLabel, summary)]);
+              const equipmentId = unitIdToSeedEquipmentId[selectedUnitLabel.trim().toUpperCase()] || selectedUnitLabel;
+              setHistoryRows([buildHistoryRowFromSummary(equipmentId, selectedUnitLabel, summary)]);
+              // Cache the table data
+              const historyRow = buildHistoryRowFromSummary(equipmentId, selectedUnitLabel, summary);
+              const newTableCache = { ...allCachedTableData, [selectedHistoryKey]: [historyRow] };
+              writeCachedHistoryTableData(newTableCache);
+              // Update today's timestamp if this is today
+              if (isTodaySelection) {
+                const newTimestamps = { ...allCachedTimestamps, [selectedHistoryKey]: Date.now() };
+                writeCachedHistoryTableTodayTimestamps(newTimestamps);
+              }
               setHistoryDataByDate((prev) => ({
                 ...prev,
                 [selectedHistoryKey]: "has-data",
@@ -872,7 +958,17 @@ export default function Fleet() {
         }
 
         if (!ignore) {
-          setHistoryRows([buildMockHistoryRow(selectedUnitLabel, selectedHistoryDate, selectedUnitId)]);
+          const equipmentId = unitIdToSeedEquipmentId[selectedUnitLabel.trim().toUpperCase()] || selectedUnitLabel;
+          setHistoryRows([buildMockHistoryRow(equipmentId, selectedUnitLabel, selectedHistoryDate, selectedUnitId)]);
+          // Cache the table data
+          const mockRow = buildMockHistoryRow(equipmentId, selectedUnitLabel, selectedHistoryDate, selectedUnitId);
+          const newTableCache = { ...allCachedTableData, [selectedHistoryKey]: [mockRow] };
+          writeCachedHistoryTableData(newTableCache);
+          // Update today's timestamp if this is today
+          if (isTodaySelection) {
+            const newTimestamps = { ...allCachedTimestamps, [selectedHistoryKey]: Date.now() };
+            writeCachedHistoryTableTodayTimestamps(newTimestamps);
+          }
           setHistoryDataByDate((prev) => ({
             ...prev,
             [selectedHistoryKey]: "has-data",
@@ -900,7 +996,7 @@ export default function Fleet() {
     if (isGps51UnitSelected && isTodaySelection) {
       refreshInterval = setInterval(() => {
         void loadHistory();
-      }, 30000);
+          }, 5 * 60 * 1000); // 5-minute refresh window matching cache expiration
     }
 
     return () => {
@@ -1394,7 +1490,7 @@ export default function Fleet() {
                 <table className="min-w-full text-[11px]">
                   <thead className="bg-[#050505]/70 text-[#F2A900]">
                     <tr>
-                      <th className="px-3 py-2 text-left font-semibold">Name</th>
+                      <th className="px-3 py-2 text-left font-semibold">ID</th>
                       <th className="px-3 py-2 text-left font-semibold">Mileage</th>
                       <th className="px-3 py-2 text-left font-semibold">Max Speed</th>
                       <th className="px-3 py-2 text-left font-semibold">Avg Speed</th>
@@ -1422,8 +1518,8 @@ export default function Fleet() {
                       </tr>
                     )}
                     {!historyLoading && !historyError && historyRows.map((row, index) => (
-                      <tr key={`${row.name}-${index}`} className="border-t border-white/5 text-[#EAEAEA]">
-                        <td className="px-3 py-2">{row.name}</td>
+                      <tr key={`${row.id}-${index}`} className="border-t border-white/5 text-[#EAEAEA]">
+                        <td className="px-3 py-2">{row.id}</td>
                         <td className="px-3 py-2">{row.mileage}</td>
                         <td className="px-3 py-2">{row.maxSpeed}</td>
                         <td className="px-3 py-2">{row.avgSpeed}</td>
