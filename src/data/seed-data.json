@@ -43,60 +43,82 @@
             "name": "Excavator CAT 320",
             "clientId": "CL-001",
             "serialNumber": "CAT320-ACM-001",
-            "equipmentType": "Heavy Equipment"
+            "equipmentType": "Heavy Equipment",
+            "pmsConfiguration": {
+                "serviceIntervalHours": 10000,
+                "serviceIntervalUnit": "Hours"
+            }
         },
         {
             "id": "EQ-002",
             "name": "Boom Truck X500",
             "clientId": "CL-002",
-            "equipmentType": "Heavy Equipment"
+            "equipmentType": "Heavy Equipment",
+            "lat": 14.59986,
+            "lng": 121.03679,
+            "hoursToday": "3h 24m",
+            "hoursTotal": "1250h 10m"
         },
         {
             "id": "EQ-003",
             "name": "Generator 500KVA",
             "clientId": "CL-004",
-            "equipmentType": "Heavy Equipment"
+            "equipmentType": "Heavy Equipment",
+            "lat": 14.56331,
+            "lng": 121.04812,
+            "hoursToday": "4h 20m",
+            "hoursTotal": "3890h 40m"
         },
         {
             "id": "LAB-001",
             "name": "Concrete Strength Tester",
             "clientId": "CL-003",
-            "equipmentType": "Lab Equipment"
+            "equipmentType": "Lab Equipment",
+            "serialNumber": "CST-DTL-001",
+            "lat": 14.5764,
+            "lng": 121.08511,
+            "hoursToday": "6h 15m",
+            "hoursTotal": "2100h 40m",
+            "pmsConfiguration": {
+                "serviceIntervalHours": 5000,
+                "serviceIntervalUnit": "Hours"
+            }
         },
         {
             "id": "LAB-002",
             "name": "Steel Beam Tester",
             "clientId": "CL-001",
-            "equipmentType": "Lab Equipment"
+            "equipmentType": "Lab Equipment",
+            "lat": 14.62123,
+            "lng": 121.04789,
+            "hoursToday": "3h 50m",
+            "hoursTotal": "3450h 40m"
         },
         {
             "id": "LAB-003",
             "name": "Soil Compaction Machine",
             "clientId": "CL-002",
             "equipmentType": "Lab Equipment",
-            "status": "In Progress"
+            "status": "In Progress",
+            "lat": 14.55412,
+            "lng": 121.01445,
+            "hoursToday": "5h 05m",
+            "hoursTotal": "2780h 30m"
         },
         {
             "id": "EQ-004",
-            "name": "BOOM BOW",
+            "name": "kumatsu",
             "clientId": "CL-001",
             "equipmentType": "Heavy Equipment",
-            "serialNumber": "0012312412412"
-        },
-        {
-            "id": "EQ-005",
-            "name": "Kumatsu ",
-            "clientId": "CL-001",
-            "equipmentType": "Heavy Equipment",
-            "serialNumber": "2025"
-        }
-    ],
-    "pmsConfigurations": [
-        {
-            "id": "PMS-001",
-            "equipmentType": "Lab Equipment",
-            "serviceIntervalHours": 4000,
-            "serviceIntervalUnit": "Hours"
+            "lat": 14.60736,
+            "lng": 121.04556,
+            "hoursToday": "4h 42m",
+            "hoursTotal": "2952h 12m",
+            "serialNumber": "KMTS-002",
+            "pmsConfiguration": {
+                "serviceIntervalHours": 3000,
+                "serviceIntervalUnit": "Hours"
+            }
         }
     ],
     "serviceRecords": [

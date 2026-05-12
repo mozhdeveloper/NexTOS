@@ -30,6 +30,8 @@ export interface Equipment {
   hoursToday: string;
   hoursTotal: string;
   pmsConfiguration?: EquipmentPMSConfiguration;
+  lat?: number;
+  lng?: number;
 }
 
 interface AddEquipmentModalProps {

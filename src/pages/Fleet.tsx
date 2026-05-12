@@ -34,6 +34,7 @@ import {
   Wifi,
   WifiOff,
   Plus,
+  MoreVertical,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -109,11 +110,14 @@ interface HistoryRow {
   endTime: string;
 }
 
+type HistoryDateStatus = "has-data" | "no-data" | "unknown";
+
 const GPS51_USERNAME = import.meta.env.VITE_GPS51_USERNAME ?? "";
 const GPS51_PASSWORD = import.meta.env.VITE_GPS51_PASSWORD ?? "";
 const FLEET_HISTORY_DEBUG = true;
 const GPS001_TOTAL_HOURS_CACHE_KEY = "nextos-gps001-total-hours-ms";
 const ADDED_EQUIPMENT_STORAGE_KEY = "nextos-fleet-added-equipment";
+const PROTECTED_EQUIPMENT_NAME = "Excavator CAT 320";
 
 function readCachedGps001TotalHoursMs(): number {
   if (typeof window === "undefined") return 0;
@@ -140,6 +144,26 @@ function readCachedAddedEquipment(): ModalEquipment[] {
   }
 }
 
+function isLiveMappedSeedEquipmentEntry(entry: ModalEquipment): boolean {
+  const seedEntry = seedData.equipment.find((seed) => {
+    const seedClientNumericId = Number(String(seed.clientId).replace(/\D/g, ""));
+    const entryMatchesSeedId = entry.id === `seed-${seed.id}` || entry.id === seed.id;
+    const entryMatchesFields =
+      seed.name.trim().toLowerCase() === entry.name.trim().toLowerCase() &&
+      seedClientNumericId === entry.clientId &&
+      seed.equipmentType.trim().toLowerCase() === entry.type.trim().toLowerCase() &&
+      (seed.serialNumber ?? "").trim().toLowerCase() === entry.serialNumber.trim().toLowerCase();
+
+    return entryMatchesSeedId || entryMatchesFields;
+  });
+
+  return Boolean(seedEntry && LIVE_SEED_EQUIPMENT_IDS.has(seedEntry.id));
+}
+
+function readCachedAddedEquipmentWithoutSeedDuplicates(): ModalEquipment[] {
+  return readCachedAddedEquipment().filter((entry) => !isLiveMappedSeedEquipmentEntry(entry));
+}
+
 function logFleetHistory(label: string, payload: unknown): void {
   if (!FLEET_HISTORY_DEBUG) return;
   console.log(`[FleetHistory] ${label}:`, payload);
@@ -158,6 +182,16 @@ function toYmd(date: Date): string {
 
 function isSameDate(a: Date, b: Date): boolean {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+
+function isFutureDate(date: Date): boolean {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const candidate = new Date(date);
+  candidate.setHours(0, 0, 0, 0);
+
+  return candidate.getTime() > today.getTime();
 }
 
 function formatDateTime(value: number): string {
@@ -311,6 +345,9 @@ const gpsNameMapping: Record<string, string> = {
   "GPS-003": "GPS-003",
   "GPS-004": "GPS-004",
 };
+
+const LIVE_SEED_EQUIPMENT_IDS = new Set(Object.values(unitIdToSeedEquipmentId));
+
 function getSeedDisplayForUnit(unitId: string): SeedEquipmentDisplay | null {
   const normalizedUnitId = unitId.trim().toUpperCase();
   const seedEquipmentId = unitIdToSeedEquipmentId[normalizedUnitId];
@@ -341,6 +378,7 @@ export default function Fleet() {
   });
   const [selectedHistoryDate, setSelectedHistoryDate] = useState<Date>(() => new Date());
   const [historyRows, setHistoryRows] = useState<HistoryRow[]>([]);
+  const [historyDataByDate, setHistoryDataByDate] = useState<Record<string, HistoryDateStatus>>({});
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [historyDateStatus, setHistoryDateStatus] = useState<"parking" | "offline" | null>(null);
@@ -351,12 +389,16 @@ export default function Fleet() {
   const [addEquipmentOpen, setAddEquipmentOpen] = useState(false);
   
   // Equipment added through modal (in-memory)
-  const [addedEquipment, setAddedEquipment] = useState<ModalEquipment[]>(() => readCachedAddedEquipment());
+  const [addedEquipment, setAddedEquipment] = useState<ModalEquipment[]>(() => readCachedAddedEquipmentWithoutSeedDuplicates());
+  const [selectedAddedEquipmentId, setSelectedAddedEquipmentId] = useState<string | null>(null);
+  const [openCardMenuId, setOpenCardMenuId] = useState<string | null>(null);
   const [editingEquipment, setEditingEquipment] = useState<ModalEquipment | null>(null);
   const [pendingDeleteEquipmentId, setPendingDeleteEquipmentId] = useState<string | null>(null);
   // Demo stages per unit (0 = normal, 1 = zeroed display, 2 = intermediate)
   const [demoStages, setDemoStages] = useState<Record<number, number>>({});
   const addSeedEquipmentMutation = trpc.seedEquipment.add.useMutation();
+  const updateSeedEquipmentMutation = trpc.seedEquipment.update.useMutation();
+  const deleteSeedEquipmentMutation = trpc.seedEquipment.delete.useMutation();
 
   const selectedUnit = units.find((u) => u.id === selectedUnitId);
   const selectedEquipment = equipment.find((e) => e.id === selectedUnit?.equipmentId);
@@ -459,6 +501,7 @@ export default function Fleet() {
   const isGps001Unit = (unit: { id: number; unitName?: string }) =>
     unit.id === 1 || (unit.unitName ?? "").toUpperCase() === "GPS-001";
   const selectedHistoryDay = toYmd(selectedHistoryDate);
+  const selectedHistoryKey = `${selectedUnitId ?? "none"}:${selectedHistoryDay}`;
   // In history view, GPS-001 status reflects whether the selected date had activity
   const getEffectiveStatus = (unitId: number, rawStatus: string): UnitDisplayStatus => {
     const unit = units.find((u) => u.id === unitId);
@@ -476,6 +519,7 @@ export default function Fleet() {
   const workingCount = gps001LiveStatus === "driving" || gps001LiveStatus === "idle" ? 1 : 0;
   const today = new Date();
   const isDateToday = isSameDate(selectedHistoryDate, today);
+  const isFutureHistoryDate = isFutureDate(selectedHistoryDate);
   const hideGps001Pin = !isDateToday && historyDateStatus === "offline" && historyRows.length === 0;
   const sidebarDateWithPrefix = isDateToday
     ? `Today: ${today.toLocaleDateString(undefined, {
@@ -505,9 +549,24 @@ export default function Fleet() {
   }, []);
 
   useEffect(() => {
+    if (!openCardMenuId) return;
+    const handler = () => setOpenCardMenuId(null);
+    document.addEventListener("click", handler);
+    return () => document.removeEventListener("click", handler);
+  }, [openCardMenuId]);
+
+  useEffect(() => {
     if (typeof window === "undefined") return;
-    window.localStorage.setItem(ADDED_EQUIPMENT_STORAGE_KEY, JSON.stringify(addedEquipment));
+    const sanitizedEquipment = addedEquipment.filter((entry) => !isLiveMappedSeedEquipmentEntry(entry));
+    window.localStorage.setItem(ADDED_EQUIPMENT_STORAGE_KEY, JSON.stringify(sanitizedEquipment));
   }, [addedEquipment]);
+
+  useEffect(() => {
+    setAddedEquipment((prev) => {
+      const sanitized = prev.filter((entry) => !isLiveMappedSeedEquipmentEntry(entry));
+      return sanitized.length === prev.length ? prev : sanitized;
+    });
+  }, []);
 
   useEffect(() => {
     if (selectedUnit && typeof selectedUnit.telemetry.lat === "number" && typeof selectedUnit.telemetry.lng === "number") {
@@ -595,9 +654,108 @@ export default function Fleet() {
     if (viewMode !== "history" || !selectedUnitId) return;
 
     let ignore = false;
+
+    const visibleDates = Array.from(
+      { length: new Date(historyMonth.getFullYear(), historyMonth.getMonth() + 1, 0).getDate() },
+      (_, index) => new Date(historyMonth.getFullYear(), historyMonth.getMonth(), index + 1)
+    );
+
+    const datesToCheck = visibleDates.filter((dateValue) => {
+      if (isFutureDate(dateValue)) return false;
+      const dayKey = `${selectedUnitId}:${toYmd(dateValue)}`;
+      return historyDataByDate[dayKey] === undefined;
+    });
+
+    if (!datesToCheck.length) {
+      return;
+    }
+
+    const preloadVisibleMonthDateStatus = async () => {
+      if (!isGps51UnitSelected) {
+        if (ignore) return;
+        setHistoryDataByDate((prev) => {
+          const next = { ...prev };
+          for (const dateValue of datesToCheck) {
+            next[`${selectedUnitId}:${toYmd(dateValue)}`] = "has-data";
+          }
+          return next;
+        });
+        return;
+      }
+
+      if (!GPS51_USERNAME || !GPS51_PASSWORD) {
+        if (ignore) return;
+        setHistoryDataByDate((prev) => {
+          const next = { ...prev };
+          for (const dateValue of datesToCheck) {
+            next[`${selectedUnitId}:${toYmd(dateValue)}`] = "unknown";
+          }
+          return next;
+        });
+        return;
+      }
+
+      const resolvedStatuses = await Promise.all(
+        datesToCheck.map(async (dateValue) => {
+          const ymd = toYmd(dateValue);
+          try {
+            const summary = await fetchDailyHistorySummary(GPS51_USERNAME, GPS51_PASSWORD, ymd);
+            return {
+              key: `${selectedUnitId}:${ymd}`,
+              status: summary ? "has-data" : "no-data",
+            } as const;
+          } catch {
+            return {
+              key: `${selectedUnitId}:${ymd}`,
+              status: "unknown",
+            } as const;
+          }
+        })
+      );
+
+      if (ignore) return;
+
+      setHistoryDataByDate((prev) => {
+        const next = { ...prev };
+        for (const status of resolvedStatuses) {
+          next[status.key] = status.status;
+        }
+        return next;
+      });
+    };
+
+    void preloadVisibleMonthDateStatus();
+
+    return () => {
+      ignore = true;
+    };
+  }, [
+    viewMode,
+    selectedUnitId,
+    historyMonth,
+    isGps51UnitSelected,
+    historyDataByDate,
+  ]);
+
+  useEffect(() => {
+    if (viewMode !== "history" || !selectedUnitId) return;
+
+    let ignore = false;
     let refreshInterval: ReturnType<typeof setInterval> | null = null;
 
     const loadHistory = async () => {
+      if (isFutureHistoryDate) {
+        setHistoryLoading(false);
+        setHistoryError(null);
+        setHistoryRows([]);
+        setHistoryDateStatus("offline");
+        setHistoryDataByDate((prev) => ({
+          ...prev,
+          [selectedHistoryKey]: "no-data",
+        }));
+        return;
+      }
+
       setHistoryLoading(true);
       setHistoryError(null);
       try {
@@ -625,6 +783,10 @@ export default function Fleet() {
               }
               setHistoryDateStatus("parking");
               setHistoryRows([buildHistoryRowFromSummary(selectedUnitLabel, summary)]);
+              setHistoryDataByDate((prev) => ({
+                ...prev,
+                [selectedHistoryKey]: "has-data",
+              }));
             } else {
               logFleetHistory("gps001.history.no-activity", {
                 selectedHistoryDay,
@@ -632,6 +794,10 @@ export default function Fleet() {
               });
               setHistoryDateStatus("offline");
               setHistoryRows([]);
+              setHistoryDataByDate((prev) => ({
+                ...prev,
+                [selectedHistoryKey]: "no-data",
+              }));
             }
           }
           return;
@@ -639,11 +805,19 @@ export default function Fleet() {
 
         if (!ignore) {
           setHistoryRows([buildMockHistoryRow(selectedUnitLabel, selectedHistoryDate, selectedUnitId)]);
+          setHistoryDataByDate((prev) => ({
+            ...prev,
+            [selectedHistoryKey]: "has-data",
+          }));
         }
       } catch (error: any) {
         if (!ignore) {
           setHistoryRows([]);
           setHistoryError(error?.message ?? "Failed to load history data");
+          setHistoryDataByDate((prev) => ({
+            ...prev,
+            [selectedHistoryKey]: "unknown",
+          }));
         }
       } finally {
         if (!ignore) {
@@ -667,7 +841,16 @@ export default function Fleet() {
         clearInterval(refreshInterval);
       }
     };
-  }, [viewMode, selectedUnitId, selectedHistoryDay, isGps51UnitSelected, selectedUnitLabel, selectedHistoryDate]);
+  }, [
+    viewMode,
+    selectedUnitId,
+    selectedHistoryDay,
+    isGps51UnitSelected,
+    selectedUnitLabel,
+    selectedHistoryDate,
+    isFutureHistoryDate,
+    selectedHistoryKey,
+  ]);
 
   const statusIcon = (displayStatus: UnitDisplayStatus) => {
     switch (displayStatus) {
@@ -685,6 +868,11 @@ export default function Fleet() {
   // Handlers for equipment modal
   const handleSubmitEquipment = async (equipment: ModalEquipment) => {
     const hasExisting = addedEquipment.some((entry) => entry.id === equipment.id);
+    const editingId = editingEquipment?.id ?? equipment.id;
+    const isEditFlow = editingEquipment !== null;
+    const isSeedEquipmentEdit = editingId.startsWith("seed-");
+    const seedEquipmentId = isSeedEquipmentEdit ? editingId.replace(/^seed-/, "") : null;
+    const isLiveMappedSeedEquipmentEdit = Boolean(seedEquipmentId && LIVE_SEED_EQUIPMENT_IDS.has(seedEquipmentId));
     const pmsConfiguration = equipment.pmsConfiguration
       ? {
           serviceIntervalHours: equipment.pmsConfiguration.serviceIntervalHours,
@@ -692,32 +880,90 @@ export default function Fleet() {
         }
       : undefined;
 
-    if (!hasExisting) {
-      const seedClient = seedData.clients.find((entry) =>
-        Number(String(entry.id).replace(/\D/g, "")) === equipment.clientId
-      );
+    const seedClient = seedData.clients.find((entry) =>
+      Number(String(entry.id).replace(/\D/g, "")) === equipment.clientId
+    );
 
-      if (!seedClient) {
-        throw new Error("Unable to map selected client to seed data.");
-      }
+    if (!seedClient) {
+      throw new Error("Unable to map selected client to seed data.");
+    }
 
-      await addSeedEquipmentMutation.mutateAsync({
+    if (isSeedEquipmentEdit && seedEquipmentId) {
+      await updateSeedEquipmentMutation.mutateAsync({
+        id: seedEquipmentId,
         name: equipment.name,
         equipmentType: equipment.type,
         clientId: seedClient.id,
         serialNumber: equipment.serialNumber?.trim() || undefined,
         ...(pmsConfiguration ? { pmsConfiguration } : {}),
       });
+
+      // Live-mapped seed-backed cards are rendered from the fleet store, so avoid creating local duplicates.
+      if (isLiveMappedSeedEquipmentEdit) {
+        setEditingEquipment(null);
+        return;
+      }
+
+      // Non-live seed entries should still flow through the local sidebar list.
+      setEditingEquipment(null);
+    }
+
+    let createdSeedEntry: {
+      id?: string;
+      lat?: number;
+      lng?: number;
+      hoursToday?: string;
+      hoursTotal?: string;
+    } | null = null;
+
+    if (!isEditFlow && !hasExisting) {
+      const addResult = await addSeedEquipmentMutation.mutateAsync({
+        name: equipment.name,
+        equipmentType: equipment.type,
+        clientId: seedClient.id,
+        serialNumber: equipment.serialNumber?.trim() || undefined,
+        ...(pmsConfiguration ? { pmsConfiguration } : {}),
+      });
+      createdSeedEntry = {
+        id: (addResult.entry as any).id,
+        lat: (addResult.entry as any).lat,
+        lng: (addResult.entry as any).lng,
+        hoursToday: (addResult.entry as any).hoursToday,
+        hoursTotal: (addResult.entry as any).hoursTotal,
+      };
     }
 
     setAddedEquipment((prev) => {
-      const existingIndex = prev.findIndex((entry) => entry.id === equipment.id);
+      const existingIndex = prev.findIndex((entry) =>
+        entry.id === equipment.id || (isEditFlow && editingEquipment ? entry.id === editingEquipment.id : false)
+      );
 
       if (existingIndex === -1) {
-        return [...prev, equipment];
+        if (isEditFlow) {
+          return prev;
+        }
+        return [
+          ...prev,
+          {
+            ...equipment,
+            ...(createdSeedEntry?.id ? { id: `seed-${createdSeedEntry.id}` } : {}),
+            ...(createdSeedEntry?.lat !== undefined
+              ? {
+                  lat: createdSeedEntry.lat,
+                  lng: createdSeedEntry.lng,
+                  hoursToday: createdSeedEntry.hoursToday ?? equipment.hoursToday,
+                  hoursTotal: createdSeedEntry.hoursTotal ?? equipment.hoursTotal,
+                }
+              : {}),
+          },
+        ];
       }
 
-      return prev.map((entry) => (entry.id === equipment.id ? equipment : entry));
+      return prev.map((entry) =>
+        entry.id === prev[existingIndex].id
+          ? { ...equipment, id: prev[existingIndex].id }
+          : entry
+      );
     });
     setEditingEquipment(null);
   };
@@ -729,8 +975,29 @@ export default function Fleet() {
     }
   };
 
-  const handleConfirmDeleteEquipment = () => {
+  const handleConfirmDeleteEquipment = async () => {
     if (!pendingDeleteEquipmentId) return;
+
+    const seedIdFromPending = pendingDeleteEquipmentId.startsWith("seed-")
+      ? pendingDeleteEquipmentId.replace(/^seed-/, "")
+      : null;
+
+    if (seedIdFromPending === "EQ-001") {
+      toast.error("Excavator CAT 320 cannot be deleted.");
+      setPendingDeleteEquipmentId(null);
+      return;
+    }
+
+    if (seedIdFromPending) {
+      try {
+        await deleteSeedEquipmentMutation.mutateAsync({ id: seedIdFromPending });
+      } catch (error: any) {
+        toast.error(error?.message ?? "Failed to delete equipment from seed data.");
+        setPendingDeleteEquipmentId(null);
+        return;
+      }
+    }
+
     setAddedEquipment((prev) => prev.filter((entry) => entry.id !== pendingDeleteEquipmentId));
     setPendingDeleteEquipmentId(null);
   };
@@ -780,29 +1047,47 @@ export default function Fleet() {
       <div className="flex gap-4 flex-1 min-h-0 overflow-hidden">
         {/* Map */}
         <div className="flex-1 data-card overflow-hidden relative min-h-0">
-          <div className="absolute top-3 left-3 z-[1000] flex items-center rounded border border-white/10 bg-[#050505]/70 p-1 backdrop-blur">
-            <button
-              type="button"
-              onClick={() => setViewMode("gps")}
-              className={`px-3 py-1.5 text-xs font-semibold rounded transition-colors ${
-                viewMode === "gps"
-                  ? "bg-[#F2A900] text-[#050505]"
-                  : "text-[#EAEAEA] hover:bg-white/10"
-              }`}
-            >
-              GPS
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewMode("history")}
-              className={`px-3 py-1.5 text-xs font-semibold rounded transition-colors ${
-                viewMode === "history"
-                  ? "bg-[#F2A900] text-[#050505]"
-                  : "text-[#EAEAEA] hover:bg-white/10"
-              }`}
-            >
-              History
-            </button>
+          <div className="absolute top-3 left-3 right-3 z-[1000] flex items-start justify-between gap-3 pointer-events-none">
+            <div className="flex items-center rounded border border-white/10 bg-[#050505]/70 p-1 backdrop-blur pointer-events-auto">
+              <button
+                type="button"
+                onClick={() => setViewMode("gps")}
+                className={`px-3 py-1.5 text-xs font-semibold rounded transition-colors ${
+                  viewMode === "gps"
+                    ? "bg-[#F2A900] text-[#050505]"
+                    : "text-[#EAEAEA] hover:bg-white/10"
+                }`}
+              >
+                GPS
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("history")}
+                className={`px-3 py-1.5 text-xs font-semibold rounded transition-colors ${
+                  viewMode === "history"
+                    ? "bg-[#F2A900] text-[#050505]"
+                    : "text-[#EAEAEA] hover:bg-white/10"
+                }`}
+              >
+                History
+              </button>
+            </div>
+            <div className="rounded border border-white/10 bg-[#050505]/70 px-2.5 py-1.5 backdrop-blur pointer-events-auto">
+              <div className="flex items-center gap-3 text-[10px] text-[#B5B5B8]">
+                <span className="flex items-center gap-1.5">
+                  <span className="h-1.5 w-1.5 rounded-full bg-[#10B981]" />
+                  Has data
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="h-1.5 w-1.5 rounded-full bg-[#F2A900]" />
+                  Future
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="h-1.5 w-1.5 rounded-full bg-[#EF4444]" />
+                  No data
+                </span>
+              </div>
+            </div>
           </div>
 
           {viewMode === "gps" ? (
@@ -834,7 +1119,10 @@ export default function Fleet() {
                       position={[unit.telemetry.lat, unit.telemetry.lng]}
                       icon={statusIcon(getEffectiveStatus(unit.id, unit.telemetry.status))}
                       eventHandlers={{
-                        click: () => selectUnit(unit.id),
+                        click: () => {
+                          selectUnit(unit.id);
+                          setSelectedAddedEquipmentId(null);
+                        },
                       }}
                     >
                       <Popup className="dark-popup">
@@ -852,6 +1140,27 @@ export default function Fleet() {
                   );
                 })}
                 {/* Pulse effect for selected unit */}
+                {/* Simulated equipment markers */}
+                {addedEquipment
+                  .filter((eq) => typeof eq.lat === "number" && typeof eq.lng === "number")
+                  .map((eq) => (
+                    <Marker
+                      key={`sim-${eq.id}`}
+                      position={[eq.lat!, eq.lng!]}
+                      icon={defaultIcon}
+                    >
+                      <Popup className="dark-popup">
+                        <div className="bg-[#121214] p-2 min-w-[180px]">
+                          <div className="text-xs font-bold text-[#EAEAEA] mb-1">{eq.name}</div>
+                          <div className="text-[10px] text-[#88888C] space-y-0.5">
+                            <div>Status: <span className="text-[#F2A900]">Simulated</span></div>
+                            {eq.type && <div>Type: {eq.type}</div>}
+                            <div>Hours: {eq.hoursTotal}</div>
+                          </div>
+                        </div>
+                      </Popup>
+                    </Marker>
+                  ))}
                 {selectedUnit &&
                   typeof selectedUnit.telemetry.lat === "number" &&
                   typeof selectedUnit.telemetry.lng === "number" &&
@@ -963,13 +1272,23 @@ export default function Fleet() {
 
                     const isSelected = isSameDate(dateValue, selectedHistoryDate);
                     const isToday = isCurrentMonthView && isSameDate(dateValue, today);
+                    const dayKey = `${selectedUnitId ?? "none"}:${toYmd(dateValue)}`;
+                    const isFutureCalendarDate = isFutureDate(dateValue);
+                    const dateStatus = historyDataByDate[dayKey] ?? "unknown";
+                    const dotClass = isFutureCalendarDate
+                      ? "bg-[#F2A900]"
+                      : dateStatus === "has-data"
+                      ? "bg-[#10B981]"
+                      : dateStatus === "no-data"
+                      ? "bg-[#EF4444]"
+                      : "bg-[#6B7280]";
 
                     return (
                       <button
                         key={toYmd(dateValue)}
                         type="button"
                         onClick={() => setSelectedHistoryDate(dateValue)}
-                        className={`h-8 rounded text-xs border transition-colors ${
+                        className={`h-8 rounded text-xs border transition-colors flex flex-col items-center justify-center gap-0.5 ${
                           isSelected
                             ? "bg-[#F2A900] border-[#F2A900] text-[#050505] font-semibold"
                             : isToday
@@ -977,7 +1296,8 @@ export default function Fleet() {
                             : "border-white/10 text-[#EAEAEA] hover:bg-white/10"
                         }`}
                       >
-                        {dateValue.getDate()}
+                        <span>{dateValue.getDate()}</span>
+                        <span className={`h-1.5 w-1.5 rounded-full ${dotClass}`} />
                       </button>
                     );
                   })}
@@ -1074,58 +1394,6 @@ export default function Fleet() {
           </div>
 
           <div className="flex flex-1 min-h-0 flex-col overflow-y-auto overscroll-contain divide-y divide-white/5">
-            {/* Added Equipment Section */}
-            {addedEquipment.length > 0 && (
-              <div className="border-b border-white/5">
-                {addedEquipment.map((eq) => {
-                  const client = seedClientsForModal.find((c) => c.id === eq.clientId) || clients.find((c) => c.id === eq.clientId);
-                  return (
-                    <div
-                      key={eq.id}
-                      className="w-full p-3 text-left transition-colors hover:bg-white/5 border-b border-white/5 last:border-b-0"
-                    >
-                      <div className="flex items-center justify-between mb-1">
-                        <div className="flex items-center gap-1.5">
-                          <div className="w-2 h-2 rounded-full bg-[#F2A900]" />
-                          <span className="text-xs font-medium text-[#EAEAEA]">{eq.name}</span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            onClick={() => {
-                              setEditingEquipment(eq);
-                              setAddEquipmentOpen(true);
-                            }}
-                            aria-label="Edit equipment"
-                            className="h-6 w-6 p-0 border-white/10 text-[#EAEAEA] hover:bg-white/10 hover:text-[#EAEAEA]"
-                          >
-                            <Pencil className="w-3 h-3" />
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            onClick={() => setPendingDeleteEquipmentId(eq.id)}
-                            aria-label="Delete equipment"
-                            className="h-6 w-6 p-0 border-[#EF4444]/40 text-[#EF4444] hover:bg-[#EF4444]/15 hover:text-[#EF4444]"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </Button>
-                        </div>
-                      </div>
-                      <div className="text-[10px] text-[#88888C] ml-3.5 space-y-0.5">
-                        <div>{client?.companyName || "—"}</div>
-                        <div>Type: {eq.type}</div>
-                        <div className="flex items-center gap-2">
-                          <span>Hours Today: {eq.hoursToday}</span>
-                          <span>Hours in Total: {eq.hoursTotal}</span>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
 
             <div className="divide-y divide-white/5">
                 {sortedUnits.map((unit) => {
@@ -1145,6 +1413,11 @@ export default function Fleet() {
                 const clientName = seedDisplay?.clientName || client?.companyName || "—";
                 const displayEquipmentName = seedDisplay?.equipmentName;
                 const displayEquipmentType = seedDisplay?.equipmentType;
+                const seedEntry = displayEquipmentName
+                  ? seedData.equipment.find((s) => s.name === displayEquipmentName)
+                  : null;
+                const isProtectedEquipment =
+                  seedEntry?.id === "EQ-001" || displayEquipmentName === PROTECTED_EQUIPMENT_NAME;
                 const useSeedAsTitle =
                   mappedGps === "GPS-001" ||
                   mappedGps === "GPS-002" ||
@@ -1183,7 +1456,10 @@ export default function Fleet() {
                 return (
                   <button
                     key={unit.id}
-                    onClick={() => selectUnit(unit.id)}
+                    onClick={() => {
+                      selectUnit(unit.id);
+                      setSelectedAddedEquipmentId(null);
+                    }}
                     className={`w-full p-3 text-left transition-colors ${
                       isSelected ? "bg-[#F2A900]/10" : "hover:bg-white/5"
                     }`}
@@ -1217,68 +1493,83 @@ export default function Fleet() {
                                 />
                         <span className="text-xs font-medium text-[#EAEAEA]">{displayHeader}</span>
                       </div>
-                      <div className="flex items-center gap-1">
-                        <Button
+                      <div className="relative" onClick={(e) => e.stopPropagation()}>
+                        <button
                           type="button"
-                          variant="outline"
+                          aria-label="Equipment options"
                           onClick={(e) => {
                             e.stopPropagation();
-                            // Build modal equipment object for editing
-                            const eqEntry = equipment.find((e) => e.id === unit.equipmentId);
-                            let modalEq: ModalEquipment | null = null;
-                            if (displayEquipmentName) {
-                              // Find matching seed equipment entry
-                              const seedEntry = seedData.equipment.find((s) => s.name === displayEquipmentName);
-                              const clientNum = seedClientsForModal.find((c) => c.companyName === seedEntry?.clientId || c.companyName === seedDisplay?.clientName)?.id;
-                              modalEq = {
-                                id: seedEntry?.id ? `seed-${seedEntry.id}` : `unit-${unit.id}`,
-                                name: seedEntry?.name || displayHeader || unit.unitName || "",
-                                type: seedEntry?.equipmentType || displayEquipmentType || eqEntry?.equipmentType || "",
-                                clientId: clientNum || (client?.id ?? 0),
-                                serialNumber: (seedEntry as any)?.serialNumber || "",
-                                notes: "",
-                                hoursToday: "",
-                                hoursTotal: "",
-                                pmsConfiguration: (seedEntry as any)?.pmsConfiguration,
-                              };
-                            } else if (eqEntry) {
-                              modalEq = {
-                                id: String(eqEntry.id),
-                                name: eqEntry.type || eqEntry.unitId || unit.unitName || "",
-                                type: eqEntry.equipmentType || "",
-                                clientId: eqEntry.clientId || 0,
-                                serialNumber: eqEntry.serialNumber || "",
-                                notes: "",
-                                hoursToday: "",
-                                hoursTotal: "",
-                                pmsConfiguration: (eqEntry as any)?.pmsConfiguration,
-                              };
-                            }
-
-                            if (modalEq) {
-                              setEditingEquipment(modalEq);
-                              setAddEquipmentOpen(true);
-                            }
+                            const menuId = `unit-${unit.id}`;
+                            setOpenCardMenuId((prev) => (prev === menuId ? null : menuId));
                           }}
-                          aria-label="Edit equipment"
-                          className="h-6 w-6 p-0 border-white/10 text-[#EAEAEA] hover:bg-white/10 hover:text-[#EAEAEA]"
+                          className="flex h-6 w-6 items-center justify-center rounded text-[#88888C] hover:bg-white/10 hover:text-[#EAEAEA] transition-colors"
                         >
-                          <Pencil className="w-3 h-3" />
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            // Use a synthetic id for seed/units to toggle pending delete
-                            const delId = displayEquipmentName ? `seed-${displayEquipmentName}` : String(unit.id);
-                            setPendingDeleteEquipmentId(delId);
-                          }}
-                          aria-label="Delete equipment"
-                          className="h-6 w-6 p-0 border-[#EF4444]/40 text-[#EF4444] hover:bg-[#EF4444]/15 hover:text-[#EF4444]"
-                        >
-                          <Trash2 className="w-3 h-3" />
-                        </Button>
+                          <MoreVertical className="w-3.5 h-3.5" />
+                        </button>
+                        {openCardMenuId === `unit-${unit.id}` && (
+                          <div className="absolute right-0 top-7 z-50 min-w-[120px] rounded border border-white/10 bg-[#1A1A20] py-1 shadow-lg">
+                            <button
+                              type="button"
+                              className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-[#EAEAEA] hover:bg-white/10 transition-colors"
+                              onClick={() => {
+                                setOpenCardMenuId(null);
+                                const eqEntry = equipment.find((e) => e.id === unit.equipmentId);
+                                let modalEq: ModalEquipment | null = null;
+                                if (displayEquipmentName) {
+                                  const seedEntry = seedData.equipment.find((s) => s.name === displayEquipmentName);
+                                  const clientNum = seedClientsForModal.find((c) => c.companyName === seedEntry?.clientId || c.companyName === seedDisplay?.clientName)?.id;
+                                  modalEq = {
+                                    id: seedEntry?.id ? `seed-${seedEntry.id}` : `unit-${unit.id}`,
+                                    name: seedEntry?.name || displayHeader || unit.unitName || "",
+                                    type: seedEntry?.equipmentType || displayEquipmentType || eqEntry?.equipmentType || "",
+                                    clientId: clientNum || (client?.id ?? 0),
+                                    serialNumber: (seedEntry as any)?.serialNumber || "",
+                                    notes: "",
+                                    hoursToday: "",
+                                    hoursTotal: "",
+                                    pmsConfiguration: (seedEntry as any)?.pmsConfiguration,
+                                  };
+                                } else if (eqEntry) {
+                                  modalEq = {
+                                    id: String(eqEntry.id),
+                                    name: eqEntry.type || eqEntry.unitId || unit.unitName || "",
+                                    type: eqEntry.equipmentType || "",
+                                    clientId: eqEntry.clientId || 0,
+                                    serialNumber: eqEntry.serialNumber || "",
+                                    notes: "",
+                                    hoursToday: "",
+                                    hoursTotal: "",
+                                    pmsConfiguration: (eqEntry as any)?.pmsConfiguration,
+                                  };
+                                }
+                                if (modalEq) {
+                                  setEditingEquipment(modalEq);
+                                  setAddEquipmentOpen(true);
+                                }
+                              }}
+                            >
+                              <Pencil className="w-3 h-3 text-[#88888C]" />
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              disabled={isProtectedEquipment}
+                              className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-[#EF4444] hover:bg-[#EF4444]/10 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                              onClick={() => {
+                                setOpenCardMenuId(null);
+                                if (isProtectedEquipment) {
+                                  toast.error("Excavator CAT 320 cannot be deleted.");
+                                  return;
+                                }
+                                const delId = seedEntry?.id ? `seed-${seedEntry.id}` : String(unit.id);
+                                setPendingDeleteEquipmentId(delId);
+                              }}
+                            >
+                              <Trash2 className="w-3 h-3" />
+                              Delete
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </div>
                     <div className="text-[10px] text-[#88888C] ml-3.5 space-y-0.5">
@@ -1295,6 +1586,89 @@ export default function Fleet() {
                           <span>Service due</span>
                         </div>
                       )}
+                    </div>
+                  </button>
+                );
+              })}
+              {addedEquipment.map((eq) => {
+                const eqClient = seedClientsForModal.find((c) => c.id === eq.clientId) || clients.find((c) => c.id === eq.clientId);
+                const isProtectedEquipment =
+                  eq.name === PROTECTED_EQUIPMENT_NAME || eq.id === "seed-EQ-001" || eq.id === "EQ-001";
+                const isSelectedAddedEquipment = selectedAddedEquipmentId === eq.id;
+                return (
+                  <button
+                    key={eq.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedAddedEquipmentId(eq.id);
+                      selectUnit(null);
+                      if (typeof eq.lat === "number" && typeof eq.lng === "number") {
+                        setMapCenter([eq.lat, eq.lng]);
+                      }
+                    }}
+                    className={`w-full p-3 text-left transition-colors ${
+                      isSelectedAddedEquipment ? "bg-[#F2A900]/10" : "hover:bg-white/5"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-2 h-2 rounded-full bg-[#F2A900]" />
+                        <span className="text-xs font-medium text-[#EAEAEA]">{eq.name}</span>
+                      </div>
+                      <div className="relative" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          type="button"
+                          aria-label="Equipment options"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const menuId = `added-${eq.id}`;
+                            setOpenCardMenuId((prev) => (prev === menuId ? null : menuId));
+                          }}
+                          className="flex h-6 w-6 items-center justify-center rounded text-[#88888C] hover:bg-white/10 hover:text-[#EAEAEA] transition-colors"
+                        >
+                          <MoreVertical className="w-3.5 h-3.5" />
+                        </button>
+                        {openCardMenuId === `added-${eq.id}` && (
+                          <div className="absolute right-0 top-7 z-50 min-w-[120px] rounded border border-white/10 bg-[#1A1A20] py-1 shadow-lg">
+                            <button
+                              type="button"
+                              className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-[#EAEAEA] hover:bg-white/10 transition-colors"
+                              onClick={() => {
+                                setOpenCardMenuId(null);
+                                setEditingEquipment(eq);
+                                setAddEquipmentOpen(true);
+                              }}
+                            >
+                              <Pencil className="w-3 h-3 text-[#88888C]" />
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              disabled={isProtectedEquipment}
+                              className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-[#EF4444] hover:bg-[#EF4444]/10 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                              onClick={() => {
+                                setOpenCardMenuId(null);
+                                if (isProtectedEquipment) {
+                                  toast.error("Excavator CAT 320 cannot be deleted.");
+                                  return;
+                                }
+                                setPendingDeleteEquipmentId(eq.id);
+                              }}
+                            >
+                              <Trash2 className="w-3 h-3" />
+                              Delete
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div className="text-[10px] text-[#88888C] ml-3.5 space-y-0.5">
+                      <div>{eqClient?.companyName || "—"}</div>
+                      <div>Type: {eq.type}</div>
+                      <div className="flex items-center gap-2">
+                        <span>Hours Today: {eq.hoursToday || "—"}</span>
+                        <span>Hours in Total: {eq.hoursTotal || "—"}</span>
+                      </div>
                     </div>
                   </button>
                 );
