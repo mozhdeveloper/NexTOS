@@ -82,6 +82,13 @@
             "clientId": "CL-001",
             "equipmentType": "Heavy Equipment",
             "serialNumber": "0012312412412"
+        },
+        {
+            "id": "EQ-005",
+            "name": "Kumatsu ",
+            "clientId": "CL-001",
+            "equipmentType": "Heavy Equipment",
+            "serialNumber": "2025"
         }
     ],
     "pmsConfigurations": [

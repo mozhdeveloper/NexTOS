@@ -13,7 +13,6 @@ import {
   type GPS51DailyHistorySummary,
 } from "@/services/gps51";
 import { AddEquipmentModal, type Equipment as ModalEquipment } from "@/components/AddEquipmentModal";
-import { PMSConfigurationModal, type PMSConfiguration } from "@/components/PMSConfigurationModal";
 import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
@@ -35,7 +34,6 @@ import {
   Wifi,
   WifiOff,
   Plus,
-  Settings,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -116,7 +114,6 @@ const GPS51_PASSWORD = import.meta.env.VITE_GPS51_PASSWORD ?? "";
 const FLEET_HISTORY_DEBUG = true;
 const GPS001_TOTAL_HOURS_CACHE_KEY = "nextos-gps001-total-hours-ms";
 const ADDED_EQUIPMENT_STORAGE_KEY = "nextos-fleet-added-equipment";
-const PMS_CONFIG_STORAGE_KEY = "nextos-fleet-pms-configurations";
 
 function readCachedGps001TotalHoursMs(): number {
   if (typeof window === "undefined") return 0;
@@ -135,18 +132,6 @@ function readCachedAddedEquipment(): ModalEquipment[] {
   if (typeof window === "undefined") return [];
   try {
     const rawValue = window.localStorage.getItem(ADDED_EQUIPMENT_STORAGE_KEY);
-    if (!rawValue) return [];
-    const parsed = JSON.parse(rawValue);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
-function readCachedPmsConfigurations(): PMSConfiguration[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const rawValue = window.localStorage.getItem(PMS_CONFIG_STORAGE_KEY);
     if (!rawValue) return [];
     const parsed = JSON.parse(rawValue);
     return Array.isArray(parsed) ? parsed : [];
@@ -364,19 +349,14 @@ export default function Fleet() {
   
   // Modal states
   const [addEquipmentOpen, setAddEquipmentOpen] = useState(false);
-  const [pmsConfigOpen, setPmsConfigOpen] = useState(false);
   
   // Equipment added through modal (in-memory)
   const [addedEquipment, setAddedEquipment] = useState<ModalEquipment[]>(() => readCachedAddedEquipment());
   const [editingEquipment, setEditingEquipment] = useState<ModalEquipment | null>(null);
   const [pendingDeleteEquipmentId, setPendingDeleteEquipmentId] = useState<string | null>(null);
-  
-  // PMS Configurations (in-memory)
-  const [pmsConfigurations, setPmsConfigurations] = useState<PMSConfiguration[]>(() => readCachedPmsConfigurations());
+  // Demo stages per unit (0 = normal, 1 = zeroed display, 2 = intermediate)
+  const [demoStages, setDemoStages] = useState<Record<number, number>>({});
   const addSeedEquipmentMutation = trpc.seedEquipment.add.useMutation();
-  const addPmsMutation = trpc.seedPms.add.useMutation();
-  const updatePmsMutation = trpc.seedPms.update.useMutation();
-  const deletePmsMutation = trpc.seedPms.delete.useMutation();
 
   const selectedUnit = units.find((u) => u.id === selectedUnitId);
   const selectedEquipment = equipment.find((e) => e.id === selectedUnit?.equipmentId);
@@ -528,11 +508,6 @@ export default function Fleet() {
     if (typeof window === "undefined") return;
     window.localStorage.setItem(ADDED_EQUIPMENT_STORAGE_KEY, JSON.stringify(addedEquipment));
   }, [addedEquipment]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem(PMS_CONFIG_STORAGE_KEY, JSON.stringify(pmsConfigurations));
-  }, [pmsConfigurations]);
 
   useEffect(() => {
     if (selectedUnit && typeof selectedUnit.telemetry.lat === "number" && typeof selectedUnit.telemetry.lng === "number") {
@@ -710,6 +685,12 @@ export default function Fleet() {
   // Handlers for equipment modal
   const handleSubmitEquipment = async (equipment: ModalEquipment) => {
     const hasExisting = addedEquipment.some((entry) => entry.id === equipment.id);
+    const pmsConfiguration = equipment.pmsConfiguration
+      ? {
+          serviceIntervalHours: equipment.pmsConfiguration.serviceIntervalHours,
+          serviceIntervalUnit: equipment.pmsConfiguration.serviceIntervalUnit,
+        }
+      : undefined;
 
     if (!hasExisting) {
       const seedClient = seedData.clients.find((entry) =>
@@ -725,6 +706,7 @@ export default function Fleet() {
         equipmentType: equipment.type,
         clientId: seedClient.id,
         serialNumber: equipment.serialNumber?.trim() || undefined,
+        ...(pmsConfiguration ? { pmsConfiguration } : {}),
       });
     }
 
@@ -751,61 +733,6 @@ export default function Fleet() {
     if (!pendingDeleteEquipmentId) return;
     setAddedEquipment((prev) => prev.filter((entry) => entry.id !== pendingDeleteEquipmentId));
     setPendingDeleteEquipmentId(null);
-  };
-
-  // Handlers for PMS configuration modal
-  const handleAddPMSConfiguration = (config: PMSConfiguration) => {
-    void (async () => {
-      try {
-        const resp = await addPmsMutation.mutateAsync({
-          equipmentType: config.equipmentType,
-          serviceIntervalHours: config.serviceIntervalHours,
-          serviceIntervalUnit: config.serviceIntervalUnit,
-        });
-        if (resp && resp.entry) {
-          setPmsConfigurations((prev) => [...prev, resp.entry as PMSConfiguration]);
-        } else {
-          // fallback to local only if server write failed
-          setPmsConfigurations((prev) => [...prev, config]);
-        }
-      } catch (err) {
-        // On error, still keep in-memory config and surface later
-        setPmsConfigurations((prev) => [...prev, config]);
-      }
-    })();
-  };
-
-  const handleUpdatePMSConfiguration = (id: string, config: PMSConfiguration) => {
-    void (async () => {
-      try {
-        const resp = await updatePmsMutation.mutateAsync({
-          id,
-          equipmentType: config.equipmentType,
-          serviceIntervalHours: config.serviceIntervalHours,
-          serviceIntervalUnit: config.serviceIntervalUnit,
-        });
-        if (resp && resp.entry) {
-          setPmsConfigurations((prev) => prev.map((c) => (c.id === id ? (resp.entry as PMSConfiguration) : c)));
-        } else {
-          setPmsConfigurations((prev) => prev.map((c) => (c.id === id ? config : c)));
-        }
-      } catch (err) {
-        setPmsConfigurations((prev) => prev.map((c) => (c.id === id ? config : c)));
-      }
-    })();
-  };
-
-  const handleDeletePMSConfiguration = (id: string) => {
-    void (async () => {
-      try {
-        const resp = await deletePmsMutation.mutateAsync({ id });
-        if (resp && resp.ok) {
-          setPmsConfigurations((prev) => prev.filter((c) => c.id !== id));
-        }
-      } catch (err) {
-        // ignore - do not remove locally if server delete failed
-      }
-    })();
   };
 
   return (
@@ -1144,13 +1071,6 @@ export default function Fleet() {
               <Plus className="w-3.5 h-3.5 mr-1" />
               Add Equipment
             </Button>
-            <Button
-              onClick={() => setPmsConfigOpen(true)}
-              className="flex-1 bg-[#3B82F6] text-white hover:bg-[#3B82F6]/90 font-semibold text-xs h-8"
-            >
-              <Settings className="w-3.5 h-3.5 mr-1" />
-              PMS Config
-            </Button>
           </div>
 
           <div className="flex flex-1 min-h-0 flex-col overflow-y-auto overscroll-contain divide-y divide-white/5">
@@ -1246,11 +1166,17 @@ export default function Fleet() {
 
                 const fallbackStaticHours = { today: "4h 20m", total: "3890h 40m" };
 
-                const hoursTodayText = isGps001
+                const isDemoZero = (demoStages[unit.id] ?? 0) === 1;
+
+                const hoursTodayText = isDemoZero
+                  ? "0h 0m"
+                  : isGps001
                   ? formatHoursFromMsForSidebar(gps001HoursTodayMs)
                   : (staticHoursByUnit[unitLabel]?.today ?? fallbackStaticHours.today);
 
-                const hoursTotalText = isGps001
+                const hoursTotalText = isDemoZero
+                  ? "0h 0m"
+                  : isGps001
                   ? formatHoursFromMsForSidebar(gps001HoursTotalMs)
                   : (staticHoursByUnit[unitLabel]?.total ?? fallbackStaticHours.total);
 
@@ -1264,25 +1190,31 @@ export default function Fleet() {
                   >
                     <div className="flex items-center justify-between mb-1">
                         <div className="flex items-center gap-1.5">
-                        <div
-                          className={`w-2 h-2 rounded-full ${statusDotClass(getEffectiveStatus(unit.id, unit.telemetry.status))}`}
-                          onDoubleClick={(e) => {
-                            // Only trigger for Concrete Strength Tester
-                            try {
-                              const name = displayEquipmentName || "";
-                              if (name === "Concrete Strength Tester") {
-                                e.stopPropagation();
-                                const pmsList = (seedData as any).pmsConfigurations || [];
-                                const labCfg = pmsList.find((c: any) => typeof c.equipmentType === "string" && c.equipmentType.toLowerCase().includes("lab"));
-                                const hours = labCfg?.serviceIntervalHours ?? 4000;
-                                const unitText = labCfg?.serviceIntervalUnit ?? "Hours";
-                                toast(`PMS interval of ${hours} ${unitText} has been achieved`);
-                              }
-                            } catch (err) {
-                              // swallow errors to avoid affecting UI
-                            }
-                          }}
-                        />
+                                <div
+                                  className={`w-2 h-2 rounded-full ${statusDotClass(getEffectiveStatus(unit.id, unit.telemetry.status))}`}
+                                  onDoubleClick={(e) => {
+                                    // Three-stage demo cycle for Concrete Strength Tester only (visual-only)
+                                    try {
+                                      const name = displayEquipmentName || "";
+                                      if (name === "Concrete Strength Tester") {
+                                        e.stopPropagation();
+                                        const current = demoStages[unit.id] ?? 0;
+                                        const next = (current + 1) % 3;
+                                        // Keep the original toast exactly on the first double-click only
+                                        if (current === 0) {
+                                          const pmsList = (seedData as any).pmsConfigurations || [];
+                                          const labCfg = pmsList.find((c: any) => typeof c.equipmentType === "string" && c.equipmentType.toLowerCase().includes("lab"));
+                                          const hours = labCfg?.serviceIntervalHours ?? 4000;
+                                          const unitText = labCfg?.serviceIntervalUnit ?? "Hours";
+                                          toast(`PMS interval of ${hours} ${unitText} has been achieved`);
+                                        }
+                                        setDemoStages((prev) => ({ ...prev, [unit.id]: next }));
+                                      }
+                                    } catch (err) {
+                                      // swallow errors to avoid affecting UI
+                                    }
+                                  }}
+                                />
                         <span className="text-xs font-medium text-[#EAEAEA]">{displayHeader}</span>
                       </div>
                       <div className="flex items-center gap-1">
@@ -1307,6 +1239,7 @@ export default function Fleet() {
                                 notes: "",
                                 hoursToday: "",
                                 hoursTotal: "",
+                                pmsConfiguration: (seedEntry as any)?.pmsConfiguration,
                               };
                             } else if (eqEntry) {
                               modalEq = {
@@ -1318,6 +1251,7 @@ export default function Fleet() {
                                 notes: "",
                                 hoursToday: "",
                                 hoursTotal: "",
+                                pmsConfiguration: (eqEntry as any)?.pmsConfiguration,
                               };
                             }
 
@@ -1377,16 +1311,6 @@ export default function Fleet() {
         clients={seedClientsForModal}
         onSubmitEquipment={handleSubmitEquipment}
         initialEquipment={editingEquipment}
-        equipmentTypeOptions={seedEquipmentTypeOptions}
-      />
-
-      <PMSConfigurationModal
-        open={pmsConfigOpen}
-        onOpenChange={setPmsConfigOpen}
-        configurations={pmsConfigurations}
-        onAddConfiguration={handleAddPMSConfiguration}
-        onUpdateConfiguration={handleUpdatePMSConfiguration}
-        onDeleteConfiguration={handleDeletePMSConfiguration}
         equipmentTypeOptions={seedEquipmentTypeOptions}
       />
 

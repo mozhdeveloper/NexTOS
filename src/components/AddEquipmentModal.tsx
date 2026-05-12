@@ -12,6 +12,13 @@ import {
 import { Label } from "@/components/ui/label";
 import type { Client } from "@/types";
 
+export type ServiceIntervalUnit = "Hours" | "KM" | "Weeks" | "Months" | "Years";
+
+export interface EquipmentPMSConfiguration {
+  serviceIntervalHours: number;
+  serviceIntervalUnit: ServiceIntervalUnit;
+}
+
 export interface Equipment {
   id: string;
   name: string;
@@ -22,6 +29,7 @@ export interface Equipment {
   image?: string;
   hoursToday: string;
   hoursTotal: string;
+  pmsConfiguration?: EquipmentPMSConfiguration;
 }
 
 interface AddEquipmentModalProps {
@@ -42,6 +50,8 @@ const EQUIPMENT_TYPES = [
   { value: "power-tools", label: "Power Tools" },
   { value: "monitoring-equipment", label: "Monitoring Equipment" },
 ];
+
+const SERVICE_INTERVAL_UNITS: ServiceIntervalUnit[] = ["Hours", "KM", "Weeks", "Months", "Years"];
 
 const HARD_CODED_HOURS_PRESETS = [
   { today: "4h 20m", total: "3890h 40m" },
@@ -65,6 +75,8 @@ export function AddEquipmentModal({
   const [selectedClient, setSelectedClient] = useState("");
   const [serialNumber, setSerialNumber] = useState("");
   const [notes, setNotes] = useState("");
+  const [serviceIntervalValue, setServiceIntervalValue] = useState("");
+  const [serviceIntervalUnit, setServiceIntervalUnit] = useState<ServiceIntervalUnit>("Hours");
   const [missingFields, setMissingFields] = useState<RequiredFieldKey[]>([]);
 
   useEffect(() => {
@@ -78,6 +90,12 @@ export function AddEquipmentModal({
       setSelectedClient(String(initialEquipment.clientId));
       setSerialNumber(initialEquipment.serialNumber);
       setNotes(initialEquipment.notes);
+      setServiceIntervalValue(
+        initialEquipment.pmsConfiguration?.serviceIntervalHours !== undefined
+          ? String(initialEquipment.pmsConfiguration.serviceIntervalHours)
+          : ""
+      );
+      setServiceIntervalUnit(initialEquipment.pmsConfiguration?.serviceIntervalUnit ?? "Hours");
       setMissingFields([]);
       return;
     }
@@ -87,6 +105,8 @@ export function AddEquipmentModal({
     setSelectedClient("");
     setSerialNumber("");
     setNotes("");
+    setServiceIntervalValue("");
+    setServiceIntervalUnit("Hours");
     setMissingFields([]);
   }, [initialEquipment, open]);
 
@@ -125,6 +145,15 @@ export function AddEquipmentModal({
     const timestamp = Date.now();
     const randomSuffix = timestamp;
     const hoursPreset = HARD_CODED_HOURS_PRESETS[randomSuffix % HARD_CODED_HOURS_PRESETS.length];
+    const trimmedInterval = serviceIntervalValue.trim();
+    const numericInterval = trimmedInterval.length > 0 ? Number(trimmedInterval) : Number.NaN;
+    const pmsConfiguration =
+      trimmedInterval.length > 0 && Number.isFinite(numericInterval)
+        ? {
+            serviceIntervalHours: numericInterval,
+            serviceIntervalUnit,
+          }
+        : undefined;
 
     const equipmentToSave: Equipment = {
       id: initialEquipment?.id ?? `eq-${timestamp}`,
@@ -135,6 +164,7 @@ export function AddEquipmentModal({
       notes,
       hoursToday: initialEquipment?.hoursToday ?? hoursPreset.today,
       hoursTotal: initialEquipment?.hoursTotal ?? hoursPreset.total,
+      ...(pmsConfiguration ? { pmsConfiguration } : {}),
     };
 
     try {
@@ -150,6 +180,8 @@ export function AddEquipmentModal({
     setSelectedClient("");
     setSerialNumber("");
     setNotes("");
+    setServiceIntervalValue("");
+    setServiceIntervalUnit("Hours");
     setMissingFields([]);
     onOpenChange(false);
   };
@@ -162,6 +194,8 @@ export function AddEquipmentModal({
       setSelectedClient("");
       setSerialNumber("");
       setNotes("");
+        setServiceIntervalValue("");
+        setServiceIntervalUnit("Hours");
       setMissingFields([]);
     }
     onOpenChange(newOpen);
@@ -169,143 +203,176 @@ export function AddEquipmentModal({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="bg-[#1A1A20] border border-white/10 max-w-md">
+      <DialogContent className="bg-[#1A1A20] border border-white/10 max-w-4xl">
         <DialogHeader>
           <DialogTitle className="text-[#EAEAEA]">{initialEquipment ? "Edit Equipment" : "Add Equipment"}</DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-4 py-4">
+        <div className="py-4">
           {missingFields.length > 0 && (
             <div className="rounded border border-[#EF4444]/40 bg-[#EF4444]/10 px-3 py-2 text-xs text-[#EF4444]">
               Missing required fields: {missingFields.map((field) => missingFieldLabels[field]).join(", ")}
             </div>
           )}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-4">
+              {/* Equipment Name */}
+              <div className="space-y-2">
+                <Label className="text-sm text-[#EAEAEA]">Equipment Name</Label>
+                <Input
+                  value={equipmentName}
+                  onChange={(e) => {
+                    setEquipmentName(e.target.value);
+                    if (missingFields.length > 0) {
+                      setMissingFields((prev) => prev.filter((field) => field !== "equipmentName"));
+                    }
+                  }}
+                  placeholder="Enter equipment name"
+                  className={`bg-[#121214] text-[#EAEAEA] placeholder:text-[#88888C] focus-visible:border-[#F2A900] focus-visible:ring-[#F2A900]/50 ${
+                    isFieldMissing("equipmentName") ? "border-[#EF4444]" : "border-white/10"
+                  }`}
+                />
+                {isFieldMissing("equipmentName") && (
+                  <p className="text-xs text-[#EF4444]">Equipment Name is required.</p>
+                )}
+              </div>
 
-          {/* Equipment Name */}
-          <div className="space-y-2">
-            <Label className="text-sm text-[#EAEAEA]">Equipment Name</Label>
-            <Input
-              value={equipmentName}
-              onChange={(e) => {
-                setEquipmentName(e.target.value);
-                if (missingFields.length > 0) {
-                  setMissingFields((prev) => prev.filter((field) => field !== "equipmentName"));
-                }
-              }}
-              placeholder="Enter equipment name"
-              className={`bg-[#121214] text-[#EAEAEA] placeholder:text-[#88888C] focus-visible:border-[#F2A900] focus-visible:ring-[#F2A900]/50 ${
-                isFieldMissing("equipmentName") ? "border-[#EF4444]" : "border-white/10"
-              }`}
-            />
-            {isFieldMissing("equipmentName") && (
-              <p className="text-xs text-[#EF4444]">Equipment Name is required.</p>
-            )}
-          </div>
+              {/* Equipment Type */}
+              <div className="space-y-2">
+                <Label className="text-sm text-[#EAEAEA]">Equipment Type</Label>
+                <Select
+                  value={equipmentType}
+                  onValueChange={(value) => {
+                    setEquipmentType(value);
+                    if (missingFields.length > 0) {
+                      setMissingFields((prev) => prev.filter((field) => field !== "equipmentType"));
+                    }
+                  }}
+                >
+                  <SelectTrigger
+                    className={`w-full truncate bg-[#121214] text-[#EAEAEA] ${
+                      isFieldMissing("equipmentType") ? "border-[#EF4444]" : "border-white/10"
+                    }`}
+                  >
+                    <SelectValue placeholder="Select equipment type" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-[#1A1A20] border-white/10">
+                    {availableEquipmentTypes.map((type) => (
+                      <SelectItem key={type.value} value={type.value}>
+                        {type.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {isFieldMissing("equipmentType") && (
+                  <p className="text-xs text-[#EF4444]">Equipment Type is required.</p>
+                )}
+              </div>
 
-          {/* Equipment Type */}
-          <div className="space-y-2">
-            <Label className="text-sm text-[#EAEAEA]">Equipment Type</Label>
-            <Select
-              value={equipmentType}
-              onValueChange={(value) => {
-                setEquipmentType(value);
-                if (missingFields.length > 0) {
-                  setMissingFields((prev) => prev.filter((field) => field !== "equipmentType"));
-                }
-              }}
-            >
-              <SelectTrigger
-                className={`bg-[#121214] text-[#EAEAEA] ${
-                  isFieldMissing("equipmentType") ? "border-[#EF4444]" : "border-white/10"
-                }`}
-              >
-                <SelectValue placeholder="Select equipment type" />
-              </SelectTrigger>
-              <SelectContent className="bg-[#1A1A20] border-white/10">
-                {availableEquipmentTypes.map((type) => (
-                  <SelectItem key={type.value} value={type.value}>
-                    {type.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {isFieldMissing("equipmentType") && (
-              <p className="text-xs text-[#EF4444]">Equipment Type is required.</p>
-            )}
-          </div>
+              {/* Client Selection */}
+              <div className="space-y-2">
+                <Label className="text-sm text-[#EAEAEA]">Client</Label>
+                <Select
+                  value={selectedClient}
+                  onValueChange={(value) => {
+                    setSelectedClient(value);
+                    if (missingFields.length > 0) {
+                      setMissingFields((prev) => prev.filter((field) => field !== "selectedClient"));
+                    }
+                  }}
+                >
+                  <SelectTrigger
+                    className={`w-full truncate bg-[#121214] text-[#EAEAEA] ${
+                      isFieldMissing("selectedClient") ? "border-[#EF4444]" : "border-white/10"
+                    }`}
+                  >
+                    <SelectValue placeholder="Select client" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-[#1A1A20] border-white/10">
+                    {clients.map((client) => (
+                      <SelectItem key={client.id} value={String(client.id)}>
+                        {client.companyName}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {isFieldMissing("selectedClient") && (
+                  <p className="text-xs text-[#EF4444]">Client is required.</p>
+                )}
+              </div>
 
-          {/* Client Selection */}
-          <div className="space-y-2">
-            <Label className="text-sm text-[#EAEAEA]">Client</Label>
-            <Select
-              value={selectedClient}
-              onValueChange={(value) => {
-                setSelectedClient(value);
-                if (missingFields.length > 0) {
-                  setMissingFields((prev) => prev.filter((field) => field !== "selectedClient"));
-                }
-              }}
-            >
-              <SelectTrigger
-                className={`bg-[#121214] text-[#EAEAEA] ${
-                  isFieldMissing("selectedClient") ? "border-[#EF4444]" : "border-white/10"
-                }`}
-              >
-                <SelectValue placeholder="Select client" />
-              </SelectTrigger>
-              <SelectContent className="bg-[#1A1A20] border-white/10">
-                {clients.map((client) => (
-                  <SelectItem key={client.id} value={String(client.id)}>
-                    {client.companyName}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {isFieldMissing("selectedClient") && (
-              <p className="text-xs text-[#EF4444]">Client is required.</p>
-            )}
-          </div>
+              {/* Image Upload */}
+              <div className="space-y-2">
+                <Label className="text-sm text-[#EAEAEA]">Equipment Photo</Label>
+                <Input
+                  type="file"
+                  accept="image/*"
+                  className="bg-[#121214] border-white/10 text-[#EAEAEA] placeholder:text-[#88888C] focus-visible:border-[#F2A900] focus-visible:ring-[#F2A900]/50 cursor-pointer"
+                />
+              </div>
 
-          {/* Image Upload */}
-          <div className="space-y-2">
-            <Label className="text-sm text-[#EAEAEA]">Equipment Photo</Label>
-            <Input
-              type="file"
-              accept="image/*"
-              className="bg-[#121214] border-white/10 text-[#EAEAEA] placeholder:text-[#88888C] focus-visible:border-[#F2A900] focus-visible:ring-[#F2A900]/50 cursor-pointer"
-            />
-          </div>
+              {/* Serial Number */}
+              <div className="space-y-2">
+                <Label className="text-sm text-[#EAEAEA]">Serial Number</Label>
+                <Input
+                  value={serialNumber}
+                  onChange={(e) => {
+                    setSerialNumber(e.target.value);
+                    if (missingFields.length > 0) {
+                      setMissingFields((prev) => prev.filter((field) => field !== "serialNumber"));
+                    }
+                  }}
+                  placeholder="Enter serial number"
+                  className={`bg-[#121214] text-[#EAEAEA] placeholder:text-[#88888C] focus-visible:border-[#F2A900] focus-visible:ring-[#F2A900]/50 ${
+                    isFieldMissing("serialNumber") ? "border-[#EF4444]" : "border-white/10"
+                  }`}
+                />
+                {isFieldMissing("serialNumber") && (
+                  <p className="text-xs text-[#EF4444]">Serial Number is required.</p>
+                )}
+              </div>
+            </div>
 
-          {/* Serial Number */}
-          <div className="space-y-2">
-            <Label className="text-sm text-[#EAEAEA]">Serial Number</Label>
-            <Input
-              value={serialNumber}
-              onChange={(e) => {
-                setSerialNumber(e.target.value);
-                if (missingFields.length > 0) {
-                  setMissingFields((prev) => prev.filter((field) => field !== "serialNumber"));
-                }
-              }}
-              placeholder="Enter serial number"
-              className={`bg-[#121214] text-[#EAEAEA] placeholder:text-[#88888C] focus-visible:border-[#F2A900] focus-visible:ring-[#F2A900]/50 ${
-                isFieldMissing("serialNumber") ? "border-[#EF4444]" : "border-white/10"
-              }`}
-            />
-            {isFieldMissing("serialNumber") && (
-              <p className="text-xs text-[#EF4444]">Serial Number is required.</p>
-            )}
-          </div>
+            <div className="space-y-4">
+              {/* Notes */}
+              <div className="space-y-2">
+                <Label className="text-sm text-[#EAEAEA]">Notes</Label>
+                <textarea
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="Add any additional notes"
+                  className="w-full h-40 rounded-md bg-[#121214] border border-white/10 px-3 py-2 text-sm text-[#EAEAEA] placeholder:text-[#88888C] focus-visible:border-[#F2A900] focus-visible:ring-[#F2A900]/50 outline-none transition-colors resize-none"
+                />
+              </div>
 
-          {/* Notes */}
-          <div className="space-y-2">
-            <Label className="text-sm text-[#EAEAEA]">Notes</Label>
-            <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Add any additional notes"
-              className="w-full h-20 rounded-md bg-[#121214] border border-white/10 px-3 py-2 text-sm text-[#EAEAEA] placeholder:text-[#88888C] focus-visible:border-[#F2A900] focus-visible:ring-[#F2A900]/50 outline-none transition-colors resize-none"
-            />
+              {/* PMS Configuration */}
+              <div className="space-y-2 pt-0">
+                <Label className="text-sm text-[#EAEAEA]">PMS Configuration</Label>
+                <div className="grid grid-cols-[1.6fr_120px] gap-2">
+                  <Input
+                    type="number"
+                    min="0"
+                    step="any"
+                    value={serviceIntervalValue}
+                    onChange={(e) => setServiceIntervalValue(e.target.value)}
+                    placeholder="Service interval"
+                    className="bg-[#121214] border-white/10 text-[#EAEAEA] placeholder:text-[#88888C] focus-visible:border-[#F2A900] focus-visible:ring-[#F2A900]/50"
+                  />
+                  <Select value={serviceIntervalUnit} onValueChange={(value: ServiceIntervalUnit) => setServiceIntervalUnit(value)}>
+                    <SelectTrigger className="w-full bg-[#121214] border-white/10 text-[#EAEAEA]">
+                      <SelectValue placeholder="Unit" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-[#1A1A20] border-white/10">
+                      {SERVICE_INTERVAL_UNITS.map((unit) => (
+                        <SelectItem key={unit} value={unit}>
+                          {unit}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 

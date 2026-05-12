@@ -10,6 +10,10 @@ type SeedEquipmentEntry = {
   clientId: string;
   equipmentType: string;
   serialNumber?: string;
+  pmsConfiguration?: {
+    serviceIntervalHours: number;
+    serviceIntervalUnit: "Hours" | "KM" | "Weeks" | "Months" | "Years";
+  };
 };
 
 type SeedDataShape = {
@@ -43,6 +47,12 @@ export const appRouter = createRouter({
           equipmentType: z.string().min(1),
           clientId: z.string().regex(/^CL-\d{3}$/),
           serialNumber: z.string().optional(),
+          pmsConfiguration: z
+            .object({
+              serviceIntervalHours: z.number().min(0),
+              serviceIntervalUnit: z.enum(["Hours", "KM", "Weeks", "Months", "Years"]),
+            })
+            .optional(),
         })
       )
       .mutation(async ({ input }) => {
@@ -62,6 +72,7 @@ export const appRouter = createRouter({
           ...(input.serialNumber && input.serialNumber.trim().length > 0
             ? { serialNumber: input.serialNumber.trim() }
             : {}),
+          ...(input.pmsConfiguration ? { pmsConfiguration: input.pmsConfiguration } : {}),
         };
 
         parsed.equipment = [...equipment, newEntry];
