@@ -118,6 +118,8 @@ const GPS51_USERNAME = import.meta.env.VITE_GPS51_USERNAME ?? "";
 const GPS51_PASSWORD = import.meta.env.VITE_GPS51_PASSWORD ?? "";
 const FLEET_HISTORY_DEBUG = true;
 const GPS001_TOTAL_HOURS_CACHE_KEY = "nextos-gps001-total-hours-ms";
+const GPS001_HOURS_TODAY_CACHE_KEY = "nextos-gps001-hours-today-ms";
+const GPS001_HOURS_TODAY_TIMESTAMP_KEY = "nextos-gps001-hours-today-timestamps";
 const ADDED_EQUIPMENT_STORAGE_KEY = "nextos-fleet-added-equipment";
 const HISTORY_DOT_STATUS_CACHE_KEY = "nextos-fleet-history-dot-statuses";
 const HISTORY_TABLE_DATA_CACHE_KEY = "nextos-fleet-history-table-data";
@@ -135,6 +137,36 @@ function writeCachedGps001TotalHoursMs(totalMs: number): void {
   if (typeof window === "undefined") return;
   if (!Number.isFinite(totalMs) || totalMs <= 0) return;
   window.localStorage.setItem(GPS001_TOTAL_HOURS_CACHE_KEY, String(totalMs));
+}
+
+function readCachedGps001HoursTodayByDay(): Record<string, number> {
+  if (typeof window === "undefined") return {};
+  try {
+    const rawValue = window.localStorage.getItem(GPS001_HOURS_TODAY_CACHE_KEY);
+    return rawValue ? (JSON.parse(rawValue) as Record<string, number>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeCachedGps001HoursTodayByDay(data: Record<string, number>): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(GPS001_HOURS_TODAY_CACHE_KEY, JSON.stringify(data));
+}
+
+function readCachedGps001HoursTodayTimestamps(): Record<string, number> {
+  if (typeof window === "undefined") return {};
+  try {
+    const rawValue = window.localStorage.getItem(GPS001_HOURS_TODAY_TIMESTAMP_KEY);
+    return rawValue ? (JSON.parse(rawValue) as Record<string, number>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeCachedGps001HoursTodayTimestamps(data: Record<string, number>): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(GPS001_HOURS_TODAY_TIMESTAMP_KEY, JSON.stringify(data));
 }
 
 function readCachedAddedEquipment(): ModalEquipment[] {
@@ -688,17 +720,58 @@ export default function Fleet() {
     let refreshInterval: ReturnType<typeof setInterval> | null = null;
 
     const loadGps001HoursToday = async () => {
+      const isTodaySelection = selectedHistoryDay === toYmd(new Date());
+      const isPastSelection = isPastYmd(selectedHistoryDay);
+      const cachedHoursByDay = readCachedGps001HoursTodayByDay();
+      const cachedTimestamps = readCachedGps001HoursTodayTimestamps();
+      const cachedHours = cachedHoursByDay[selectedHistoryDay];
+      const cachedTimestamp = cachedTimestamps[selectedHistoryDay];
+      const now = Date.now();
+      const isFreshTodayCache =
+        isTodaySelection &&
+        Number.isFinite(cachedTimestamp) &&
+        now - Number(cachedTimestamp) < 5 * 60 * 1000;
+
+      // Past-date values are immutable and reused forever. Today is reused for 5 minutes.
+      if (Number.isFinite(cachedHours) && (isPastSelection || isFreshTodayCache)) {
+        if (!ignore) {
+          setGps001HoursTodayMs(Number(cachedHours));
+        }
+        return;
+      }
+
+      // Show stale today cache immediately, then refresh in background.
+      if (isTodaySelection && Number.isFinite(cachedHours) && !isFreshTodayCache && !ignore) {
+        setGps001HoursTodayMs(Number(cachedHours));
+      }
+
       if (!GPS51_USERNAME || !GPS51_PASSWORD) {
         if (!ignore) setGps001HoursTodayMs(0);
         return;
       }
+
       try {
         const summary = await fetchDailyHistorySummary(GPS51_USERNAME, GPS51_PASSWORD, selectedHistoryDay);
         if (!ignore) {
-          setGps001HoursTodayMs(summary ? summary.workingMs : 0);
+          const resolvedWorkingMs = summary ? summary.workingMs : 0;
+          setGps001HoursTodayMs(resolvedWorkingMs);
+
+          const nextCache = {
+            ...cachedHoursByDay,
+            [selectedHistoryDay]: resolvedWorkingMs,
+          };
+          writeCachedGps001HoursTodayByDay(nextCache);
+
+          if (isTodaySelection) {
+            const nextTimestamps = {
+              ...cachedTimestamps,
+              [selectedHistoryDay]: Date.now(),
+            };
+            writeCachedGps001HoursTodayTimestamps(nextTimestamps);
+          }
         }
       } catch {
-        if (!ignore) {
+        if (!ignore && !Number.isFinite(cachedHours)) {
           setGps001HoursTodayMs(0);
         }
       }
@@ -710,7 +783,7 @@ export default function Fleet() {
     if (isTodaySelection) {
       refreshInterval = setInterval(() => {
         void loadGps001HoursToday();
-      }, 30000);
+      }, 5 * 60 * 1000);
     }
 
     return () => {
@@ -1625,9 +1698,20 @@ export default function Fleet() {
                 const fallbackStaticHours = { today: "4h 20m", total: "3890h 40m" };
 
                 const isDemoZero = (demoStages[unit.id] ?? 0) === 1;
+                const selectedHistoryWorkingText =
+                  viewMode === "history" &&
+                  isSelected &&
+                  isGps001 &&
+                  !historyLoading &&
+                  !historyError &&
+                  historyRows.length > 0
+                    ? (historyRows[0]?.working ?? "")
+                    : "";
 
                 const hoursTodayText = isDemoZero
                   ? "0h 0m"
+                  : selectedHistoryWorkingText
+                  ? selectedHistoryWorkingText
                   : isGps001
                   ? formatHoursFromMsForSidebar(gps001HoursTodayMs)
                   : (staticHoursByUnit[unitLabel]?.today ?? fallbackStaticHours.today);
