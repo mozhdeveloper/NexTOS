@@ -511,7 +511,7 @@ export default function ClientDashboard() {
   const topLabItem = testingRows[0];
 
   return (
-    <div className="min-h-full bg-gray-50 px-6 py-5 text-gray-900 xl:px-8">
+    <div className="min-h-full bg-gray-100 px-6 py-5 text-gray-900 xl:px-8">
       <div className="mx-auto max-w-[1500px] space-y-5">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
           <div>
