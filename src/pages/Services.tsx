@@ -3,6 +3,7 @@ import { useLocation } from "react-router";
 import { useOperationsStore } from "@/stores/useOperationsStore";
 import { useCRMStore } from "@/stores/useCRMStore";
 import { useAuthStore } from "@/stores/useAuthStore";
+import seedData from "@/data/seed-data.json";
 import type { ServiceType, Equipment, ServiceRecord, Client } from "@/types";
 import { QRCodeSVG } from "qrcode.react";
 import {
@@ -42,6 +43,85 @@ import {
 } from "@/components/ui/dialog";
 
 type TabType = "equipment" | "reports" | "new";
+
+type ServiceTypeOption = {
+  value: string;
+  label: string;
+};
+
+type SeedClientOption = {
+  id: string;
+  companyName: string;
+};
+
+type SeedEquipmentOption = {
+  id: string;
+  name: string;
+  clientId: string;
+  equipmentType: string;
+};
+
+type ReportClientOption = {
+  id: string;
+  companyName: string;
+  numericId: number;
+};
+
+const fallbackServiceTypeOptions: ServiceTypeOption[] = [
+  { value: "pms", label: "PMS (Preventative Maintenance)" },
+  { value: "calibration", label: "Calibration" },
+  { value: "repair", label: "Repair" },
+  { value: "inspection", label: "Inspection" },
+  { value: "installation", label: "Installation" },
+];
+
+const serviceTypeOptions: ServiceTypeOption[] = Array.isArray(seedData.serviceTypes)
+  ? seedData.serviceTypes
+      .filter((option): option is ServiceTypeOption => {
+        return Boolean(
+          option &&
+            typeof option === "object" &&
+            typeof (option as ServiceTypeOption).value === "string" &&
+            typeof (option as ServiceTypeOption).label === "string"
+        );
+      })
+  : fallbackServiceTypeOptions;
+
+const seedClientOptions: SeedClientOption[] = Array.isArray(seedData.clients)
+  ? (seedData.clients as unknown[])
+      .filter((client) => {
+        return Boolean(
+          client &&
+            typeof client === "object" &&
+            typeof (client as SeedClientOption).id === "string" &&
+            typeof (client as SeedClientOption).companyName === "string"
+        );
+      })
+      .map((client) => ({
+        id: (client as SeedClientOption).id,
+        companyName: (client as SeedClientOption).companyName,
+      }))
+  : [];
+
+const seedEquipmentOptions: SeedEquipmentOption[] = Array.isArray(seedData.equipment)
+  ? (seedData.equipment as unknown[])
+      .filter((eq) => {
+        return Boolean(
+          eq &&
+            typeof eq === "object" &&
+            typeof (eq as SeedEquipmentOption).id === "string" &&
+            typeof (eq as SeedEquipmentOption).name === "string" &&
+            typeof (eq as SeedEquipmentOption).clientId === "string" &&
+            typeof (eq as SeedEquipmentOption).equipmentType === "string"
+        );
+      })
+      .map((eq) => ({
+        id: (eq as SeedEquipmentOption).id,
+        name: (eq as SeedEquipmentOption).name,
+        clientId: (eq as SeedEquipmentOption).clientId,
+        equipmentType: (eq as SeedEquipmentOption).equipmentType,
+      }))
+  : [];
 
 export default function Services() {
   const { user } = useAuthStore();
@@ -87,6 +167,12 @@ export default function Services() {
   const [afterPhotos, setAfterPhotos] = useState<string[]>([]);
   const [showReport, setShowReport] = useState<ServiceRecord | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const techSignatureCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const isDrawingTechSignatureRef = useRef(false);
+  const hasTechSignatureRef = useRef(false);
+  const clientSignatureCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const isDrawingClientSignatureRef = useRef(false);
+  const hasClientSignatureRef = useRef(false);
 
   const location = useLocation();
 
@@ -97,6 +183,126 @@ export default function Services() {
       window.history.replaceState({}, document.title);
     }
   }, [location]);
+
+  const initCanvas = (canvas: HTMLCanvasElement) => {
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = "#111827";
+  };
+
+  useEffect(() => {
+    if (techSignatureCanvasRef.current) initCanvas(techSignatureCanvasRef.current);
+  }, []);
+
+  useEffect(() => {
+    if (clientSignatureCanvasRef.current) initCanvas(clientSignatureCanvasRef.current);
+  }, []);
+
+  const getCanvasPoint = (event: React.PointerEvent<HTMLCanvasElement>, canvas: HTMLCanvasElement | null) => {
+    if (!canvas) return null;
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: event.clientX - rect.left,
+      y: event.clientY - rect.top,
+    };
+  };
+
+  const handleTechSignatureStart = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    const canvas = techSignatureCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const point = getCanvasPoint(event, canvas);
+    if (!point) return;
+    isDrawingTechSignatureRef.current = true;
+    hasTechSignatureRef.current = true;
+    canvas.setPointerCapture(event.pointerId);
+    ctx.beginPath();
+    ctx.moveTo(point.x, point.y);
+  };
+
+  const handleTechSignatureMove = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!isDrawingTechSignatureRef.current) return;
+    const canvas = techSignatureCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const point = getCanvasPoint(event, canvas);
+    if (!point) return;
+    ctx.lineTo(point.x, point.y);
+    ctx.stroke();
+  };
+
+  const handleTechSignatureEnd = () => {
+    if (!isDrawingTechSignatureRef.current) return;
+    isDrawingTechSignatureRef.current = false;
+    const canvas = techSignatureCanvasRef.current;
+    if (canvas) setFormTechSign(hasTechSignatureRef.current ? canvas.toDataURL("image/png") : "");
+  };
+
+  const clearTechSignature = () => {
+    const canvas = techSignatureCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.beginPath();
+    hasTechSignatureRef.current = false;
+    setFormTechSign("");
+  };
+
+  const handleClientSignatureStart = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    const canvas = clientSignatureCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const point = getCanvasPoint(event, canvas);
+    if (!point) return;
+    isDrawingClientSignatureRef.current = true;
+    hasClientSignatureRef.current = true;
+    canvas.setPointerCapture(event.pointerId);
+    ctx.beginPath();
+    ctx.moveTo(point.x, point.y);
+  };
+
+  const handleClientSignatureMove = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!isDrawingClientSignatureRef.current) return;
+    const canvas = clientSignatureCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const point = getCanvasPoint(event, canvas);
+    if (!point) return;
+    ctx.lineTo(point.x, point.y);
+    ctx.stroke();
+  };
+
+  const handleClientSignatureEnd = () => {
+    if (!isDrawingClientSignatureRef.current) return;
+    isDrawingClientSignatureRef.current = false;
+    const canvas = clientSignatureCanvasRef.current;
+    if (canvas) setFormClientSign(hasClientSignatureRef.current ? canvas.toDataURL("image/png") : "");
+  };
+
+  const clearClientSignature = () => {
+    const canvas = clientSignatureCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.beginPath();
+    hasClientSignatureRef.current = false;
+    setFormClientSign("");
+  };
 
   // Scanning functions
   const checkCameraPermission = async (): Promise<boolean> => {
@@ -236,6 +442,29 @@ export default function Services() {
       eq.serialNumber.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const reportClientOptions: ReportClientOption[] =
+    seedClientOptions.length > 0
+      ? seedClientOptions.map((clientOption, index) => ({
+          id: clientOption.id,
+          companyName: clientOption.companyName,
+          numericId: index + 1,
+        }))
+      : clients.map((client) => ({
+          id: client.id.toString(),
+          companyName: client.companyName,
+          numericId: client.id,
+        }));
+
+  const seedReportEquipmentOptions: SeedEquipmentOption[] =
+    seedClientOptions.length > 0 && formClientId
+      ? seedEquipmentOptions.filter((eqItem) => eqItem.clientId === formClientId)
+      : [];
+
+  const fallbackReportEquipmentOptions: Equipment[] =
+    seedClientOptions.length === 0 && formClientId
+      ? equipment.filter((eqItem: Equipment) => eqItem.clientId === parseInt(formClientId, 10))
+      : [];
+
   const handlePhotoUpload = useCallback(
     (type: "before" | "after", event: React.ChangeEvent<HTMLInputElement>) => {
       const files = event.target.files;
@@ -270,17 +499,29 @@ export default function Services() {
       return;
     }
 
+    const resolvedClientId =
+      reportClientOptions.find((c) => c.id === formClientId)?.numericId ??
+      parseInt(formClientId, 10);
+
+    const resolvedEquipmentId =
+      seedClientOptions.length > 0
+        ? (() => {
+            const index = seedEquipmentOptions.findIndex((eqItem) => eqItem.id === formEquipmentId);
+            return index >= 0 ? index + 1 : parseInt(formEquipmentId, 10);
+          })()
+        : parseInt(formEquipmentId, 10);
+
     const newRecordId = Date.now();
     const record = {
-      equipmentId: parseInt(formEquipmentId),
-      clientId: parseInt(formClientId),
+      equipmentId: resolvedEquipmentId,
+      clientId: resolvedClientId,
       technician: formTechnician,
       serviceType: formType,
       description: formDescription,
       findings: formFindings,
       workDone: formWorkDone,
       recommendation: formRecommendation,
-      hoursAtService: equipment.find((e) => e.id === parseInt(formEquipmentId))?.currentHours || 0,
+      hoursAtService: equipment.find((e) => e.id === resolvedEquipmentId)?.currentHours || 0,
       partsUsed: formParts,
       status: "completed" as const,
       scheduledDate: new Date().toISOString(),
@@ -314,7 +555,7 @@ export default function Services() {
 
     // 3. Automated Visit Tracking (Module 8 Connection)
     // Decrement the visits remaining for the client's package
-    useBillingStore.getState().decrementPackageVisits(parseInt(formClientId), formType);
+    useBillingStore.getState().decrementPackageVisits(resolvedClientId, formType);
     
     // Reset form
     setFormClientId("");
@@ -562,13 +803,19 @@ export default function Services() {
               <div className="space-y-4">
                 <div>
                   <label className="text-[10px] text-gray-600 uppercase tracking-wider mb-1 block font-bold">Client</label>
-                  <Select value={formClientId} onValueChange={setFormClientId}>
+                  <Select
+                    value={formClientId}
+                    onValueChange={(value) => {
+                      setFormClientId(value);
+                      setFormEquipmentId("");
+                    }}
+                  >
                     <SelectTrigger className="h-9 bg-white border-gray-200 text-black text-xs">
                       <SelectValue placeholder="Select client" />
                     </SelectTrigger>
                     <SelectContent className="bg-white border-gray-200 text-black">
-                      {clients.map((c) => (
-                        <SelectItem key={c.id} value={c.id.toString()} className="text-xs text-black">
+                      {reportClientOptions.map((c) => (
+                        <SelectItem key={c.id} value={c.id} className="text-xs text-black">
                           {c.companyName}
                         </SelectItem>
                       ))}
@@ -577,18 +824,32 @@ export default function Services() {
                 </div>
                 <div>
                   <label className="text-[10px] text-gray-600 uppercase tracking-wider mb-1 block font-bold">Equipment</label>
-                  <Select value={formEquipmentId} onValueChange={setFormEquipmentId}>
-                    <SelectTrigger className="h-9 bg-white border-gray-200 text-black text-xs">
-                      <SelectValue placeholder="Select unit" />
+                  <Select
+                    value={formEquipmentId}
+                    onValueChange={setFormEquipmentId}
+                    disabled={!formClientId}
+                  >
+                    <SelectTrigger
+                      className={`h-9 border-gray-200 text-xs ${
+                        formClientId
+                          ? "bg-white text-black"
+                          : "bg-gray-100 text-gray-400 cursor-not-allowed"
+                      }`}
+                    >
+                      <SelectValue placeholder={formClientId ? "Select unit" : "Select client first"} />
                     </SelectTrigger>
                     <SelectContent className="bg-white border-gray-200 text-black">
-                      {equipment
-                        .filter((eqItem: Equipment) => !formClientId || eqItem.clientId === parseInt(formClientId))
-                        .map((eqItem: Equipment) => (
-                          <SelectItem key={eqItem.id} value={eqItem.id.toString()} className="text-xs text-black">
-                            {eqItem.unitId} — {eqItem.type}
-                          </SelectItem>
-                        ))}
+                      {seedClientOptions.length > 0
+                        ? seedReportEquipmentOptions.map((eqItem) => (
+                            <SelectItem key={eqItem.id} value={eqItem.id} className="text-xs text-black">
+                              {eqItem.id} — {eqItem.name}
+                            </SelectItem>
+                          ))
+                        : fallbackReportEquipmentOptions.map((eqItem: Equipment) => (
+                            <SelectItem key={eqItem.id} value={eqItem.id.toString()} className="text-xs text-black">
+                              {eqItem.unitId} — {eqItem.type}
+                            </SelectItem>
+                          ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -598,14 +859,14 @@ export default function Services() {
                   <label className="text-[10px] text-gray-600 uppercase tracking-wider mb-1 block font-bold">Service Type</label>
                   <Select value={formType} onValueChange={(v) => setFormType(v as ServiceType)}>
                     <SelectTrigger className="h-9 bg-white border-gray-200 text-black text-xs">
-                      <SelectValue />
+                      <SelectValue placeholder="Select service type" />
                     </SelectTrigger>
                     <SelectContent className="bg-white border-gray-200 text-black">
-                      <SelectItem value="pms" className="text-xs text-black">PMS (Preventative Maintenance)</SelectItem>
-                      <SelectItem value="calibration" className="text-xs text-black">Calibration</SelectItem>
-                      <SelectItem value="repair" className="text-xs text-black">Repair</SelectItem>
-                      <SelectItem value="inspection" className="text-xs text-black">Inspection</SelectItem>
-                      <SelectItem value="installation" className="text-xs text-black">Installation</SelectItem>
+                      {serviceTypeOptions.map((option) => (
+                        <SelectItem key={option.value} value={option.value} className="text-xs text-black">
+                          {option.label}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -698,26 +959,56 @@ export default function Services() {
             <div className="grid grid-cols-2 gap-4 border-t border-gray-200 pt-6">
               <div className="space-y-2">
                 <label className="text-[10px] text-gray-600 uppercase tracking-wider block font-bold">Technician Signature</label>
-                <div className="relative group">
-                  <Input
-                    placeholder="Type name to sign"
-                    value={formTechSign}
-                    onChange={(e) => setFormTechSign(e.target.value)}
-                    className="h-10 bg-white border-gray-200 text-black font-mono-tech italic"
+                <div className="space-y-2">
+                  <canvas
+                    ref={techSignatureCanvasRef}
+                    width={560}
+                    height={160}
+                    onPointerDown={handleTechSignatureStart}
+                    onPointerMove={handleTechSignatureMove}
+                    onPointerUp={handleTechSignatureEnd}
+                    onPointerLeave={handleTechSignatureEnd}
+                    className="w-full h-24 rounded border border-gray-200 bg-white touch-none"
                   />
-                  <PenTool className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <div className="flex items-center justify-between">
+                    <p className="text-[10px] text-gray-500">Draw technician signature above</p>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={clearTechSignature}
+                      className="h-7 px-2 text-[10px] text-gray-600"
+                    >
+                      Clear
+                    </Button>
+                  </div>
                 </div>
               </div>
               <div className="space-y-2">
                 <label className="text-[10px] text-gray-600 uppercase tracking-wider block font-bold">Client Confirmation Signature</label>
-                <div className="relative group">
-                  <Input
-                    placeholder="Type name to sign"
-                    value={formClientSign}
-                    onChange={(e) => setFormClientSign(e.target.value)}
-                    className="h-10 bg-white border-gray-200 text-black font-mono-tech italic"
+                <div className="space-y-2">
+                  <canvas
+                    ref={clientSignatureCanvasRef}
+                    width={560}
+                    height={160}
+                    onPointerDown={handleClientSignatureStart}
+                    onPointerMove={handleClientSignatureMove}
+                    onPointerUp={handleClientSignatureEnd}
+                    onPointerLeave={handleClientSignatureEnd}
+                    className="w-full h-24 rounded border border-gray-200 bg-white touch-none"
                   />
-                  <PenTool className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <div className="flex items-center justify-between">
+                    <p className="text-[10px] text-gray-500">Draw client signature above</p>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={clearClientSignature}
+                      className="h-7 px-2 text-[10px] text-gray-600"
+                    >
+                      Clear
+                    </Button>
+                  </div>
                 </div>
               </div>
             </div>

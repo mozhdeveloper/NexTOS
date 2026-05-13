@@ -37,6 +37,28 @@
             "departments": []
         }
     ],
+    "serviceTypes": [
+        {
+            "value": "pms",
+            "label": "PMS (Preventative Maintenance)"
+        },
+        {
+            "value": "calibration",
+            "label": "Calibration"
+        },
+        {
+            "value": "repair",
+            "label": "Repair"
+        },
+        {
+            "value": "inspection",
+            "label": "Inspection"
+        },
+        {
+            "value": "installation",
+            "label": "Installation"
+        }
+    ],
     "equipment": [
         {
             "id": "EQ-001",
