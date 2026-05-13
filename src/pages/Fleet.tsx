@@ -9,6 +9,7 @@ import { trpc } from "@/providers/trpc";
 import seedData from "@/data/seed-data.json";
 import {
   fetchAllTimeWorkingMs,
+  fetchAllTimeMileageKm,
   fetchDailyHistorySummary,
   type GPS51DailyHistorySummary,
 } from "@/services/gps51";
@@ -120,6 +121,8 @@ const FLEET_HISTORY_DEBUG = true;
 const GPS001_TOTAL_HOURS_CACHE_KEY = "nextos-gps001-total-hours-ms";
 const GPS001_HOURS_TODAY_CACHE_KEY = "nextos-gps001-hours-today-ms";
 const GPS001_HOURS_TODAY_TIMESTAMP_KEY = "nextos-gps001-hours-today-timestamps";
+const GPS001_KM_TODAY_CACHE_KEY = "nextos-gps001-km-today";
+const GPS001_TOTAL_KM_CACHE_KEY = "nextos-gps001-total-km";
 const ADDED_EQUIPMENT_STORAGE_KEY = "nextos-fleet-added-equipment";
 const HISTORY_DOT_STATUS_CACHE_KEY = "nextos-fleet-history-dot-statuses";
 const HISTORY_TABLE_DATA_CACHE_KEY = "nextos-fleet-history-table-data";
@@ -167,6 +170,34 @@ function readCachedGps001HoursTodayTimestamps(): Record<string, number> {
 function writeCachedGps001HoursTodayTimestamps(data: Record<string, number>): void {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(GPS001_HOURS_TODAY_TIMESTAMP_KEY, JSON.stringify(data));
+}
+
+function readCachedGps001KmTodayByDay(): Record<string, number> {
+  if (typeof window === "undefined") return {};
+  try {
+    const rawValue = window.localStorage.getItem(GPS001_KM_TODAY_CACHE_KEY);
+    return rawValue ? (JSON.parse(rawValue) as Record<string, number>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeCachedGps001KmTodayByDay(data: Record<string, number>): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(GPS001_KM_TODAY_CACHE_KEY, JSON.stringify(data));
+}
+
+function readCachedGps001TotalKm(): number {
+  if (typeof window === "undefined") return 0;
+  const rawValue = window.localStorage.getItem(GPS001_TOTAL_KM_CACHE_KEY);
+  const parsed = Number(rawValue ?? "0");
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
+
+function writeCachedGps001TotalKm(totalKm: number): void {
+  if (typeof window === "undefined") return;
+  if (!Number.isFinite(totalKm) || totalKm <= 0) return;
+  window.localStorage.setItem(GPS001_TOTAL_KM_CACHE_KEY, String(totalKm));
 }
 
 function readCachedAddedEquipment(): ModalEquipment[] {
@@ -341,6 +372,37 @@ function formatHoursFromMsForSidebar(totalMs: number): string {
   return formatDurationFromMs(totalMs);
 }
 
+function formatSidebarKm(value: number): string {
+  if (!Number.isFinite(value) || value < 0) return "0km";
+  return `${Math.round(value)}km`;
+}
+
+function formatHistoryKm(value: number): string {
+  if (!Number.isFinite(value) || value < 0) return "0.00km";
+  return `${value.toFixed(2)}km`;
+}
+
+function parseHistoryMileageKm(value: string | undefined): number | null {
+  if (!value) return null;
+  const normalized = value.replace(/[^\d.]/g, "");
+  const parsed = Number.parseFloat(normalized);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function parseSeedKm(value: unknown): number | null {
+  if (typeof value === "number") {
+    return Number.isFinite(value) && value >= 0 ? value : null;
+  }
+
+  if (typeof value === "string") {
+    const normalized = value.replace(/[^\d.]/g, "");
+    const parsed = Number.parseFloat(normalized);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+  }
+
+  return null;
+}
+
 function toDisplayStatus(status: string): UnitDisplayStatus {
   if (status === "driving" || status === "idle" || status === "parking" || status === "offline") {
     return status;
@@ -507,7 +569,9 @@ export default function Fleet() {
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [historyDateStatus, setHistoryDateStatus] = useState<"parking" | "offline" | null>(null);
   const [gps001HoursTodayMs, setGps001HoursTodayMs] = useState(0);
+  const [gps001KmToday, setGps001KmToday] = useState(0);
   const [gps001HoursTotalMs, setGps001HoursTotalMs] = useState(() => readCachedGps001TotalHoursMs());
+  const [gps001KmTotal, setGps001KmTotal] = useState(() => readCachedGps001TotalKm());
   
   // Modal states
   const [addEquipmentOpen, setAddEquipmentOpen] = useState(false);
@@ -723,8 +787,10 @@ export default function Fleet() {
       const isTodaySelection = selectedHistoryDay === toYmd(new Date());
       const isPastSelection = isPastYmd(selectedHistoryDay);
       const cachedHoursByDay = readCachedGps001HoursTodayByDay();
+      const cachedKmByDay = readCachedGps001KmTodayByDay();
       const cachedTimestamps = readCachedGps001HoursTodayTimestamps();
       const cachedHours = cachedHoursByDay[selectedHistoryDay];
+      const cachedKm = cachedKmByDay[selectedHistoryDay];
       const cachedTimestamp = cachedTimestamps[selectedHistoryDay];
       const now = Date.now();
       const isFreshTodayCache =
@@ -736,6 +802,7 @@ export default function Fleet() {
       if (Number.isFinite(cachedHours) && (isPastSelection || isFreshTodayCache)) {
         if (!ignore) {
           setGps001HoursTodayMs(Number(cachedHours));
+          setGps001KmToday(Number.isFinite(cachedKm) ? Number(cachedKm) : 0);
         }
         return;
       }
@@ -743,10 +810,14 @@ export default function Fleet() {
       // Show stale today cache immediately, then refresh in background.
       if (isTodaySelection && Number.isFinite(cachedHours) && !isFreshTodayCache && !ignore) {
         setGps001HoursTodayMs(Number(cachedHours));
+        setGps001KmToday(Number.isFinite(cachedKm) ? Number(cachedKm) : 0);
       }
 
       if (!GPS51_USERNAME || !GPS51_PASSWORD) {
-        if (!ignore) setGps001HoursTodayMs(0);
+        if (!ignore) {
+          setGps001HoursTodayMs(0);
+          setGps001KmToday(0);
+        }
         return;
       }
 
@@ -754,13 +825,21 @@ export default function Fleet() {
         const summary = await fetchDailyHistorySummary(GPS51_USERNAME, GPS51_PASSWORD, selectedHistoryDay);
         if (!ignore) {
           const resolvedWorkingMs = summary ? summary.workingMs : 0;
+          const resolvedMileageKm = summary ? Number((summary.mileageMeters / 1000).toFixed(2)) : 0;
           setGps001HoursTodayMs(resolvedWorkingMs);
+          setGps001KmToday(resolvedMileageKm);
 
           const nextCache = {
             ...cachedHoursByDay,
             [selectedHistoryDay]: resolvedWorkingMs,
           };
           writeCachedGps001HoursTodayByDay(nextCache);
+
+          const nextKmCache = {
+            ...cachedKmByDay,
+            [selectedHistoryDay]: resolvedMileageKm,
+          };
+          writeCachedGps001KmTodayByDay(nextKmCache);
 
           if (isTodaySelection) {
             const nextTimestamps = {
@@ -773,6 +852,7 @@ export default function Fleet() {
       } catch {
         if (!ignore && !Number.isFinite(cachedHours)) {
           setGps001HoursTodayMs(0);
+          setGps001KmToday(0);
         }
       }
     };
@@ -803,18 +883,30 @@ export default function Fleet() {
         return;
       }
       try {
-        const totalMs = await fetchAllTimeWorkingMs(
-          GPS51_USERNAME,
-          GPS51_PASSWORD,
-          "2000-01-01",
-          toYmd(new Date())
-        );
+        const [totalMs, totalKm] = await Promise.all([
+          fetchAllTimeWorkingMs(
+            GPS51_USERNAME,
+            GPS51_PASSWORD,
+            "2000-01-01",
+            toYmd(new Date())
+          ),
+          fetchAllTimeMileageKm(
+            GPS51_USERNAME,
+            GPS51_PASSWORD,
+            "2000-01-01",
+            toYmd(new Date())
+          ),
+        ]);
         if (!ignore && Number.isFinite(totalMs) && totalMs > 0) {
           setGps001HoursTotalMs(totalMs);
           writeCachedGps001TotalHoursMs(totalMs);
         }
+        if (!ignore && Number.isFinite(totalKm) && totalKm > 0) {
+          setGps001KmTotal(totalKm);
+          writeCachedGps001TotalKm(totalKm);
+        }
       } catch {
-        // Keep the last known-good total; transient API failures should not reset the sidebar to 0.
+        // Keep the last known-good totals; transient API failures should not reset the sidebar to 0.
       }
     };
 
@@ -1631,7 +1723,7 @@ export default function Fleet() {
               <h3 className="text-sm font-semibold text-[#EAEAEA]">Fleet Units</h3>
               <span className="text-[10px] text-[#88888C]">{sidebarDateWithPrefix}</span>
             </div>
-            <p className="text-[10px] text-[#88888C]">{units.length} units tracked</p>
+            <p className="text-[10px] text-[#88888C]">{seedData.equipment.length} units tracked</p>
           </div>
 
           {/* Action Buttons */}
@@ -1721,6 +1813,26 @@ export default function Fleet() {
                   : isGps001
                   ? formatHoursFromMsForSidebar(gps001HoursTotalMs)
                   : (staticHoursByUnit[unitLabel]?.total ?? fallbackStaticHours.total);
+
+                const historyRowKmToday =
+                  viewMode === "history" &&
+                  isSelected &&
+                  isGps001 &&
+                  !historyLoading &&
+                  !historyError &&
+                  historyRows.length > 0
+                    ? parseHistoryMileageKm(historyRows[0]?.mileage)
+                    : null;
+
+                const seedKmTodayValue = parseSeedKm((seedEntry as any)?.kmToday);
+                const seedKmTotalValue = parseSeedKm((seedEntry as any)?.kmTotal);
+
+                const kmTodayText = isGps001
+                  ? formatHistoryKm(historyRowKmToday ?? gps001KmToday)
+                  : (seedKmTodayValue !== null ? formatSidebarKm(seedKmTodayValue) : "—km");
+                const kmTotalText = isGps001
+                  ? formatHistoryKm(gps001KmTotal)
+                  : (seedKmTotalValue !== null ? formatSidebarKm(seedKmTotalValue) : "—km");
 
                 return (
                   <button
@@ -1862,9 +1974,9 @@ export default function Fleet() {
                           <div>{clientName}</div>
                           {displayEquipmentName && !useSeedAsTitle && <div>{displayEquipmentName}</div>}
                           {displayEquipmentType && <div>Type: {displayEquipmentType}</div>}
-                          <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 pt-0.5">
-                            <span>Hours Today: {hoursTodayText}</span>
-                            <span>Hours in Total: {hoursTotalText}</span>
+                          <div className="space-y-0.5 pt-0.5">
+                            <div>Today: {hoursTodayText} / {kmTodayText}</div>
+                            <div>Total: {hoursTotalText} / {kmTotalText}</div>
                           </div>
                           {unit.serviceDue && (
                             <div className="flex items-center gap-1 text-[#EF4444]">
@@ -1968,9 +2080,9 @@ export default function Fleet() {
                         <div className="text-[10px] text-[#88888C] space-y-0.5">
                           <div>{eqClient?.companyName || "—"}</div>
                           <div>Type: {eq.type}</div>
-                          <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 pt-0.5">
-                            <span>Hours Today: {eq.hoursToday || "—"}</span>
-                            <span>Hours in Total: {eq.hoursTotal || "—"}</span>
+                          <div className="space-y-0.5 pt-0.5">
+                            <div>T: {eq.hoursToday || "—"} / —km</div>
+                            <div>Σ: {eq.hoursTotal || "—"} / —km</div>
                           </div>
                         </div>
                       </div>
