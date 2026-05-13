@@ -12,8 +12,8 @@ export default function PageHeader({
   return (
     <div className="flex items-center justify-between">
       <div>
-        <h1 className="text-[32px] font-bold text-[#EAEAEA] tracking-[-0.02em]">{title}</h1>
-        {subtitle && <p className="text-sm text-[#88888C] mt-0.5">{subtitle}</p>}
+        <h1 className="text-[32px] font-bold text-black tracking-[-0.02em]">{title}</h1>
+        {subtitle && <p className="text-sm text-gray-600 mt-0.5">{subtitle}</p>}
       </div>
       {actions && <div className="flex items-center gap-2">{actions}</div>}
     </div>

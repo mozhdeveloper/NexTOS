@@ -66,14 +66,14 @@ type DonutDatum = {
 
 const HEAVY_COLORS: Record<HeavyStatus, string> = {
   OK: "#10B981",
-  "Near Service": "#F2A900",
+  "Near Service": "#66B2B2",
   "Due Soon": "#3B82F6",
   Overdue: "#EF4444",
 };
 
 const CALIBRATION_COLORS: Record<CalibrationStatus | "Due This Month", string> = {
   OK: "#10B981",
-  "Due Soon": "#F2A900",
+  "Due Soon": "#66B2B2",
   Due: "#3B82F6",
   Overdue: "#EF4444",
   "Due This Month": "#3B82F6",
@@ -81,30 +81,30 @@ const CALIBRATION_COLORS: Record<CalibrationStatus | "Due This Month", string> =
 
 const LAB_COLORS = {
   "In Progress": "#2563EB",
-  Scheduled: "#F2A900",
+  Scheduled: "#66B2B2",
   Completed: "#10B981",
 };
 
 const CATEGORY_BADGE: Record<ServiceCategory, string> = {
-  "Heavy Equipment PMS": "bg-[#0F3C66] text-[#60A5FA] border border-[#60A5FA]/20",
-  "Calibration PMS": "bg-[#0B5137] text-[#4ADE80] border border-[#4ADE80]/20",
-  "Lab Testing Service": "bg-[#41215E] text-[#C084FC] border border-[#C084FC]/20",
-  Repair: "bg-[#5B1D1D] text-[#F87171] border border-[#F87171]/20",
-  Inspection: "bg-[#46310C] text-[#FBBF24] border border-[#FBBF24]/20",
-  Installation: "bg-[#113947] text-[#22D3EE] border border-[#22D3EE]/20",
+  "Heavy Equipment PMS": "bg-blue-50 text-[#66B2B2] border border-[#60A5FA]/20",
+  "Calibration PMS": "bg-emerald-50 text-[#059669] border border-[#4ADE80]/20",
+  "Lab Testing Service": "bg-purple-50 text-[#7C3AED] border border-[#C084FC]/20",
+  Repair: "bg-red-50 text-[#DC2626] border border-[#F87171]/20",
+  Inspection: "bg-amber-50 text-[#D97706] border border-[#FBBF24]/20",
+  Installation: "bg-cyan-50 text-[#0891B2] border border-[#22D3EE]/20",
 };
 
 const STATUS_BADGE: Record<string, string> = {
-  OK: "bg-[#0B5137]/50 text-[#4ADE80] border border-[#4ADE80]/20",
-  "Near Service": "bg-[#46310C]/50 text-[#FBBF24] border border-[#FBBF24]/20",
-  "Due Soon": "bg-[#102C53]/60 text-[#60A5FA] border border-[#60A5FA]/20",
-  Due: "bg-[#102C53]/60 text-[#60A5FA] border border-[#60A5FA]/20",
-  Overdue: "bg-[#5B1D1D]/50 text-[#F87171] border border-[#F87171]/20",
-  Scheduled: "bg-[#102C53]/60 text-[#60A5FA] border border-[#60A5FA]/20",
-  Requested: "bg-[#3E2A07]/60 text-[#FBBF24] border border-[#FBBF24]/20",
-  Completed: "bg-[#0B5137]/50 text-[#4ADE80] border border-[#4ADE80]/20",
-  Released: "bg-[#113947]/50 text-[#22D3EE] border border-[#22D3EE]/20",
-  "In Progress": "bg-[#1D3E6E]/50 text-[#60A5FA] border border-[#60A5FA]/20",
+  OK: "bg-emerald-50/50 text-[#059669] border border-[#4ADE80]/20",
+  "Near Service": "bg-amber-50/50 text-[#D97706] border border-[#FBBF24]/20",
+  "Due Soon": "bg-blue-50/60 text-[#66B2B2] border border-[#60A5FA]/20",
+  Due: "bg-blue-50/60 text-[#66B2B2] border border-[#60A5FA]/20",
+  Overdue: "bg-red-50/50 text-[#DC2626] border border-[#F87171]/20",
+  Scheduled: "bg-blue-50/60 text-[#66B2B2] border border-[#60A5FA]/20",
+  Requested: "bg-amber-50/60 text-[#D97706] border border-[#FBBF24]/20",
+  Completed: "bg-emerald-50/50 text-[#059669] border border-[#4ADE80]/20",
+  Released: "bg-cyan-50/50 text-[#0891B2] border border-[#22D3EE]/20",
+  "In Progress": "bg-blue-50/50 text-[#66B2B2] border border-[#60A5FA]/20",
 };
 
 function formatPeso(amount: number) {
@@ -205,8 +205,8 @@ function createServiceId(prefix: string, id: number) {
 function donutCenterLabel(total: number, label: string) {
   return (
     <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-      <div className="text-[22px] font-bold text-[#EAEAEA] leading-none">{total}</div>
-      <div className="mt-1 text-[9px] uppercase tracking-[0.18em] text-[#6B7280]">{label}</div>
+      <div className="text-[22px] font-bold text-gray-900 leading-none">{total}</div>
+      <div className="mt-1 text-[9px] uppercase tracking-[0.18em] text-gray-500">{label}</div>
     </div>
   );
 }
@@ -341,7 +341,7 @@ export default function ClientDashboard() {
           statusLabel: heavyStatus ?? (entry.status === "confirmed" ? "Scheduled" : entry.status === "completed" ? "Completed" : "Requested"),
           technician,
           icon: entry.serviceCategory === "Calibration PMS" ? FlaskConical : entry.serviceCategory === "Lab Testing Service" ? ClipboardList : HardHat,
-          iconBg: entry.serviceCategory === "Calibration PMS" ? "bg-[#0B5137]/30" : entry.serviceCategory === "Lab Testing Service" ? "bg-[#41215E]/30" : "bg-[#3E2A07]/40",
+          iconBg: "bg-white",
         };
       });
   }, [clientBookings, equipmentById, now]);
@@ -367,7 +367,7 @@ export default function ClientDashboard() {
           statusLabel: status,
           technician: "Mike Thompson",
           icon: FlaskConical,
-          iconBg: "bg-[#0B5137]/30",
+          iconBg: "bg-white",
         };
       });
   }, [calibrationEquipment, now]);
@@ -392,7 +392,7 @@ export default function ClientDashboard() {
           statusLabel: status,
           technician: entry.technician,
           icon: ClipboardList,
-          iconBg: "bg-[#41215E]/30",
+          iconBg: "bg-white",
         };
       });
   }, [equipmentById, labTestingServices]);
@@ -483,7 +483,7 @@ export default function ClientDashboard() {
       subtitle: entry.projectName ? entry.projectName : entry.description,
       timestamp: formatShortDate(entry.completedDate || entry.createdAt),
       icon: entry.serviceCategory === "Lab Testing Service" ? FlaskConical : entry.serviceCategory === "Calibration PMS" ? CheckCircle2 : Wrench,
-      tone: entry.serviceCategory === "Lab Testing Service" ? "bg-[#41215E] text-[#C084FC]" : entry.serviceCategory === "Calibration PMS" ? "bg-[#0B5137] text-[#4ADE80]" : "bg-[#0B5137] text-[#4ADE80]",
+      tone: entry.serviceCategory === "Lab Testing Service" ? "bg-white text-[#7C3AED]" : entry.serviceCategory === "Calibration PMS" ? "bg-white text-[#059669]" : "bg-white text-[#059669]",
     }));
 
     const invoiceActivity = clientInvoices.slice(0, 2).map((entry) => ({
@@ -492,7 +492,7 @@ export default function ClientDashboard() {
       subtitle: formatPeso(entry.total),
       timestamp: formatShortDate(entry.createdAt),
       icon: Receipt,
-      tone: "bg-[#46310C] text-[#FBBF24]",
+      tone: "bg-white text-[#D97706]",
     }));
 
     return [...serviceActivity, ...invoiceActivity]
@@ -511,27 +511,27 @@ export default function ClientDashboard() {
   const topLabItem = testingRows[0];
 
   return (
-    <div className="min-h-full bg-[#07090D] px-6 py-5 text-[#EAEAEA] xl:px-8">
+    <div className="min-h-full bg-gray-50 px-6 py-5 text-gray-900 xl:px-8">
       <div className="mx-auto max-w-[1500px] space-y-5">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
           <div>
-            <h1 className="text-[34px] font-bold tracking-[-0.03em] text-white">Dashboard</h1>
-            <p className="mt-1 text-sm text-[#94A3B8]">
+            <h1 className="text-[34px] font-bold tracking-[-0.03em] text-gray-900">Dashboard</h1>
+            <p className="mt-1 text-sm text-gray-500">
               Overview of your equipment, calibration &amp; testing services
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            <button className="flex h-11 items-center gap-2 rounded-md border border-white/10 bg-[#111827] px-4 text-sm text-[#E5E7EB] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
-              <Calendar className="h-4 w-4 text-[#CBD5E1]" />
+            <button className="flex h-11 items-center gap-2 rounded-md border border-gray-200 bg-white px-4 text-sm text-gray-600 shadow-sm">
+              <Calendar className="h-4 w-4 text-gray-500" />
               {now.toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" })}
             </button>
-            <button className="flex h-11 w-11 items-center justify-center rounded-md border border-white/10 bg-[#111827] text-[#CBD5E1]">
+            <button className="flex h-11 w-11 items-center justify-center rounded-md border border-gray-200 bg-white text-gray-400">
               <Bell className="h-4 w-4" />
             </button>
             <button
               onClick={() => navigate("/client/bookings")}
-              className="flex h-11 items-center gap-2 rounded-md bg-[#F2A900] px-5 text-sm font-semibold text-[#111827] transition-colors hover:bg-[#FFBF1F]"
+              className="flex h-11 items-center gap-2 rounded-md bg-[#66B2B2] px-5 text-sm font-semibold text-gray-900 transition-colors hover:bg-[#5A9E9E]"
             >
               <Plus className="h-4 w-4" />
               Book a Service
@@ -545,12 +545,12 @@ export default function ClientDashboard() {
             value={heavyEquipment.length}
             subtitle="Total Equipment"
             icon={HardHat}
-            tint="from-[#0C4A6E] to-[#102A43]"
+            tint="from-blue-50 to-blue-100"
             stats={[
-              { label: "OK", value: heavyCounts.OK, color: "text-[#22C55E]" },
-              { label: "Near Service", value: heavyCounts["Near Service"], color: "text-[#FBBF24]" },
-              { label: "Overdue", value: heavyCounts.Overdue, color: "text-[#F87171]" },
-              { label: "Due Soon", value: heavyCounts["Due Soon"], color: "text-[#60A5FA]" },
+              { label: "OK", value: heavyCounts.OK, color: "text-[#059669]" },
+              { label: "Near Service", value: heavyCounts["Near Service"], color: "text-[#D97706]" },
+              { label: "Overdue", value: heavyCounts.Overdue, color: "text-[#DC2626]" },
+              { label: "Due Soon", value: heavyCounts["Due Soon"], color: "text-[#66B2B2]" },
             ]}
           />
 
@@ -559,12 +559,12 @@ export default function ClientDashboard() {
             value={calibrationEquipment.length}
             subtitle="Lab Equipment"
             icon={PackageCheck}
-            tint="from-[#0B5137] to-[#0F3D2E]"
+            tint="from-emerald-50 to-emerald-100"
             stats={[
-              { label: "OK", value: calibrationCounts.OK, color: "text-[#22C55E]" },
-              { label: "Due Soon", value: calibrationCounts["Due Soon"], color: "text-[#FBBF24]" },
-              { label: "Overdue", value: calibrationCounts.Overdue, color: "text-[#F87171]" },
-              { label: "Due This Month", value: calibrationCounts["Due This Month"], color: "text-[#60A5FA]" },
+              { label: "OK", value: calibrationCounts.OK, color: "text-[#059669]" },
+              { label: "Due Soon", value: calibrationCounts["Due Soon"], color: "text-[#D97706]" },
+              { label: "Overdue", value: calibrationCounts.Overdue, color: "text-[#DC2626]" },
+              { label: "Due This Month", value: calibrationCounts["Due This Month"], color: "text-[#66B2B2]" },
             ]}
           />
 
@@ -573,35 +573,35 @@ export default function ClientDashboard() {
             value={labTestingServices.length}
             subtitle="Active Jobs"
             icon={ClipboardList}
-            tint="from-[#3F1D6B] to-[#22133B]"
+            tint="from-purple-50 to-purple-100"
             stats={[
-              { label: "In Progress", value: labCounts["In Progress"], color: "text-[#60A5FA]" },
-              { label: "Scheduled", value: labCounts.Scheduled, color: "text-[#FBBF24]" },
-              { label: "Completed", value: labCounts.Completed, color: "text-[#22C55E]" },
+              { label: "In Progress", value: labCounts["In Progress"], color: "text-[#66B2B2]" },
+              { label: "Scheduled", value: labCounts.Scheduled, color: "text-[#D97706]" },
+              { label: "Completed", value: labCounts.Completed, color: "text-[#059669]" },
             ]}
           />
 
-          <div className="data-card rounded-xl border border-white/6 bg-[linear-gradient(180deg,#171D28_0%,#0F131A_100%)] p-5 shadow-[0_10px_35px_rgba(0,0,0,0.24)]">
+          <div className="data-card rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <div className="flex items-center gap-3">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#8A5608]/30 text-[#F2A900]">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#66B2B2]/30 text-[#66B2B2]">
                     <Receipt className="h-5 w-5" />
                   </div>
                   <div>
-                    <div className="text-sm font-semibold text-white">Open Invoices</div>
-                    <div className="mt-1 text-[13px] text-[#94A3B8]">{openInvoices.length} Unpaid</div>
+                    <div className="text-sm font-semibold text-gray-900">Open Invoices</div>
+                    <div className="mt-1 text-[13px] text-gray-500">{openInvoices.length} Unpaid</div>
                   </div>
                 </div>
               </div>
-              <span className="rounded-full bg-[#8A5608]/15 px-2.5 py-1 text-[11px] font-medium text-[#FBBF24]">
+              <span className="rounded-full bg-[#66B2B2]/15 px-2.5 py-1 text-[11px] font-medium text-[#D97706]">
                 Total Outstanding
               </span>
             </div>
-            <div className="mt-5 text-[34px] font-bold tracking-[-0.03em] text-[#F8B84E]">{formatPeso(outstandingBalance)}</div>
+            <div className="mt-5 text-[34px] font-bold tracking-[-0.03em] text-[#66B2B2]">{formatPeso(outstandingBalance)}</div>
             <button
               onClick={() => navigate("/client/billing")}
-              className="mt-5 inline-flex items-center gap-2 text-sm font-medium text-[#60A5FA] transition-colors hover:text-[#93C5FD]"
+              className="mt-5 inline-flex items-center gap-2 text-sm font-medium text-[#66B2B2] transition-colors hover:text-[#5A9E9E]"
             >
               View Invoices
               <ArrowRight className="h-4 w-4" />
@@ -611,13 +611,13 @@ export default function ClientDashboard() {
 
         <div className="grid gap-4 xl:grid-cols-[minmax(0,2.3fr)_minmax(320px,1fr)]">
           <div className="space-y-4">
-            <section className="data-card overflow-hidden rounded-xl border border-white/6 bg-[linear-gradient(180deg,#121923_0%,#0D1219_100%)] shadow-[0_12px_40px_rgba(0,0,0,0.24)]">
-              <div className="border-b border-white/6 px-5 pt-4">
+            <section className="data-card overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+              <div className="border-b border-gray-200 px-5 pt-4">
                 <div className="flex flex-wrap items-center gap-6 text-sm">
                   <button
                     onClick={() => setServiceTab("upcoming")}
                     className={`border-b-2 pb-3 font-medium transition-colors ${
-                      serviceTab === "upcoming" ? "border-[#F2A900] text-[#F2A900]" : "border-transparent text-[#94A3B8] hover:text-white"
+                      serviceTab === "upcoming" ? "border-[#66B2B2] text-[#66B2B2]" : "border-transparent text-gray-500 hover:text-gray-900"
                     }`}
                   >
                     Upcoming Services
@@ -625,7 +625,7 @@ export default function ClientDashboard() {
                   <button
                     onClick={() => setServiceTab("calibration")}
                     className={`border-b-2 pb-3 font-medium transition-colors ${
-                      serviceTab === "calibration" ? "border-[#F2A900] text-[#F2A900]" : "border-transparent text-[#94A3B8] hover:text-white"
+                      serviceTab === "calibration" ? "border-[#66B2B2] text-[#66B2B2]" : "border-transparent text-gray-500 hover:text-gray-900"
                     }`}
                   >
                     Calibration Due
@@ -633,7 +633,7 @@ export default function ClientDashboard() {
                   <button
                     onClick={() => setServiceTab("testing")}
                     className={`border-b-2 pb-3 font-medium transition-colors ${
-                      serviceTab === "testing" ? "border-[#F2A900] text-[#F2A900]" : "border-transparent text-[#94A3B8] hover:text-white"
+                      serviceTab === "testing" ? "border-[#66B2B2] text-[#66B2B2]" : "border-transparent text-gray-500 hover:text-gray-900"
                     }`}
                   >
                     Testing Schedules
@@ -644,7 +644,7 @@ export default function ClientDashboard() {
               <div className="overflow-x-auto px-3 pb-2 pt-3">
                 <table className="w-full min-w-[900px] text-left">
                   <thead>
-                    <tr className="text-[11px] uppercase tracking-[0.14em] text-[#64748B]">
+                    <tr className="text-[11px] uppercase tracking-[0.14em] text-gray-500">
                       <th className="px-3 py-2 font-medium">Service ID</th>
                       <th className="px-3 py-2 font-medium">Equipment / Service</th>
                       <th className="px-3 py-2 font-medium">Category</th>
@@ -659,16 +659,16 @@ export default function ClientDashboard() {
                     {activeRows.map((row) => {
                       const Icon = row.icon;
                       return (
-                        <tr key={row.id} className="border-t border-white/6 text-sm text-[#E2E8F0]">
-                          <td className="px-3 py-3 text-[12px] font-semibold text-white">{row.id}</td>
+                        <tr key={row.id} className="border-t border-gray-200 text-sm text-gray-700">
+                          <td className="px-3 py-3 text-[12px] font-semibold text-gray-900">{row.id}</td>
                           <td className="px-3 py-3">
                             <div className="flex items-center gap-3">
-                              <div className={`flex h-11 w-11 items-center justify-center rounded-lg border border-white/6 ${row.iconBg}`}>
-                                <Icon className="h-5 w-5 text-white" />
+                              <div className={`flex h-11 w-11 items-center justify-center rounded-lg border border-gray-200 ${row.iconBg}`}>
+                                <Icon className="h-5 w-5 text-gray-900" />
                               </div>
                               <div>
-                                <div className="font-medium text-white">{row.equipmentName}</div>
-                                <div className="mt-1 text-[11px] text-[#94A3B8]">{row.equipmentMeta}</div>
+                                <div className="font-medium text-gray-900">{row.equipmentName}</div>
+                                <div className="mt-1 text-[11px] text-gray-500">{row.equipmentMeta}</div>
                               </div>
                             </div>
                           </td>
@@ -677,12 +677,12 @@ export default function ClientDashboard() {
                               {row.category}
                             </span>
                           </td>
-                          <td className="px-3 py-3 text-[13px] text-[#CBD5E1]">{row.typeLabel}</td>
+                          <td className="px-3 py-3 text-[13px] text-gray-500">{row.typeLabel}</td>
                           <td className="px-3 py-3">
-                            <div className={`text-[13px] font-medium ${row.statusLabel === "Overdue" ? "text-[#F87171]" : row.statusLabel === "Due Soon" || row.statusLabel === "Near Service" ? "text-[#FBBF24]" : "text-[#22C55E]"}`}>
+                            <div className={`text-[13px] font-medium ${row.statusLabel === "Overdue" ? "text-[#DC2626]" : row.statusLabel === "Due Soon" || row.statusLabel === "Near Service" ? "text-[#D97706]" : "text-[#059669]"}`}>
                               {row.scheduleLabel}
                             </div>
-                            <div className="mt-1 text-[11px] text-[#94A3B8]">{row.scheduleMeta}</div>
+                            <div className="mt-1 text-[11px] text-gray-500">{row.scheduleMeta}</div>
                           </td>
                           <td className="px-3 py-3">
                             <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-medium ${STATUS_BADGE[row.statusLabel] ?? STATUS_BADGE.Scheduled}`}>
@@ -691,7 +691,7 @@ export default function ClientDashboard() {
                           </td>
                           <td className="px-3 py-3">
                             <div className="flex items-center gap-2">
-                              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#334155] text-[11px] font-semibold text-white">
+                              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#66B2B2] text-[11px] font-semibold text-gray-900">
                                 {row.technician
                                   .split(" ")
                                   .map((part) => part[0])
@@ -699,15 +699,15 @@ export default function ClientDashboard() {
                                   .slice(0, 2)
                                   .toUpperCase()}
                               </div>
-                              <span className="text-[13px] text-[#CBD5E1]">{row.technician}</span>
+                              <span className="text-[13px] text-gray-500">{row.technician}</span>
                             </div>
                           </td>
                           <td className="px-3 py-3">
                             <div className="flex justify-end gap-2">
-                              <button className="flex h-8 w-8 items-center justify-center rounded-md border border-[#1D4ED8]/30 bg-[#102C53]/50 text-[#60A5FA]">
+                              <button className="flex h-8 w-8 items-center justify-center rounded-md border border-[#66B2B2]/30 bg-blue-50/50 text-[#66B2B2]">
                                 <Eye className="h-4 w-4" />
                               </button>
-                              <button className="flex h-8 w-8 items-center justify-center rounded-md border border-white/10 bg-[#111827] text-[#CBD5E1]">
+                              <button className="flex h-8 w-8 items-center justify-center rounded-md border border-gray-200 bg-white text-gray-400">
                                 <Calendar className="h-4 w-4" />
                               </button>
                             </div>
@@ -717,7 +717,7 @@ export default function ClientDashboard() {
                     })}
                     {activeRows.length === 0 && (
                       <tr>
-                        <td colSpan={8} className="px-3 py-10 text-center text-sm text-[#94A3B8]">
+                        <td colSpan={8} className="px-3 py-10 text-center text-sm text-gray-500">
                           No service items available for this section.
                         </td>
                       </tr>
@@ -726,8 +726,8 @@ export default function ClientDashboard() {
                 </table>
               </div>
 
-              <div className="flex justify-center border-t border-white/6 px-5 py-3">
-                <button className="inline-flex items-center gap-2 text-sm font-medium text-[#60A5FA] transition-colors hover:text-[#93C5FD]">
+              <div className="flex justify-center border-t border-gray-200 px-5 py-3">
+                <button className="inline-flex items-center gap-2 text-sm font-medium text-[#66B2B2] transition-colors hover:text-[#5A9E9E]">
                   View all upcoming services
                   <ArrowRight className="h-4 w-4" />
                 </button>
@@ -777,10 +777,10 @@ export default function ClientDashboard() {
               />
             </div>
 
-            <section className="data-card rounded-xl border border-white/6 bg-[linear-gradient(180deg,#121923_0%,#0D1219_100%)] p-4 shadow-[0_12px_40px_rgba(0,0,0,0.24)]">
+            <section className="data-card rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
               <div className="mb-3 flex items-center justify-between">
-                <h3 className="text-lg font-semibold text-white">Recent Activity</h3>
-                <button className="text-sm font-medium text-[#60A5FA]">View all</button>
+                <h3 className="text-lg font-semibold text-gray-900">Recent Activity</h3>
+                <button className="text-sm font-medium text-[#66B2B2]">View all</button>
               </div>
               <div className="flex gap-2.5 overflow-x-auto pb-0.5">
                 {recentActivity.map((item) => {
@@ -788,14 +788,14 @@ export default function ClientDashboard() {
                   return (
                     <div
                       key={item.id}
-                      className="flex min-w-[170px] flex-1 items-start gap-2.5 rounded-xl border border-white/6 bg-[#0E141D] p-3"
+                      className="flex min-w-[170px] flex-1 items-start gap-2.5 rounded-xl border border-gray-200 bg-white p-3"
                     >
-                      <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${item.tone}`}>
+                      <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full shadow-sm border border-gray-100 ${item.tone}`}>
                         <Icon className="h-4 w-4" />
                       </div>
                       <div className="min-w-0">
-                        <div className="text-[11px] font-medium leading-4 text-white">{item.title}</div>
-                        <div className="mt-0.5 text-[10px] text-[#64748B]">{item.timestamp}</div>
+                        <div className="text-[11px] font-medium leading-4 text-gray-900">{item.title}</div>
+                        <div className="mt-0.5 text-[10px] text-gray-400">{item.timestamp}</div>
                       </div>
                     </div>
                   );
@@ -805,72 +805,72 @@ export default function ClientDashboard() {
           </div>
 
           <div className="space-y-4">
-            <section className="data-card rounded-xl border border-white/6 bg-[linear-gradient(180deg,#121923_0%,#0D1219_100%)] p-5 shadow-[0_12px_40px_rgba(0,0,0,0.24)]">
+            <section className="data-card rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
               <div className="mb-4 flex items-center justify-between">
-                <h3 className="text-lg font-semibold text-white">Alerts &amp; Reminders</h3>
-                <button className="text-sm font-medium text-[#60A5FA]">View all</button>
+                <h3 className="text-lg font-semibold text-gray-900">Alerts &amp; Reminders</h3>
+                <button className="text-sm font-medium text-[#66B2B2]">View all</button>
               </div>
               <div className="space-y-3">
                 {alertItems.map((item) => (
-                  <div key={item.id} className="flex items-start gap-3 rounded-xl border border-white/6 bg-[#0E141D] p-4">
+                  <div key={item.id} className="flex items-start gap-3 rounded-xl border border-gray-200 bg-white p-4">
                     <div
-                      className={`mt-0.5 flex h-9 w-9 items-center justify-center rounded-full ${
+                      className={`mt-0.5 flex h-9 w-9 items-center justify-center rounded-full shadow-sm border border-gray-100 ${
                         item.tone === "danger"
-                          ? "bg-[#5B1D1D] text-[#F87171]"
+                          ? "bg-white text-[#DC2626]"
                           : item.tone === "warning"
-                            ? "bg-[#46310C] text-[#FBBF24]"
-                            : "bg-[#102C53] text-[#60A5FA]"
+                            ? "bg-white text-[#D97706]"
+                            : "bg-white text-[#66B2B2]"
                       }`}
                     >
                       {item.tone === "danger" ? <Siren className="h-4 w-4" /> : item.tone === "warning" ? <Bell className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="text-sm font-medium leading-6 text-white">{item.title}</div>
-                      <div className="mt-1 text-xs text-[#94A3B8]">{item.subtitle}</div>
+                      <div className="text-sm font-medium leading-6 text-gray-900">{item.title}</div>
+                      <div className="mt-1 text-xs text-gray-500">{item.subtitle}</div>
                     </div>
-                    <ChevronRight className="mt-1 h-4 w-4 text-[#64748B]" />
+                    <ChevronRight className="mt-1 h-4 w-4 text-gray-400" />
                   </div>
                 ))}
                 {alertItems.length === 0 && (
-                  <div className="rounded-xl border border-white/6 bg-[#0E141D] p-4 text-sm text-[#94A3B8]">
+                  <div className="rounded-xl border border-gray-200 bg-white p-4 text-sm text-gray-500">
                     No active alerts right now.
                   </div>
                 )}
               </div>
             </section>
 
-            <section className="data-card rounded-xl border border-white/6 bg-[linear-gradient(180deg,#121923_0%,#0D1219_100%)] p-5 shadow-[0_12px_40px_rgba(0,0,0,0.24)]">
+            <section className="data-card rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
               <div className="mb-4 flex items-center justify-between">
-                <h3 className="text-lg font-semibold text-white">Quick Summary</h3>
-                <span className="rounded-md border border-white/10 bg-[#111827] px-3 py-1.5 text-xs text-[#CBD5E1]">This Month</span>
+                <h3 className="text-lg font-semibold text-gray-900">Quick Summary</h3>
+                <span className="rounded-md border border-gray-200 bg-gray-100 px-3 py-1.5 text-xs text-gray-500">This Month</span>
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
-                <QuickSummaryCard label="Services Completed" value={quickSummary.servicesCompleted} icon={Wrench} tint="bg-[#0B5137] text-[#4ADE80]" />
-                <QuickSummaryCard label="Calibrations Completed" value={quickSummary.calibrationsCompleted} icon={PackageCheck} tint="bg-[#0B5137] text-[#4ADE80]" />
-                <QuickSummaryCard label="Tests Completed" value={quickSummary.testsCompleted} icon={ClipboardList} tint="bg-[#41215E] text-[#C084FC]" />
-                <QuickSummaryCard label="Total Spent" value={formatPeso(quickSummary.totalSpent)} icon={Receipt} tint="bg-[#102C53] text-[#60A5FA]" />
+                <QuickSummaryCard label="Services Completed" value={quickSummary.servicesCompleted} icon={Wrench} tint="bg-emerald-50 text-[#059669]" />
+                <QuickSummaryCard label="Calibrations Completed" value={quickSummary.calibrationsCompleted} icon={PackageCheck} tint="bg-emerald-50 text-[#059669]" />
+                <QuickSummaryCard label="Tests Completed" value={quickSummary.testsCompleted} icon={ClipboardList} tint="bg-purple-50 text-[#7C3AED]" />
+                <QuickSummaryCard label="Total Spent" value={formatPeso(quickSummary.totalSpent)} icon={Receipt} tint="bg-blue-50 text-[#66B2B2]" />
               </div>
             </section>
 
-            <section className="data-card rounded-xl border border-white/6 bg-[linear-gradient(180deg,#121923_0%,#0D1219_100%)] p-5 shadow-[0_12px_40px_rgba(0,0,0,0.24)]">
+            <section className="data-card rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
               <div className="mb-4 flex items-center justify-between">
-                <h3 className="text-lg font-semibold text-white">Latest Service Reports</h3>
-                <button className="text-sm font-medium text-[#60A5FA]">View all</button>
+                <h3 className="text-lg font-semibold text-gray-900">Latest Service Reports</h3>
+                <button className="text-sm font-medium text-[#66B2B2]">View all</button>
               </div>
               <div className="space-y-3">
                 {latestReports.map((report) => (
-                  <div key={report.id} className="flex items-center gap-3 rounded-xl border border-white/6 bg-[#0E141D] p-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#5B1D1D] text-[#F87171]">
+                  <div key={report.id} className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white p-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-red-50 text-[#DC2626]">
                       <FileText className="h-4 w-4" />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-medium text-white">{report.title}</div>
-                      <div className="mt-1 text-xs text-[#94A3B8]">{report.date}</div>
+                      <div className="truncate text-sm font-medium text-gray-900">{report.title}</div>
+                      <div className="mt-1 text-xs text-gray-500">{report.date}</div>
                     </div>
                   </div>
                 ))}
                 {latestReports.length === 0 && (
-                  <div className="rounded-xl border border-white/6 bg-[#0E141D] p-4 text-sm text-[#94A3B8]">
+                  <div className="rounded-xl border border-gray-200 bg-white p-4 text-sm text-gray-500">
                     No recent reports available.
                   </div>
                 )}
@@ -899,16 +899,16 @@ function SummaryCard({
   stats: Array<{ label: string; value: number; color: string }>;
 }) {
   return (
-    <div className={`data-card rounded-xl border border-white/6 bg-gradient-to-br ${tint} p-5 shadow-[0_10px_35px_rgba(0,0,0,0.24)]`}>
+    <div className={`data-card rounded-xl border border-gray-200 bg-gradient-to-br ${tint} p-5 shadow-sm`}>
       <div className="flex items-start gap-3">
-        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-white/10 text-white backdrop-blur-sm">
+        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-white text-gray-900 shadow-sm">
           <Icon className="h-5 w-5" />
         </div>
         <div className="min-w-0">
-          <div className="text-sm font-semibold text-white">{title}</div>
+          <div className="text-sm font-semibold text-gray-900">{title}</div>
           <div className="mt-1 flex items-end gap-2">
-            <span className="text-[36px] font-bold leading-none tracking-[-0.04em] text-white">{value}</span>
-            <span className="pb-1 text-[13px] text-[#CBD5E1]">{subtitle}</span>
+            <span className="text-[36px] font-bold leading-none tracking-[-0.04em] text-gray-900">{value}</span>
+            <span className="pb-1 text-[13px] text-gray-600">{subtitle}</span>
           </div>
         </div>
       </div>
@@ -917,7 +917,7 @@ function SummaryCard({
         {stats.map((stat) => (
           <div key={stat.label}>
             <div className={`text-base font-semibold ${stat.color}`}>{stat.value}</div>
-            <div className="mt-1 text-[11px] text-[#CBD5E1]">{stat.label}</div>
+            <div className="mt-1 text-[11px] text-gray-600">{stat.label}</div>
           </div>
         ))}
       </div>
@@ -945,10 +945,10 @@ function OverviewCard({
   footerSubtitle: string;
 }) {
   return (
-    <section className="data-card rounded-xl border border-white/6 bg-[linear-gradient(180deg,#121923_0%,#0D1219_100%)] p-5 shadow-[0_12px_40px_rgba(0,0,0,0.24)]">
+    <section className="data-card rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
       <div className="mb-4 flex items-center justify-between gap-3">
-        <h3 className="text-base font-semibold text-white">{title}</h3>
-        <button className="text-sm font-medium text-[#60A5FA]">{linkLabel}</button>
+        <h3 className="text-base font-semibold text-gray-900">{title}</h3>
+        <button className="text-sm font-medium text-[#66B2B2]">{linkLabel}</button>
       </div>
 
       <div className="grid grid-cols-[140px_minmax(0,1fr)] items-center gap-3">
@@ -970,12 +970,12 @@ function OverviewCard({
             const percentage = total > 0 ? Math.round((entry.value / total) * 100) : 0;
             return (
               <div key={entry.name} className="flex items-center justify-between gap-3 text-xs">
-                <div className="flex items-center gap-2 text-[#CBD5E1]">
+                <div className="flex items-center gap-2 text-gray-500">
                   <span className="h-2 w-2 rounded-full" style={{ backgroundColor: entry.color }} />
                   {entry.name}
                 </div>
-                <div className="text-right text-[#94A3B8]">
-                  <span className="mr-1.5 text-white">{entry.value}</span>
+                <div className="text-right text-gray-500">
+                  <span className="mr-1.5 text-gray-900">{entry.value}</span>
                   ({percentage}%)
                 </div>
               </div>
@@ -984,13 +984,13 @@ function OverviewCard({
         </div>
       </div>
 
-      <div className="mt-4 flex items-start gap-3 rounded-xl border border-white/6 bg-[#0E141D] p-3">
-        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#46310C] text-[#FBBF24]">
+      <div className="mt-4 flex items-start gap-3 rounded-xl border border-gray-200 bg-white p-3">
+        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-amber-50 text-[#D97706]">
           <FooterIcon className="h-4 w-4" />
         </div>
         <div>
-          <div className="text-sm font-medium text-white">{footerTitle}</div>
-          <div className="mt-1 text-xs text-[#94A3B8]">{footerSubtitle}</div>
+          <div className="text-sm font-medium text-gray-900">{footerTitle}</div>
+          <div className="mt-1 text-xs text-gray-500">{footerSubtitle}</div>
         </div>
       </div>
     </section>
@@ -1009,13 +1009,13 @@ function QuickSummaryCard({
   tint: string;
 }) {
   return (
-    <div className="rounded-xl border border-white/6 bg-[#0E141D] p-4">
+    <div className="rounded-xl border border-gray-200 bg-white p-4">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <div className="text-xs uppercase tracking-[0.14em] text-[#64748B]">{label}</div>
-          <div className="mt-2 text-[24px] font-semibold tracking-[-0.03em] text-white">{value}</div>
+          <div className="text-xs uppercase tracking-[0.14em] text-gray-400">{label}</div>
+          <div className="mt-2 text-[24px] font-semibold tracking-[-0.03em] text-gray-900">{value}</div>
         </div>
-        <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${tint}`}>
+        <div className={`flex h-10 w-10 items-center justify-center rounded-lg bg-white shadow-sm border border-gray-100 ${tint.split(' ')[1]}`}>
           <Icon className="h-4 w-4" />
         </div>
       </div>

@@ -60,7 +60,7 @@ const STATUS_ORDER: ExtendedBookingStatus[] = [
 ];
 
 const STATUS_COLORS: Record<ExtendedBookingStatus, string> = {
-  pending: "bg-[#F2A900]/20 text-[#F2A900]",
+  pending: "bg-[#66B2B2]/20 text-[#66B2B2]",
   confirmed: "bg-[#3B82F6]/20 text-[#3B82F6]",
   scheduled: "bg-[#8B5CF6]/20 text-[#8B5CF6]",
   in_progress: "bg-[#F59E0B]/20 text-[#F59E0B]",
@@ -488,7 +488,7 @@ export default function ClientBookings() {
       { status: "scheduled", color: "#3B82F6", value: statusBreakdown.scheduled },
       { status: "in_progress", color: "#F59E0B", value: statusBreakdown.in_progress },
       { status: "pending", color: "#8B5CF6", value: statusBreakdown.pending },
-      { status: "cancelled", color: "#88888C", value: statusBreakdown.cancelled },
+      { status: "cancelled", color: "#6B7280", value: statusBreakdown.cancelled },
     ];
 
     let start = -Math.PI / 2;
@@ -592,7 +592,7 @@ export default function ClientBookings() {
     confirmed: { icon: <Calendar className="w-4 h-4" />, bg: "rgba(59,130,246,0.15)", color: "#3B82F6", getMessage: (id, t) => `New booking ${id} for ${t} confirmed.` },
     scheduled: { icon: <Clock className="w-4 h-4" />, bg: "rgba(139,92,246,0.15)", color: "#8B5CF6", getMessage: (id, t) => `Booking ${id} for ${t} has been scheduled.` },
     in_progress: { icon: <Play className="w-4 h-4" />, bg: "rgba(245,158,11,0.15)", color: "#F59E0B", getMessage: (id, t) => `Booking ${id} for ${t} is now in progress.` },
-    pending: { icon: <Clock className="w-4 h-4" />, bg: "rgba(242,169,0,0.15)", color: "#F2A900", getMessage: (id, t) => `Booking ${id} for ${t} was submitted.` },
+    pending: { icon: <Clock className="w-4 h-4" />, bg: "rgba(242,169,0,0.15)", color: "#66B2B2", getMessage: (id, t) => `Booking ${id} for ${t} was submitted.` },
     cancelled: { icon: <XCircle className="w-4 h-4" />, bg: "rgba(239,68,68,0.15)", color: "#EF4444", getMessage: (id) => `Booking ${id} was cancelled.` },
     rescheduled: { icon: <RotateCcw className="w-4 h-4" />, bg: "rgba(6,182,212,0.15)", color: "#06B6D4", getMessage: (id, t) => `Booking ${id} for ${t} was rescheduled.` },
   };
@@ -601,10 +601,10 @@ export default function ClientBookings() {
     <div className="space-y-4 px-8 pt-8 pb-8">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-[#EAEAEA] tracking-tight">Bookings</h1>
-          <p className="text-sm text-[#88888C] mt-0.5">View, manage and track all your service bookings</p>
+          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Bookings</h1>
+          <p className="text-sm text-gray-500 mt-0.5">View, manage and track all your service bookings</p>
         </div>
-        <Button onClick={() => setBookingModalOpen(true)} className="h-9 bg-[#F2A900] hover:bg-[#F2A900]/80 text-[#050505] font-bold">
+        <Button onClick={() => setBookingModalOpen(true)} className="h-9 bg-[#66B2B2] hover:bg-[#66B2B2]/80 text-white font-bold">
           + Book New Service
         </Button>
       </div>
@@ -619,13 +619,13 @@ export default function ClientBookings() {
             }}
           />
           <div className="relative z-10 w-full max-w-lg mx-4">
-            <div className="bg-[#0A0A0C] rounded p-5 border border-white/10">
+            <div className="bg-gray-50 rounded p-5 border border-gray-200">
               <button
                 onClick={() => {
                   setBookingModalOpen(false);
                   resetModalState();
                 }}
-                className="absolute top-3 right-3 text-[#88888C]"
+                className="absolute top-3 right-3 text-gray-500"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -635,10 +635,10 @@ export default function ClientBookings() {
                   <div className="w-16 h-16 rounded bg-[#10B981]/20 flex items-center justify-center mx-auto mb-3">
                     <CheckCircle2 className="w-8 h-8 text-[#10B981]" />
                   </div>
-                  <h3 className="text-lg font-semibold text-[#EAEAEA] mb-1">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-1">
                     {editBookingId ? "Booking Updated!" : "Booking Confirmed!"}
                   </h3>
-                  <p className="text-sm text-[#88888C]">Your service appointment has been scheduled.</p>
+                  <p className="text-sm text-gray-500">Your service appointment has been scheduled.</p>
                 </div>
               ) : (
                 <>
@@ -647,13 +647,13 @@ export default function ClientBookings() {
                       <div key={step} className="flex items-center gap-2 flex-1">
                         <div
                           className={`w-6 h-6 rounded flex items-center justify-center text-[10px] font-bold ${
-                            bookingStep >= step ? "bg-[#F2A900] text-[#050505]" : "bg-[#2A2A30] text-[#88888C]"
+                            bookingStep >= step ? "bg-[#66B2B2] text-white" : "bg-[#E5E7EB] text-gray-500"
                           }`}
                         >
                           {step + 1}
                         </div>
                         {step < 2 && (
-                          <div className={`flex-1 h-0.5 ${bookingStep > step ? "bg-[#F2A900]" : "bg-[#2A2A30]"}`} />
+                          <div className={`flex-1 h-0.5 ${bookingStep > step ? "bg-[#66B2B2]" : "bg-[#E5E7EB]"}`} />
                         )}
                       </div>
                     ))}
@@ -661,16 +661,16 @@ export default function ClientBookings() {
 
                   {bookingStep === 0 && (
                     <div className="space-y-4">
-                      <h3 className="text-sm font-semibold text-[#EAEAEA]">Select Equipment &amp; Service</h3>
+                      <h3 className="text-sm font-semibold text-gray-900">Select Equipment &amp; Service</h3>
                       <div>
-                        <label className="text-[10px] uppercase tracking-wider text-[#88888C] mb-1 block">Equipment</label>
+                        <label className="text-[10px] uppercase tracking-wider text-gray-500 mb-1 block">Equipment</label>
                         <Select value={bookingEquipment} onValueChange={setBookingEquipment}>
-                          <SelectTrigger className="h-9 bg-[#1A1A20] border-white/10 text-[#EAEAEA] text-xs">
+                          <SelectTrigger className="h-9 bg-white border-gray-200 text-gray-900 text-xs">
                             <SelectValue placeholder="Choose unit" />
                           </SelectTrigger>
-                          <SelectContent className="bg-[#1A1A20] border-white/10">
+                          <SelectContent className="bg-white border-gray-200">
                             {clientEquipment.map((eq) => (
-                              <SelectItem key={eq.id} value={String(eq.id)} className="text-xs text-[#EAEAEA]">
+                              <SelectItem key={eq.id} value={String(eq.id)} className="text-xs text-gray-900">
                                 {eq.unitId} - {eq.type}
                               </SelectItem>
                             ))}
@@ -679,7 +679,7 @@ export default function ClientBookings() {
                       </div>
 
                       <div>
-                        <label className="text-[10px] uppercase tracking-wider text-[#88888C] mb-1 block">Service Type</label>
+                        <label className="text-[10px] uppercase tracking-wider text-gray-500 mb-1 block">Service Type</label>
                         <Select
                           value={bookingType}
                           onValueChange={(v) => {
@@ -690,29 +690,29 @@ export default function ClientBookings() {
                             }
                           }}
                         >
-                          <SelectTrigger className="h-9 bg-[#1A1A20] border-white/10 text-[#EAEAEA] text-xs">
+                          <SelectTrigger className="h-9 bg-white border-gray-200 text-gray-900 text-xs">
                             <SelectValue />
                           </SelectTrigger>
-                          <SelectContent className="bg-[#1A1A20] border-white/10">
-                            <SelectItem value="pms" className="text-xs text-[#EAEAEA]">Preventative Maintenance</SelectItem>
-                            <SelectItem value="repair" className="text-xs text-[#EAEAEA]">Repair</SelectItem>
-                            <SelectItem value="inspection" className="text-xs text-[#EAEAEA]">Inspection</SelectItem>
-                            <SelectItem value="installation" className="text-xs text-[#EAEAEA]">Installation</SelectItem>
-                            <SelectItem value="calibration" className="text-xs text-[#EAEAEA]">Calibration</SelectItem>
+                          <SelectContent className="bg-white border-gray-200">
+                            <SelectItem value="pms" className="text-xs text-gray-900">Preventative Maintenance</SelectItem>
+                            <SelectItem value="repair" className="text-xs text-gray-900">Repair</SelectItem>
+                            <SelectItem value="inspection" className="text-xs text-gray-900">Inspection</SelectItem>
+                            <SelectItem value="installation" className="text-xs text-gray-900">Installation</SelectItem>
+                            <SelectItem value="calibration" className="text-xs text-gray-900">Calibration</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
 
                       <div>
-                        <label className="text-[10px] uppercase tracking-wider text-[#88888C] mb-1 block">Package</label>
+                        <label className="text-[10px] uppercase tracking-wider text-gray-500 mb-1 block">Package</label>
                         <Select value={bookingPackage} onValueChange={(v) => setBookingPackage(v as PackageOption)}>
-                          <SelectTrigger className="h-9 bg-[#1A1A20] border-white/10 text-[#EAEAEA] text-xs">
+                          <SelectTrigger className="h-9 bg-white border-gray-200 text-gray-900 text-xs">
                             <SelectValue />
                           </SelectTrigger>
-                          <SelectContent className="bg-[#1A1A20] border-white/10">
-                            <SelectItem value="pms_1000" className="text-xs text-[#EAEAEA]">PMS Package (1000 hrs)</SelectItem>
-                            <SelectItem value="repair_6" className="text-xs text-[#EAEAEA]">Repair Package (6 visits)</SelectItem>
-                            <SelectItem value="one_time" className="text-xs text-[#EAEAEA]">One-time Service</SelectItem>
+                          <SelectContent className="bg-white border-gray-200">
+                            <SelectItem value="pms_1000" className="text-xs text-gray-900">PMS Package (1000 hrs)</SelectItem>
+                            <SelectItem value="repair_6" className="text-xs text-gray-900">Repair Package (6 visits)</SelectItem>
+                            <SelectItem value="one_time" className="text-xs text-gray-900">One-time Service</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
@@ -720,7 +720,7 @@ export default function ClientBookings() {
                       <Button
                         onClick={() => setBookingStep(1)}
                         disabled={!bookingEquipment}
-                        className="w-full h-9 bg-[#F2A900] hover:bg-[#F2A900]/80 text-[#050505] font-bold disabled:opacity-50"
+                        className="w-full h-9 bg-[#66B2B2] hover:bg-[#66B2B2]/80 text-white font-bold disabled:opacity-50"
                       >
                         Continue <ArrowRight className="w-4 h-4 ml-1" />
                       </Button>
@@ -729,52 +729,52 @@ export default function ClientBookings() {
 
                   {bookingStep === 1 && (
                     <div className="space-y-4">
-                      <h3 className="text-sm font-semibold text-[#EAEAEA]">Schedule Appointment</h3>
+                      <h3 className="text-sm font-semibold text-gray-900">Schedule Appointment</h3>
                       <div>
-                        <label className="text-[10px] uppercase tracking-wider text-[#88888C] mb-1 block">Preferred Date</label>
+                        <label className="text-[10px] uppercase tracking-wider text-gray-500 mb-1 block">Preferred Date</label>
                         <Input
                           type="date"
                           value={bookingDate}
                           onChange={(e) => setBookingDate(e.target.value)}
-                          className="h-9 bg-[#1A1A20] border-white/10 text-[#EAEAEA] text-xs"
+                          className="h-9 bg-white border-gray-200 text-gray-900 text-xs"
                         />
                       </div>
                       <div>
-                        <label className="text-[10px] uppercase tracking-wider text-[#88888C] mb-1 block">Preferred Time</label>
+                        <label className="text-[10px] uppercase tracking-wider text-gray-500 mb-1 block">Preferred Time</label>
                         <Select value={bookingTime} onValueChange={setBookingTime}>
-                          <SelectTrigger className="h-9 bg-[#1A1A20] border-white/10 text-[#EAEAEA] text-xs">
+                          <SelectTrigger className="h-9 bg-white border-gray-200 text-gray-900 text-xs">
                             <SelectValue placeholder="Select time window" />
                           </SelectTrigger>
-                          <SelectContent className="bg-[#1A1A20] border-white/10">
-                            <SelectItem value="08:00-12:00" className="text-xs text-[#EAEAEA]">Morning (8:00 - 12:00)</SelectItem>
-                            <SelectItem value="12:00-16:00" className="text-xs text-[#EAEAEA]">Afternoon (12:00 - 16:00)</SelectItem>
-                            <SelectItem value="16:00-20:00" className="text-xs text-[#EAEAEA]">Evening (16:00 - 20:00)</SelectItem>
+                          <SelectContent className="bg-white border-gray-200">
+                            <SelectItem value="08:00-12:00" className="text-xs text-gray-900">Morning (8:00 - 12:00)</SelectItem>
+                            <SelectItem value="12:00-16:00" className="text-xs text-gray-900">Afternoon (12:00 - 16:00)</SelectItem>
+                            <SelectItem value="16:00-20:00" className="text-xs text-gray-900">Evening (16:00 - 20:00)</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
 
                       <div>
-                        <label className="text-[10px] uppercase tracking-wider text-[#88888C] mb-1 block">Technician Preference</label>
+                        <label className="text-[10px] uppercase tracking-wider text-gray-500 mb-1 block">Technician Preference</label>
                         <Select value={bookingTechnician} onValueChange={setBookingTechnician}>
-                          <SelectTrigger className="h-9 bg-[#1A1A20] border-white/10 text-[#EAEAEA] text-xs">
+                          <SelectTrigger className="h-9 bg-white border-gray-200 text-gray-900 text-xs">
                             <SelectValue />
                           </SelectTrigger>
-                          <SelectContent className="bg-[#1A1A20] border-white/10">
+                          <SelectContent className="bg-white border-gray-200">
                             {TECHNICIAN_OPTIONS.map((tech) => (
-                              <SelectItem key={tech} value={tech} className="text-xs text-[#EAEAEA]">{tech}</SelectItem>
+                              <SelectItem key={tech} value={tech} className="text-xs text-gray-900">{tech}</SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
                       </div>
 
                       <div className="flex gap-2">
-                        <Button variant="outline" onClick={() => setBookingStep(0)} className="flex-1 h-9 border-white/10 text-[#88888C] text-xs">
+                        <Button variant="outline" onClick={() => setBookingStep(0)} className="flex-1 h-9 border-gray-200 text-gray-500 text-xs">
                           Back
                         </Button>
                         <Button
                           onClick={() => setBookingStep(2)}
                           disabled={!bookingDate || !bookingTime}
-                          className="flex-1 h-9 bg-[#F2A900] hover:bg-[#F2A900]/80 text-[#050505] font-bold disabled:opacity-50"
+                          className="flex-1 h-9 bg-[#66B2B2] hover:bg-[#66B2B2]/80 text-white font-bold disabled:opacity-50"
                         >
                           Continue <ArrowRight className="w-4 h-4 ml-1" />
                         </Button>
@@ -784,48 +784,48 @@ export default function ClientBookings() {
 
                   {bookingStep === 2 && (
                     <div className="space-y-4">
-                      <h3 className="text-sm font-semibold text-[#EAEAEA]">Confirm Booking</h3>
-                      <div className="p-3 rounded bg-[#0A0A0C] border border-white/10 space-y-1 text-xs">
+                      <h3 className="text-sm font-semibold text-gray-900">Confirm Booking</h3>
+                      <div className="p-3 rounded bg-gray-50 border border-gray-200 space-y-1 text-xs">
                         <div className="flex justify-between">
-                          <span className="text-[#88888C]">Equipment</span>
-                          <span className="text-[#EAEAEA] font-mono">{clientEquipment.find((e) => e.id === parseInt(bookingEquipment, 10))?.unitId}</span>
+                          <span className="text-gray-500">Equipment</span>
+                          <span className="text-gray-900 font-mono">{clientEquipment.find((e) => e.id === parseInt(bookingEquipment, 10))?.unitId}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-[#88888C]">Service Type</span>
-                          <span className="text-[#EAEAEA]">{formatServiceType(bookingType)}</span>
+                          <span className="text-gray-500">Service Type</span>
+                          <span className="text-gray-900">{formatServiceType(bookingType)}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-[#88888C]">Package</span>
-                          <span className="text-[#EAEAEA]">{PACKAGE_LABELS[bookingPackage]}</span>
+                          <span className="text-gray-500">Package</span>
+                          <span className="text-gray-900">{PACKAGE_LABELS[bookingPackage]}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-[#88888C]">Date</span>
-                          <span className="text-[#EAEAEA]">{bookingDate}</span>
+                          <span className="text-gray-500">Date</span>
+                          <span className="text-gray-900">{bookingDate}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-[#88888C]">Time</span>
-                          <span className="text-[#EAEAEA]">{bookingTime}</span>
+                          <span className="text-gray-500">Time</span>
+                          <span className="text-gray-900">{bookingTime}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-[#88888C]">Technician</span>
-                          <span className="text-[#EAEAEA]">{bookingTechnician}</span>
+                          <span className="text-gray-500">Technician</span>
+                          <span className="text-gray-900">{bookingTechnician}</span>
                         </div>
                       </div>
                       <div>
-                        <label className="text-[10px] uppercase tracking-wider text-[#88888C] mb-1 block">Additional Notes</label>
+                        <label className="text-[10px] uppercase tracking-wider text-gray-500 mb-1 block">Additional Notes</label>
                         <textarea
                           value={bookingNotes}
                           onChange={(e) => setBookingNotes(e.target.value)}
                           rows={3}
-                          className="w-full px-3 py-2 rounded bg-[#1A1A20] border border-white/10 text-[#EAEAEA] text-xs focus:outline-none focus:border-[#F2A900]/50 resize-none"
+                          className="w-full px-3 py-2 rounded bg-white border border-gray-200 text-gray-900 text-xs focus:outline-none focus:border-[#66B2B2]/50 resize-none"
                           placeholder="Any special instructions..."
                         />
                       </div>
                       <div className="flex gap-2">
-                        <Button variant="outline" onClick={() => setBookingStep(1)} className="flex-1 h-9 border-white/10 text-[#88888C] text-xs">
+                        <Button variant="outline" onClick={() => setBookingStep(1)} className="flex-1 h-9 border-gray-200 text-gray-500 text-xs">
                           Back
                         </Button>
-                        <Button onClick={handleBookingSubmit} className="flex-1 h-9 bg-[#F2A900] hover:bg-[#F2A900]/80 text-[#050505] font-bold">
+                        <Button onClick={handleBookingSubmit} className="flex-1 h-9 bg-[#66B2B2] hover:bg-[#66B2B2]/80 text-white font-bold">
                           <CheckCircle2 className="w-4 h-4 mr-1" />
                           {editBookingId ? "Save Reschedule" : "Confirm Booking"}
                         </Button>
@@ -843,7 +843,7 @@ export default function ClientBookings() {
         <div className="xl:col-span-9 flex flex-col gap-3">
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3">
             <StatCard title="Upcoming" value={upcomingCount} subtitle="Next 7 days" icon={<Calendar className="w-4 h-4 text-[#3B82F6]" />} iconBg="bg-[#3B82F6]/20" />
-            <StatCard title="Today" value={todayCount} subtitle="Scheduled for today" icon={<Clock className="w-4 h-4 text-[#F2A900]" />} iconBg="bg-[#F2A900]/20" />
+            <StatCard title="Today" value={todayCount} subtitle="Scheduled for today" icon={<Clock className="w-4 h-4 text-[#66B2B2]" />} iconBg="bg-[#66B2B2]/20" />
             <StatCard title="Completed" value={completedCount} subtitle="This month" icon={<CheckCircle2 className="w-4 h-4 text-[#10B981]" />} iconBg="bg-[#10B981]/20" />
             <StatCard title="Overdue" value={overdueCount} subtitle="Requires attention" icon={<Ban className="w-4 h-4 text-[#EF4444]" />} iconBg="bg-[#EF4444]/20" />
             <StatCard title="Total Spent" value={formatMoneyPeso(24850)} subtitle="This month" icon={<DollarSign className="w-4 h-4 text-[#8B5CF6]" />} iconBg="bg-[#8B5CF6]/20" />
@@ -852,20 +852,20 @@ export default function ClientBookings() {
           <div className="data-card p-3">
             <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.7fr)_repeat(3,minmax(0,1fr))_minmax(0,1.2fr)_auto] gap-2">
               <div className="relative">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#88888C]" />
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500" />
                 <Input
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="Search by equipment, service type..."
-                  className="h-9 pl-8 bg-[#1A1A20] border-white/10 text-xs text-[#EAEAEA]"
+                  className="h-9 pl-8 bg-white border-gray-200 text-xs text-gray-900"
                 />
               </div>
 
               <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="h-9 bg-[#1A1A20] border-white/10 text-xs text-[#EAEAEA]">
+                <SelectTrigger className="h-9 bg-white border-gray-200 text-xs text-gray-900">
                   <SelectValue placeholder="All Status" />
                 </SelectTrigger>
-                <SelectContent className="bg-[#1A1A20] border-white/10">
+                <SelectContent className="bg-white border-gray-200">
                   <SelectItem value="all">All Status</SelectItem>
                   {STATUS_ORDER.map((status) => (
                     <SelectItem key={status} value={status}>{status.replace("_", " ")}</SelectItem>
@@ -874,10 +874,10 @@ export default function ClientBookings() {
               </Select>
 
               <Select value={equipmentFilter} onValueChange={setEquipmentFilter}>
-                <SelectTrigger className="h-9 bg-[#1A1A20] border-white/10 text-xs text-[#EAEAEA]">
+                <SelectTrigger className="h-9 bg-white border-gray-200 text-xs text-gray-900">
                   <SelectValue placeholder="All Equipment" />
                 </SelectTrigger>
-                <SelectContent className="bg-[#1A1A20] border-white/10">
+                <SelectContent className="bg-white border-gray-200">
                   <SelectItem value="all">All Equipment</SelectItem>
                   {clientEquipment.map((eq) => (
                     <SelectItem key={eq.id} value={String(eq.id)}>{eq.unitId}</SelectItem>
@@ -886,10 +886,10 @@ export default function ClientBookings() {
               </Select>
 
               <Select value={serviceTypeFilter} onValueChange={setServiceTypeFilter}>
-                <SelectTrigger className="h-9 bg-[#1A1A20] border-white/10 text-xs text-[#EAEAEA]">
+                <SelectTrigger className="h-9 bg-white border-gray-200 text-xs text-gray-900">
                   <SelectValue placeholder="All Service Types" />
                 </SelectTrigger>
-                <SelectContent className="bg-[#1A1A20] border-white/10">
+                <SelectContent className="bg-white border-gray-200">
                   <SelectItem value="all">All Service Types</SelectItem>
                   <SelectItem value="pms">PMS</SelectItem>
                   <SelectItem value="repair">Repair</SelectItem>
@@ -904,7 +904,7 @@ export default function ClientBookings() {
                   type="button"
                   variant="outline"
                   onClick={() => setDatePickerOpen((prev) => !prev)}
-                  className="h-9 bg-[#1A1A20] border border-white/10 rounded px-3 flex items-center gap-2 text-xs text-[#EAEAEA] whitespace-nowrap w-full justify-between hover:bg-white/5"
+                  className="h-9 bg-white border border-gray-200 rounded px-3 flex items-center gap-2 text-xs text-gray-900 whitespace-nowrap w-full justify-between hover:bg-gray-50"
                 >
                   <span className="flex items-center gap-2 overflow-hidden">
                     <CalendarDays className="w-3.5 h-3.5 flex-shrink-0" />
@@ -916,23 +916,23 @@ export default function ClientBookings() {
                 {datePickerOpen && (
                   <>
                     <div className="fixed inset-0 z-40" onClick={() => setDatePickerOpen(false)} />
-                    <div className="absolute right-0 top-11 z-50 bg-[#0A0A0C] border border-white/10 rounded p-3 space-y-2 shadow-xl w-[260px]">
+                    <div className="absolute right-0 top-11 z-50 bg-gray-50 border border-gray-200 rounded p-3 space-y-2 shadow-xl w-[260px]">
                       <div>
-                        <label className="text-[10px] uppercase tracking-wider text-[#88888C] mb-1 block">From</label>
+                        <label className="text-[10px] uppercase tracking-wider text-gray-500 mb-1 block">From</label>
                         <Input
                           type="date"
                           value={fromDate}
                           onChange={(e) => setFromDate(e.target.value)}
-                          className="h-9 bg-[#1A1A20] border-white/10 text-xs text-[#EAEAEA]"
+                          className="h-9 bg-white border-gray-200 text-xs text-gray-900"
                         />
                       </div>
                       <div>
-                        <label className="text-[10px] uppercase tracking-wider text-[#88888C] mb-1 block">To</label>
+                        <label className="text-[10px] uppercase tracking-wider text-gray-500 mb-1 block">To</label>
                         <Input
                           type="date"
                           value={toDate}
                           onChange={(e) => setToDate(e.target.value)}
-                          className="h-9 bg-[#1A1A20] border-white/10 text-xs text-[#EAEAEA]"
+                          className="h-9 bg-white border-gray-200 text-xs text-gray-900"
                         />
                       </div>
                       <div className="flex gap-2 pt-1">
@@ -943,14 +943,14 @@ export default function ClientBookings() {
                             setFromDate("");
                             setToDate("");
                           }}
-                          className="flex-1 h-9 border-white/10 text-[#88888C]"
+                          className="flex-1 h-9 border-gray-200 text-gray-500"
                         >
                           Clear
                         </Button>
                         <Button
                           type="button"
                           onClick={() => setDatePickerOpen(false)}
-                          className="flex-1 h-9 bg-[#F2A900] hover:bg-[#F2A900]/80 text-[#050505] font-bold"
+                          className="flex-1 h-9 bg-[#66B2B2] hover:bg-[#66B2B2]/80 text-white font-bold"
                         >
                           Apply
                         </Button>
@@ -960,7 +960,7 @@ export default function ClientBookings() {
                 )}
               </div>
 
-              <Button className="h-9 bg-white/5 hover:bg-white/10 text-[#EAEAEA]">
+              <Button className="h-9 bg-gray-50 hover:bg-gray-100 text-gray-900">
                 <Filter className="w-3.5 h-3.5 mr-1" />
                 Filters
               </Button>
@@ -968,7 +968,7 @@ export default function ClientBookings() {
           </div>
 
           <div className="data-card p-3 xl:h-[433px] flex flex-col">
-            <div className="flex flex-wrap gap-3 border-b border-white/10 pb-2 mb-2">
+            <div className="flex flex-wrap gap-3 border-b border-gray-200 pb-2 mb-2">
               {([
                 ["all", "All Bookings"],
                 ["upcoming", "Upcoming"],
@@ -980,7 +980,7 @@ export default function ClientBookings() {
                   key={key}
                   onClick={() => setActiveTab(key)}
                   className={`text-xs pb-1 border-b transition-colors duration-150 ${
-                    activeTab === key ? "text-[#F2A900] border-[#F2A900]" : "text-[#88888C] border-transparent hover:text-[#EAEAEA]"
+                    activeTab === key ? "text-[#66B2B2] border-[#66B2B2]" : "text-gray-500 border-transparent hover:text-gray-900"
                   }`}
                 >
                   {label} <span className="ml-1 text-[10px]">{tabCounts[key]}</span>
@@ -990,23 +990,23 @@ export default function ClientBookings() {
 
             <div className="flex-1 min-h-0 overflow-auto">
               <table className="w-full min-w-[1100px] text-xs">
-                <thead className="sticky top-0 z-10 bg-[#0A0A0C]">
-                  <tr className="border-b border-white/10">
-                    <th className="text-left py-2 px-2 text-[10px] uppercase tracking-wider text-[#88888C]">Booking ID</th>
-                    <th className="text-left py-2 px-2 text-[10px] uppercase tracking-wider text-[#88888C]">Equipment</th>
-                    <th className="text-left py-2 px-2 text-[10px] uppercase tracking-wider text-[#88888C]">Service Type</th>
-                    <th className="text-left py-2 px-2 text-[10px] uppercase tracking-wider text-[#88888C]">Date &amp; Time</th>
-                    <th className="text-left py-2 px-2 text-[10px] uppercase tracking-wider text-[#88888C]">Technician</th>
-                    <th className="text-left py-2 px-2 text-[10px] uppercase tracking-wider text-[#88888C]">Status</th>
-                    <th className="text-left py-2 px-2 text-[10px] uppercase tracking-wider text-[#88888C]">Package / Type</th>
-                    <th className="text-left py-2 px-2 text-[10px] uppercase tracking-wider text-[#88888C]">Current / Next PMS</th>
-                    <th className="text-left py-2 px-2 text-[10px] uppercase tracking-wider text-[#88888C]">Actions</th>
+                <thead className="sticky top-0 z-10 bg-gray-50">
+                  <tr className="border-b border-gray-200">
+                    <th className="text-left py-2 px-2 text-[10px] uppercase tracking-wider text-gray-500">Booking ID</th>
+                    <th className="text-left py-2 px-2 text-[10px] uppercase tracking-wider text-gray-500">Equipment</th>
+                    <th className="text-left py-2 px-2 text-[10px] uppercase tracking-wider text-gray-500">Service Type</th>
+                    <th className="text-left py-2 px-2 text-[10px] uppercase tracking-wider text-gray-500">Date &amp; Time</th>
+                    <th className="text-left py-2 px-2 text-[10px] uppercase tracking-wider text-gray-500">Technician</th>
+                    <th className="text-left py-2 px-2 text-[10px] uppercase tracking-wider text-gray-500">Status</th>
+                    <th className="text-left py-2 px-2 text-[10px] uppercase tracking-wider text-gray-500">Package / Type</th>
+                    <th className="text-left py-2 px-2 text-[10px] uppercase tracking-wider text-gray-500">Current / Next PMS</th>
+                    <th className="text-left py-2 px-2 text-[10px] uppercase tracking-wider text-gray-500">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredBookings.length === 0 && (
                     <tr>
-                      <td colSpan={9} className="py-10 text-center text-[#88888C]">
+                      <td colSpan={9} className="py-10 text-center text-gray-500">
                         <Package className="w-6 h-6 mx-auto mb-2" />
                         No bookings found
                       </td>
@@ -1020,35 +1020,35 @@ export default function ClientBookings() {
                       ? item.booking.serviceType.toLowerCase()
                       : "";
                     return (
-                      <tr key={item.booking.id} className="border-b border-white/5 hover:bg-white/[0.02] transition-colors duration-150">
+                      <tr key={item.booking.id} className="border-b border-gray-200 hover:bg-gray-50 transition-colors duration-150">
                         <td className="py-2 px-2">
-                          <div className="font-mono text-[#EAEAEA] font-semibold">{formatBookingId(item.booking.id, item.booking.requestedDate)}</div>
-                          <div className="text-[10px] text-[#88888C]">{formatDate(item.booking.createdAt)}</div>
+                          <div className="font-mono text-gray-900 font-semibold">{formatBookingId(item.booking.id, item.booking.requestedDate)}</div>
+                          <div className="text-[10px] text-gray-500">{formatDate(item.booking.createdAt)}</div>
                         </td>
 
                         <td className="py-2 px-2">
                           <div className="flex items-center gap-2">
-                            <div className="w-8 h-8 rounded bg-[#1A1A20] border border-white/10 flex items-center justify-center">
-                              <Wrench className="w-3.5 h-3.5 text-[#005F73]" />
+                            <div className="w-8 h-8 rounded bg-white border border-gray-200 flex items-center justify-center">
+                              <Wrench className="w-3.5 h-3.5 text-[#66B2B2]" />
                             </div>
                             <div>
-                              <div className="text-[#EAEAEA] font-mono font-semibold">{item.equipment?.unitId ?? "—"}</div>
-                              <div className="text-[10px] text-[#88888C]">SN: {item.equipment?.serialNumber ?? "—"}</div>
-                              <div className="text-[10px] text-[#88888C]">Client: {user?.name ?? "Client"}</div>
+                              <div className="text-gray-900 font-mono font-semibold">{item.equipment?.unitId ?? "—"}</div>
+                              <div className="text-[10px] text-gray-500">SN: {item.equipment?.serialNumber ?? "—"}</div>
+                              <div className="text-[10px] text-gray-500">Client: {user?.name ?? "Client"}</div>
                             </div>
                           </div>
                         </td>
 
                         <td className="py-2 px-2">
-                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${SERVICE_COLORS[serviceTypeKey as ServiceType] ?? "bg-[#88888C]/20 text-[#88888C]"}`}>
+                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${SERVICE_COLORS[serviceTypeKey as ServiceType] ?? "bg-[#6B7280]/20 text-gray-500"}`}>
                             {formatServiceType(item.booking.serviceType)}
                           </span>
-                          <div className="text-[10px] text-[#88888C] mt-1">{item.booking.serviceType === "pms" ? "(1000 hrs)" : "One-time"}</div>
+                          <div className="text-[10px] text-gray-500 mt-1">{item.booking.serviceType === "pms" ? "(1000 hrs)" : "One-time"}</div>
                         </td>
 
                         <td className="py-2 px-2">
-                          <div className="flex items-center gap-1 text-[#EAEAEA]"><Calendar className="w-3 h-3" />{formatDate(item.booking.requestedDate)}</div>
-                          <div className="flex items-center gap-1 text-[10px] text-[#88888C] mt-1"><Clock className="w-3 h-3" />{getDisplayTime(item.booking.preferredTime)}</div>
+                          <div className="flex items-center gap-1 text-gray-900"><Calendar className="w-3 h-3" />{formatDate(item.booking.requestedDate)}</div>
+                          <div className="flex items-center gap-1 text-[10px] text-gray-500 mt-1"><Clock className="w-3 h-3" />{getDisplayTime(item.booking.preferredTime)}</div>
                         </td>
 
                         <td className="py-2 px-2">
@@ -1056,7 +1056,7 @@ export default function ClientBookings() {
                             <div className={`w-6 h-6 rounded flex items-center justify-center text-[10px] font-semibold ${getTechColor(item.technician)}`}>
                               {getInitials(item.technician)}
                             </div>
-                            <span className="text-[#EAEAEA]">{item.technician}</span>
+                            <span className="text-gray-900">{item.technician}</span>
                           </div>
                         </td>
 
@@ -1067,25 +1067,25 @@ export default function ClientBookings() {
                         </td>
 
                         <td className="py-2 px-2">
-                          <div className="flex items-center gap-1 text-[#EAEAEA]"><Package className="w-3.5 h-3.5 text-[#8B5CF6]" />{PACKAGE_LABELS[item.packageType]}</div>
-                          <div className="text-[10px] text-[#88888C] mt-1">{item.packageType === "repair_6" ? "(6 visits)" : item.packageType === "pms_1000" ? "(1000 hrs)" : "One-time"}</div>
+                          <div className="flex items-center gap-1 text-gray-900"><Package className="w-3.5 h-3.5 text-[#8B5CF6]" />{PACKAGE_LABELS[item.packageType]}</div>
+                          <div className="text-[10px] text-gray-500 mt-1">{item.packageType === "repair_6" ? "(6 visits)" : item.packageType === "pms_1000" ? "(1000 hrs)" : "One-time"}</div>
                         </td>
 
                         <td className="py-2 px-2">
                           <div className={`font-semibold ${getHoursState(item.currentHours, item.nextPms)}`}>{item.currentHours.toLocaleString()} hrs</div>
-                          <div className="text-[10px] text-[#88888C]">Next: {item.nextPms.toLocaleString()} hrs</div>
+                          <div className="text-[10px] text-gray-500">Next: {item.nextPms.toLocaleString()} hrs</div>
                         </td>
 
                         <td className="py-2 px-2">
                           <div className="flex items-center gap-1 relative">
-                            <Button size="icon-sm" variant="outline" className="h-7 w-7 border-white/10 text-[#88888C] hover:text-[#EAEAEA]">
+                            <Button size="icon-sm" variant="outline" className="h-7 w-7 border-gray-200 text-gray-500 hover:text-gray-900">
                               <Eye className="w-3.5 h-3.5" />
                             </Button>
 
                             {isStartVisible && (
                               <Button
                                 size="sm"
-                                className="h-7 px-2 bg-[#005F73] hover:bg-[#005F73]/80 text-[#EAEAEA]"
+                                className="h-7 px-2 bg-[#66B2B2] hover:bg-[#66B2B2]/80 text-gray-900"
                                 onClick={() => setBookingStatus(item.booking, item.status === "in_progress" ? "completed" : "in_progress")}
                               >
                                 {item.status === "in_progress" ? <Check className="w-3 h-3 mr-1" /> : <Play className="w-3 h-3 mr-1" />}
@@ -1096,23 +1096,23 @@ export default function ClientBookings() {
                             <Button
                               size="icon-sm"
                               variant="outline"
-                              className="h-7 w-7 border-white/10 text-[#88888C] hover:text-[#EAEAEA]"
+                              className="h-7 w-7 border-gray-200 text-gray-500 hover:text-gray-900"
                               onClick={() => setOpenActionMenuFor(openActionMenuFor === item.booking.id ? null : item.booking.id)}
                             >
                               <MoreVertical className="w-3.5 h-3.5" />
                             </Button>
 
                             {openActionMenuFor === item.booking.id && (
-                              <div className="absolute right-0 top-8 w-40 rounded border border-white/10 bg-[#0A0A0C] p-1 z-20">
-                                <button className="w-full text-left px-2 py-1 text-xs text-[#EAEAEA] hover:bg-white/5 rounded">View Details</button>
+                              <div className="absolute right-0 top-8 w-40 rounded border border-gray-200 bg-gray-50 p-1 z-20">
+                                <button className="w-full text-left px-2 py-1 text-xs text-gray-900 hover:bg-gray-50 rounded">View Details</button>
                                 <button
-                                  className="w-full text-left px-2 py-1 text-xs text-[#EAEAEA] hover:bg-white/5 rounded"
+                                  className="w-full text-left px-2 py-1 text-xs text-gray-900 hover:bg-gray-50 rounded"
                                   onClick={() => openReschedule(item.booking)}
                                 >
                                   Reschedule
                                 </button>
                                 <button
-                                  className="w-full text-left px-2 py-1 text-xs text-[#EAEAEA] hover:bg-white/5 rounded"
+                                  className="w-full text-left px-2 py-1 text-xs text-gray-900 hover:bg-gray-50 rounded"
                                   onClick={() => {
                                     setBookingStatus(item.booking, "cancelled");
                                     setOpenActionMenuFor(null);
@@ -1123,7 +1123,7 @@ export default function ClientBookings() {
                                 {transitions.map((nextStatus) => (
                                   <button
                                     key={nextStatus}
-                                    className="w-full text-left px-2 py-1 text-xs text-[#EAEAEA] hover:bg-white/5 rounded capitalize"
+                                    className="w-full text-left px-2 py-1 text-xs text-gray-900 hover:bg-gray-50 rounded capitalize"
                                     onClick={() => {
                                       setBookingStatus(item.booking, nextStatus);
                                       setOpenActionMenuFor(null);
@@ -1147,8 +1147,8 @@ export default function ClientBookings() {
 
         <aside className="xl:col-span-3 flex flex-col gap-3">
           <div className="data-card p-3">
-            <div className="text-sm font-semibold text-[#EAEAEA]">Schedule Calendar</div>
-            <div className="mt-2 flex items-center justify-between text-xs text-[#88888C]">
+            <div className="text-sm font-semibold text-gray-900">Schedule Calendar</div>
+            <div className="mt-2 flex items-center justify-between text-xs text-gray-500">
               <button onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1))}>
                 <ChevronLeft className="w-4 h-4" />
               </button>
@@ -1157,17 +1157,17 @@ export default function ClientBookings() {
                 <ChevronRight className="w-4 h-4" />
               </button>
             </div>
-            <div className="grid grid-cols-7 mt-2 text-[10px] text-[#88888C]">
+            <div className="grid grid-cols-7 mt-2 text-[10px] text-gray-500">
               {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
                 <div key={d} className="text-center py-1">{d}</div>
               ))}
             </div>
             <div className="grid grid-cols-7 gap-1 mt-1">
               {calendarDays.map((cell, index) => (
-                <div key={`day-${index}`} className="h-8 rounded border border-white/5 flex flex-col items-center justify-center text-[10px]">
+                <div key={`day-${index}`} className="h-8 rounded border border-gray-200 flex flex-col items-center justify-center text-[10px]">
                   {cell.day && (
                     <>
-                      <span className={cell.isToday ? "text-[#050505] bg-[#F2A900] px-1 rounded" : "text-[#EAEAEA]"}>{cell.day}</span>
+                      <span className={cell.isToday ? "text-white bg-[#66B2B2] px-1 rounded" : "text-gray-900"}>{cell.day}</span>
                       <span className="flex gap-0.5 mt-0.5">
                         {cell.hasUpcoming && <span className="w-1 h-1 rounded bg-[#3B82F6]" />}
                         {cell.hasOverdue && <span className="w-1 h-1 rounded bg-[#EF4444]" />}
@@ -1177,8 +1177,8 @@ export default function ClientBookings() {
                 </div>
               ))}
             </div>
-            <div className="mt-2 flex items-center gap-3 text-[10px] text-[#88888C]">
-              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded bg-[#F2A900]" />Today</span>
+            <div className="mt-2 flex items-center gap-3 text-[10px] text-gray-500">
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded bg-[#66B2B2]" />Today</span>
               <span className="flex items-center gap-1"><span className="w-2 h-2 rounded bg-[#3B82F6]" />{upcoming.length} Upcoming</span>
               <span className="flex items-center gap-1"><span className="w-2 h-2 rounded bg-[#EF4444]" />{overdueCount} Overdue</span>
             </div>
@@ -1186,17 +1186,17 @@ export default function ClientBookings() {
 
           <div className="data-card p-3 flex flex-col flex-0.5">
             <div className="flex items-center justify-between">
-              <div className="text-sm font-semibold text-[#EAEAEA]">Upcoming Bookings</div>
-              <button className="text-xs text-[#3B82F6] hover:text-[#EAEAEA] transition-colors duration-150">View all</button>
+              <div className="text-sm font-semibold text-gray-900">Upcoming Bookings</div>
+              <button className="text-xs text-[#3B82F6] hover:text-gray-900 transition-colors duration-150">View all</button>
             </div>
             <div className="mt-2 space-y-2 flex flex-col flex-1">
               {miniUpcoming.map((item) => (
-                <div key={`mini-${item.booking.id}`} className="p-2 rounded border border-white/10 bg-[#1A1A20]">
+                <div key={`mini-${item.booking.id}`} className="p-2 rounded border border-gray-200 bg-white">
                   <div className="flex items-center justify-between gap-2">
                     <div>
-                      <div className="text-xs text-[#EAEAEA] font-semibold">{item.equipment?.unitId}</div>
-                      <div className="text-[10px] text-[#88888C]">{formatServiceType(item.booking.serviceType)}</div>
-                      <div className="text-[10px] text-[#88888C]">{formatDate(item.booking.requestedDate)} · {getDisplayTime(item.booking.preferredTime)}</div>
+                      <div className="text-xs text-gray-900 font-semibold">{item.equipment?.unitId}</div>
+                      <div className="text-[10px] text-gray-500">{formatServiceType(item.booking.serviceType)}</div>
+                      <div className="text-[10px] text-gray-500">{formatDate(item.booking.requestedDate)} · {getDisplayTime(item.booking.preferredTime)}</div>
                     </div>
                     <span className={`px-1.5 py-0.5 rounded text-[10px] ${STATUS_COLORS[item.status]}`}>
                       {item.status.replace("_", " ")}
@@ -1212,25 +1212,25 @@ export default function ClientBookings() {
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-3">
         <div className="data-card p-3">
-          <div className="text-sm font-semibold text-[#EAEAEA]">Booking Status Overview</div>
-          <div className="text-[10px] text-[#88888C]">This month</div>
+          <div className="text-sm font-semibold text-gray-900">Booking Status Overview</div>
+          <div className="text-[10px] text-gray-500">This month</div>
           <div className="mt-4 flex items-center justify-center gap-8">
             <svg width="160" height="160" viewBox="0 0 144 144" className="flex-shrink-0">
-              <circle cx="72" cy="72" r="46" fill="none" stroke="#1A1A20" strokeWidth="16" />
+              <circle cx="72" cy="72" r="46" fill="none" stroke="#FFFFFF" strokeWidth="16" />
               {donutSegments.map((segment) => (
                 <path key={segment.status} d={segment.path} stroke={segment.color} strokeWidth="16" fill="none" strokeLinecap="butt" />
               ))}
               <text
                 x="72" y="65"
                 textAnchor="middle"
-                fill="#88888C"
+                fill="#6B7280"
                 fontSize="11"
                 fontFamily="inherit"
               >Total</text>
               <text
                 x="72" y="85"
                 textAnchor="middle"
-                fill="#EAEAEA"
+                fill="#F3F4F6"
                 fontSize="22"
                 fontWeight="bold"
                 fontFamily="inherit"
@@ -1242,16 +1242,16 @@ export default function ClientBookings() {
                 ["Scheduled", statusBreakdown.scheduled, "#3B82F6"],
                 ["In Progress", statusBreakdown.in_progress, "#F59E0B"],
                 ["Pending", statusBreakdown.pending, "#8B5CF6"],
-                ["Cancelled", statusBreakdown.cancelled, "#88888C"],
+                ["Cancelled", statusBreakdown.cancelled, "#6B7280"],
               ].map(([label, count, color]) => {
                 const pct = enrichedBookings.length > 0 ? Math.round((Number(count) / enrichedBookings.length) * 100) : 0;
                 return (
                   <div key={String(label)} className="flex items-center justify-between gap-4 text-xs">
                     <div className="flex items-center gap-2">
                       <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: String(color) }} />
-                      <span className="text-[#EAEAEA]">{label}</span>
+                      <span className="text-gray-900">{label}</span>
                     </div>
-                    <span className="text-[#88888C] font-medium">{count} ({pct}%)</span>
+                    <span className="text-gray-500 font-medium">{count} ({pct}%)</span>
                   </div>
                 );
               })}
@@ -1261,8 +1261,8 @@ export default function ClientBookings() {
 
         <div className="data-card p-3">
           <div className="flex items-center justify-between">
-            <div className="text-sm font-semibold text-[#EAEAEA]">Recent Activity</div>
-            <button className="text-xs text-[#3B82F6] hover:text-[#EAEAEA] transition-colors duration-150">View all</button>
+            <div className="text-sm font-semibold text-gray-900">Recent Activity</div>
+            <button className="text-xs text-[#3B82F6] hover:text-gray-900 transition-colors duration-150">View all</button>
           </div>
           <div className="mt-3 space-y-2">
             {recentActivity.map((item) => {
@@ -1278,8 +1278,8 @@ export default function ClientBookings() {
                     {cfg.icon}
                   </div>
                   <div>
-                    <div className="text-xs text-[#EAEAEA]">{cfg.getMessage(bookingId, equipType)}</div>
-                    <div className="text-[10px] text-[#88888C] mt-0.5">
+                    <div className="text-xs text-gray-900">{cfg.getMessage(bookingId, equipType)}</div>
+                    <div className="text-[10px] text-gray-500 mt-0.5">
                       {formatDate(item.bookingDate.toISOString())} · {getDisplayTime(item.booking.preferredTime)}
                     </div>
                   </div>
@@ -1290,23 +1290,23 @@ export default function ClientBookings() {
         </div>
 
         <div className="data-card p-3">
-          <div className="text-sm font-semibold text-[#EAEAEA]">Quick Actions</div>
+          <div className="text-sm font-semibold text-gray-900">Quick Actions</div>
           <div className="mt-3 space-y-2">
-            <button onClick={() => setBookingModalOpen(true)} className="w-full text-left p-2 rounded border border-white/10 hover:bg-white/5 transition-colors duration-150">
-              <div className="flex items-center gap-2"><PenSquare className="w-4 h-4 text-[#F2A900]" /><span className="text-xs text-[#EAEAEA] font-semibold">Book New Service</span></div>
-              <div className="text-[10px] text-[#88888C] mt-1">Schedule a service for your equipment</div>
+            <button onClick={() => setBookingModalOpen(true)} className="w-full text-left p-2 rounded border border-gray-200 hover:bg-gray-50 transition-colors duration-150">
+              <div className="flex items-center gap-2"><PenSquare className="w-4 h-4 text-[#66B2B2]" /><span className="text-xs text-gray-900 font-semibold">Book New Service</span></div>
+              <div className="text-[10px] text-gray-500 mt-1">Schedule a service for your equipment</div>
             </button>
-            <button onClick={() => setBookingModalOpen(true)} className="w-full text-left p-2 rounded border border-white/10 hover:bg-white/5 transition-colors duration-150">
-              <div className="flex items-center gap-2"><Ban className="w-4 h-4 text-[#EF4444]" /><span className="text-xs text-[#EAEAEA] font-semibold">Request Emergency Service</span></div>
-              <div className="text-[10px] text-[#88888C] mt-1">Need urgent assistance? Let us know</div>
+            <button onClick={() => setBookingModalOpen(true)} className="w-full text-left p-2 rounded border border-gray-200 hover:bg-gray-50 transition-colors duration-150">
+              <div className="flex items-center gap-2"><Ban className="w-4 h-4 text-[#EF4444]" /><span className="text-xs text-gray-900 font-semibold">Request Emergency Service</span></div>
+              <div className="text-[10px] text-gray-500 mt-1">Need urgent assistance? Let us know</div>
             </button>
-            <button className="w-full text-left p-2 rounded border border-white/10 hover:bg-white/5 transition-colors duration-150">
-              <div className="flex items-center gap-2"><Download className="w-4 h-4 text-[#10B981]" /><span className="text-xs text-[#EAEAEA] font-semibold">Download Service Report</span></div>
-              <div className="text-[10px] text-[#88888C] mt-1">Access your service reports and records</div>
+            <button className="w-full text-left p-2 rounded border border-gray-200 hover:bg-gray-50 transition-colors duration-150">
+              <div className="flex items-center gap-2"><Download className="w-4 h-4 text-[#10B981]" /><span className="text-xs text-gray-900 font-semibold">Download Service Report</span></div>
+              <div className="text-[10px] text-gray-500 mt-1">Access your service reports and records</div>
             </button>
-            <button className="w-full text-left p-2 rounded border border-white/10 hover:bg-white/5 transition-colors duration-150">
-              <div className="flex items-center gap-2"><Headset className="w-4 h-4 text-[#3B82F6]" /><span className="text-xs text-[#EAEAEA] font-semibold">Contact Support</span></div>
-              <div className="text-[10px] text-[#88888C] mt-1">Get help from our support team</div>
+            <button className="w-full text-left p-2 rounded border border-gray-200 hover:bg-gray-50 transition-colors duration-150">
+              <div className="flex items-center gap-2"><Headset className="w-4 h-4 text-[#3B82F6]" /><span className="text-xs text-gray-900 font-semibold">Contact Support</span></div>
+              <div className="text-[10px] text-gray-500 mt-1">Get help from our support team</div>
             </button>
           </div>
         </div>
@@ -1332,9 +1332,9 @@ function StatCard({
     <div className="data-card p-3">
       <div className="flex items-start justify-between">
         <div>
-          <div className="text-[10px] text-[#88888C] uppercase tracking-wider">{title}</div>
-          <div className="text-2xl font-bold text-[#EAEAEA] mt-1">{value}</div>
-          <div className="text-[10px] text-[#88888C] mt-1">{subtitle}</div>
+          <div className="text-[10px] text-gray-500 uppercase tracking-wider">{title}</div>
+          <div className="text-2xl font-bold text-gray-900 mt-1">{value}</div>
+          <div className="text-[10px] text-gray-500 mt-1">{subtitle}</div>
         </div>
         <div className={`w-8 h-8 rounded flex items-center justify-center ${iconBg}`}>{icon}</div>
       </div>

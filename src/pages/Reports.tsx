@@ -83,7 +83,7 @@ export default function Reports() {
   // Charts Data
   const serviceStatusData = [
     { name: "Completed", value: totalServices, color: "#10B981" },
-    { name: "Due Soon", value: totalDue, color: "#F2A900" },
+    { name: "Due Soon", value: totalDue, color: "#66B2B2" },
     { name: "Overdue", value: totalOverdue, color: "#EF4444" },
   ];
 
@@ -141,44 +141,44 @@ export default function Reports() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-[32px] font-bold text-[#EAEAEA] tracking-[-0.02em]">Operations Analytics</h1>
-          <p className="text-sm text-[#88888C] mt-0.5">Global performance, revenue distribution, and service risk</p>
+          <h1 className="text-[32px] font-bold text-gray-900 tracking-[-0.02em]">Operations Analytics</h1>
+          <p className="text-sm text-gray-500 mt-0.5">Global performance, revenue distribution, and service risk</p>
         </div>
-        <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded bg-[#005F73]/10 border border-[#005F73]/20">
-          <Calendar className="w-3 h-3 text-[#005F73]" />
-          <span className="text-xs text-[#005F73] font-medium">Last 6 Months</span>
+        <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded bg-[#66B2B2]/10 border border-[#66B2B2]/20">
+          <Calendar className="w-3 h-3 text-[#66B2B2]" />
+          <span className="text-xs text-[#66B2B2] font-medium">Last 6 Months</span>
         </div>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         <MetricCard label="Total Services" value={`${totalServices}`} hint="Completed to date" icon={CheckCircle2} accent="text-[#10B981]" />
-        <MetricCard label="Global Due" value={`${totalDue}`} hint="Scheduled soon" icon={Wrench} accent="text-[#F2A900]" />
+        <MetricCard label="Global Due" value={`${totalDue}`} hint="Scheduled soon" icon={Wrench} accent="text-[#66B2B2]" />
         <MetricCard label="Global Overdue" value={`${totalOverdue}`} hint="Critical service risk" icon={AlertTriangle} accent="text-[#EF4444]" />
-        <MetricCard label="Total Revenue" value={`₱${(totalRevenue / 1000).toFixed(1)}k`} hint="Lifetime value" icon={DollarSign} accent="text-[#EAEAEA]" />
-        <MetricCard label="Active Packages" value={`${totalActivePackages}`} hint="Managed subscriptions" icon={Package} accent="text-[#005F73]" />
+        <MetricCard label="Total Revenue" value={`₱${(totalRevenue / 1000).toFixed(1)}k`} hint="Lifetime value" icon={DollarSign} accent="text-gray-900" />
+        <MetricCard label="Active Packages" value={`${totalActivePackages}`} hint="Managed subscriptions" icon={Package} accent="text-[#66B2B2]" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
         <div className="lg:col-span-2 data-card p-4">
-          <h3 className="text-base font-semibold text-[#EAEAEA] mb-1">Global Revenue Trend</h3>
-          <p className="text-xs text-[#88888C] mb-3">Revenue growth over the last 6 months</p>
+          <h3 className="text-base font-semibold text-gray-900 mb-1">Global Revenue Trend</h3>
+          <p className="text-xs text-gray-500 mb-3">Revenue growth over the last 6 months</p>
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={monthlyRevenueData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#2A2A30" />
-              <XAxis dataKey="month" stroke="#88888C" fontSize={11} />
-              <YAxis stroke="#88888C" fontSize={11} />
+              <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+              <XAxis dataKey="month" stroke="#6B7280" fontSize={11} />
+              <YAxis stroke="#6B7280" fontSize={11} />
               <Tooltip
-                contentStyle={{ background: "#1E1E22", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 4, fontSize: 12 }}
+                contentStyle={{ background: "#FFFFFF", border: "1px solid #E5E7EB", borderRadius: 6, fontSize: 12 }}
                 formatter={(value: number) => [`₱${value.toLocaleString()}`, "Revenue"]}
               />
-              <Bar dataKey="revenue" fill="#F2A900" radius={[2, 2, 0, 0]} />
+              <Bar dataKey="revenue" fill="#66B2B2" radius={[2, 2, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
 
         <div className="data-card p-4">
-          <h3 className="text-base font-semibold text-[#EAEAEA] mb-1">Service Status Mix</h3>
-          <p className="text-xs text-[#88888C] mb-3">Overall fleet health (all clients)</p>
+          <h3 className="text-base font-semibold text-gray-900 mb-1">Service Status Mix</h3>
+          <p className="text-xs text-gray-500 mb-3">Overall fleet health (all clients)</p>
           <ResponsiveContainer width="100%" height={220}>
             <PieChart>
               <Pie
@@ -193,7 +193,7 @@ export default function Reports() {
                 ))}
               </Pie>
               <Tooltip
-                 contentStyle={{ background: "#1E1E22", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 4, fontSize: 12 }}
+                 contentStyle={{ background: "#FFFFFF", border: "1px solid #E5E7EB", borderRadius: 6, fontSize: 12 }}
               />
             </PieChart>
           </ResponsiveContainer>
@@ -201,7 +201,7 @@ export default function Reports() {
             {serviceStatusData.map((s) => (
               <div key={s.name} className="flex items-center gap-1.5">
                 <div className="w-2 h-2 rounded-full" style={{ backgroundColor: s.color }} />
-                <span className="text-[10px] text-[#88888C]">{s.name}</span>
+                <span className="text-[10px] text-gray-500">{s.name}</span>
               </div>
             ))}
           </div>
@@ -211,32 +211,32 @@ export default function Reports() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         {/* Client Performance Table */}
         <div className="data-card overflow-auto">
-          <div className="p-3 border-b border-white/5 flex items-center gap-2">
-            <UserCheck className="w-4 h-4 text-[#005F73]" />
-            <h3 className="text-sm font-semibold text-[#EAEAEA]">Client Value Report</h3>
+          <div className="p-3 border-b border-gray-200 flex items-center gap-2">
+            <UserCheck className="w-4 h-4 text-[#66B2B2]" />
+            <h3 className="text-sm font-semibold text-gray-900">Client Value Report</h3>
           </div>
           <table className="w-full text-xs">
             <thead>
-              <tr className="bg-[#0A0A0C]">
-                <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Client</th>
-                <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Revenue</th>
-                <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Services</th>
-                <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Risk (Overdue)</th>
+              <tr className="bg-gray-50">
+                <th className="text-left py-2.5 px-3 text-gray-500 font-medium">Client</th>
+                <th className="text-left py-2.5 px-3 text-gray-500 font-medium">Revenue</th>
+                <th className="text-left py-2.5 px-3 text-gray-500 font-medium">Services</th>
+                <th className="text-left py-2.5 px-3 text-gray-500 font-medium">Risk (Overdue)</th>
               </tr>
             </thead>
             <tbody>
               {clientInsights.slice(0, 10).map((client) => (
-                <tr key={client.id} className="border-b border-[#2A2A30] hover:bg-white/5 transition-colors">
-                  <td className="py-2.5 px-3 text-[#EAEAEA] font-bold">{client.name}</td>
-                  <td className="py-2.5 px-3 text-[#F2A900] font-mono-tech font-bold">₱{client.revenue.toLocaleString()}</td>
-                  <td className="py-2.5 px-3 text-[#88888C]">{client.services}</td>
+                <tr key={client.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                  <td className="py-2.5 px-3 text-gray-900 font-bold">{client.name}</td>
+                  <td className="py-2.5 px-3 text-[#66B2B2] font-mono-tech font-bold">₱{client.revenue.toLocaleString()}</td>
+                  <td className="py-2.5 px-3 text-gray-500">{client.services}</td>
                   <td className="py-2.5 px-3">
                     {client.overdue > 0 ? (
-                        <span className="px-1.5 py-0.5 rounded text-[10px] bg-[#EF4444]/20 text-[#EF4444] font-bold">
+                        <span className="px-1.5 py-0.5 rounded text-[10px] bg-[#EF4444]/10 text-[#EF4444] font-bold">
                             {client.overdue} OVERDUE
                         </span>
                     ) : (
-                        <span className="text-[#88888C]">—</span>
+                        <span className="text-gray-400">—</span>
                     )}
                   </td>
                 </tr>
@@ -247,17 +247,17 @@ export default function Reports() {
 
         {/* Global Service Breakdown */}
         <div className="data-card p-4">
-          <h3 className="text-base font-semibold text-[#EAEAEA] mb-1">Global Service Performance</h3>
-          <p className="text-xs text-[#88888C] mb-3">Service volume by category</p>
+          <h3 className="text-base font-semibold text-gray-900 mb-1">Global Service Performance</h3>
+          <p className="text-xs text-gray-500 mb-3">Service volume by category</p>
           <ResponsiveContainer width="100%" height={260}>
             <BarChart data={serviceMixData} layout="vertical">
-              <CartesianGrid strokeDasharray="3 3" stroke="#2A2A30" />
-              <XAxis type="number" stroke="#88888C" fontSize={11} />
-              <YAxis dataKey="name" type="category" stroke="#88888C" fontSize={10} width={100} />
+              <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+              <XAxis type="number" stroke="#6B7280" fontSize={11} />
+              <YAxis dataKey="name" type="category" stroke="#6B7280" fontSize={10} width={100} />
               <Tooltip
-                contentStyle={{ background: "#1E1E22", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 4, fontSize: 12 }}
+                contentStyle={{ background: "#FFFFFF", border: "1px solid #E5E7EB", borderRadius: 6, fontSize: 12 }}
               />
-              <Bar dataKey="value" fill="#005F73" radius={[0, 2, 2, 0]} />
+              <Bar dataKey="value" fill="#66B2B2" radius={[0, 2, 2, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -265,17 +265,17 @@ export default function Reports() {
 
       {/* Package Performance Report */}
       <div className="data-card overflow-auto">
-        <div className="p-3 border-b border-white/5 flex items-center gap-2">
+        <div className="p-3 border-b border-gray-200 flex items-center gap-2">
           <Package className="w-4 h-4 text-[#8B5CF6]" />
-          <h3 className="text-sm font-semibold text-[#EAEAEA]">Package & Subscription Performance</h3>
+          <h3 className="text-sm font-semibold text-gray-900">Package & Subscription Performance</h3>
         </div>
         <table className="w-full text-xs">
           <thead>
-            <tr className="bg-[#0A0A0C]">
-              <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Package Type</th>
-              <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Active Count</th>
-              <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Total Revenue</th>
-              <th className="text-left py-2.5 px-3 text-[#88888C] font-medium">Usage Level</th>
+            <tr className="bg-gray-50">
+              <th className="text-left py-2.5 px-3 text-gray-500 font-medium">Package Type</th>
+              <th className="text-left py-2.5 px-3 text-gray-500 font-medium">Active Count</th>
+              <th className="text-left py-2.5 px-3 text-gray-500 font-medium">Total Revenue</th>
+              <th className="text-left py-2.5 px-3 text-gray-500 font-medium">Usage Level</th>
             </tr>
           </thead>
           <tbody>
@@ -287,16 +287,16 @@ export default function Reports() {
                     : 0;
 
                 return (
-                    <tr key={type} className="border-b border-[#2A2A30]">
-                        <td className="py-2.5 px-3 text-[#EAEAEA] font-bold">{type}</td>
-                        <td className="py-2.5 px-3 text-[#88888C]">{typePackages.length}</td>
-                        <td className="py-2.5 px-3 text-[#F2A900] font-mono-tech font-bold">₱{typeRevenue.toLocaleString()}</td>
+                    <tr key={type} className="border-b border-gray-100">
+                        <td className="py-2.5 px-3 text-gray-900 font-bold">{type}</td>
+                        <td className="py-2.5 px-3 text-gray-500">{typePackages.length}</td>
+                        <td className="py-2.5 px-3 text-[#66B2B2] font-mono-tech font-bold">₱{typeRevenue.toLocaleString()}</td>
                         <td className="py-2.5 px-3">
                             <div className="flex items-center gap-2">
-                                <div className="flex-1 h-1 bg-white/5 rounded-full overflow-hidden max-w-[100px]">
-                                    <div className="h-full bg-[#005F73] rounded-full" style={{ width: `${avgUsage * 100}%` }} />
+                                <div className="flex-1 h-1 bg-gray-100 rounded-full overflow-hidden max-w-[100px]">
+                                    <div className="h-full bg-[#66B2B2] rounded-full" style={{ width: `${avgUsage * 100}%` }} />
                                 </div>
-                                <span className="text-[10px] text-[#88888C]">{(avgUsage * 100).toFixed(0)}% avg usage</span>
+                                <span className="text-[10px] text-gray-500">{(avgUsage * 100).toFixed(0)}% avg usage</span>
                             </div>
                         </td>
                     </tr>
@@ -325,11 +325,11 @@ function MetricCard({
   return (
     <div className="data-card p-4">
       <div className="flex items-center justify-between mb-2">
-        <span className="text-[10px] text-[#88888C] uppercase tracking-wider">{label}</span>
-        <Icon className="w-4 h-4 text-[#88888C]" />
+        <span className="text-[10px] text-gray-500 uppercase tracking-wider">{label}</span>
+        <Icon className="w-4 h-4 text-gray-400" />
       </div>
       <div className={`text-3xl font-bold ${accent}`}>{value}</div>
-      <div className="text-[10px] text-[#88888C] mt-1">{hint}</div>
+      <div className="text-[10px] text-gray-500 mt-1">{hint}</div>
     </div>
   );
 }

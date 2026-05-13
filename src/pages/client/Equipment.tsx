@@ -38,18 +38,18 @@ function KPICard({ title, value, subtext, icon: Icon, colorClass, iconBgClass }:
   iconBgClass: string;
 }) {
   return (
-    <div className="group relative overflow-hidden rounded-xl bg-[#1A1A1A]/80 backdrop-blur-md border border-white/10 p-4 transition-all duration-300 hover:border-[#10B981]/50 hover:-translate-y-1 hover:shadow-[0_0_20px_rgba(16,185,129,0.1)]">
+    <div className="group relative overflow-hidden rounded-xl bg-white border border-gray-200 p-4 shadow-sm transition-all duration-300 hover:border-[#66B2B2]/40 hover:-translate-y-1 hover:shadow-md">
       <div className="flex items-center justify-between relative z-10">
         <div>
-          <p className="text-[10px] font-bold text-[#88888C] uppercase tracking-wider">{title}</p>
-          <h3 className="text-2xl font-bold text-[#EAEAEA] mt-1 font-mono-tech">{value}</h3>
-          <p className="text-[10px] text-[#88888C] mt-0.5">{subtext}</p>
+          <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">{title}</p>
+          <h3 className="text-2xl font-bold text-gray-900 mt-1 font-mono-tech">{value}</h3>
+          <p className="text-[10px] text-gray-500 mt-0.5">{subtext}</p>
         </div>
         <div className={`w-10 h-10 rounded-full flex items-center justify-center ${iconBgClass}`}>
           <Icon className={`w-5 h-5 ${colorClass}`} />
         </div>
       </div>
-      <div className="absolute inset-0 bg-gradient-to-br from-[#10B981]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+      <div className="absolute inset-0 bg-gradient-to-br from-[#66B2B2]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
     </div>
   );
 }
@@ -243,13 +243,13 @@ export default function ClientEquipment() {
       case "active":
         return "px-2 py-0.5 rounded text-sm bg-[#10B981]/20 text-[#10B981] font-medium";
       case "maintenance":
-        return "px-2 py-0.5 rounded text-sm bg-[#F2A900]/20 text-[#F2A900] font-medium";
+        return "px-2 py-0.5 rounded text-sm bg-[#66B2B2]/20 text-[#66B2B2] font-medium";
       case "inactive":
-        return "px-2 py-0.5 rounded text-sm bg-[#88888C]/20 text-[#88888C] font-medium";
+        return "px-2 py-0.5 rounded text-sm bg-[#6B7280]/20 text-gray-500 font-medium";
       case "retired":
         return "px-2 py-0.5 rounded text-sm bg-[#EF4444]/20 text-[#EF4444] font-medium";
       default:
-        return "px-2 py-0.5 rounded text-sm bg-[#88888C]/20 text-[#88888C] font-medium";
+        return "px-2 py-0.5 rounded text-sm bg-[#6B7280]/20 text-gray-500 font-medium";
     }
   };
 
@@ -267,8 +267,8 @@ export default function ClientEquipment() {
     <div className="space-y-6 px-8 pt-8 pb-12">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-[32px] font-bold text-[#EAEAEA] tracking-[-0.02em]" >My Equipment</h1>
-          <p className="text-sm text-[#88888C] mt-0.5">{clientEquipment.length} units under management</p>
+          <h1 className="text-[32px] font-bold text-gray-900 tracking-[-0.02em]" >My Equipment</h1>
+          <p className="text-sm text-gray-500 mt-0.5">{clientEquipment.length} units under management</p>
         </div>
         
       </div>
@@ -280,49 +280,49 @@ export default function ClientEquipment() {
           value={totalServices} 
           subtext="Lifetime fleet records" 
           icon={Wrench} 
-          colorClass="text-[#005F73]" 
-          iconBgClass="bg-[#005F73]/20" 
+          colorClass="text-[#66B2B2]" 
+          iconBgClass="bg-white shadow-sm" 
         />
         <KPICard 
           title="Completed" 
           value={completedServices} 
           subtext="Successful operations" 
           icon={CheckCircle2} 
-          colorClass="text-[#10B981]" 
-          iconBgClass="bg-[#10B981]/20" 
+          colorClass="text-[#059669]" 
+          iconBgClass="bg-white shadow-sm" 
         />
         <KPICard 
           title="In Progress" 
           value={inProgressServices} 
           subtext="Active service tickets" 
           icon={Activity} 
-          colorClass="text-[#F2A900]" 
-          iconBgClass="bg-[#F2A900]/20" 
+          colorClass="text-[#66B2B2]" 
+          iconBgClass="bg-white shadow-sm" 
         />
         <KPICard 
           title="Total Spent" 
           value={formatCurrency(totalSpent)} 
           subtext="Maintenance investment" 
           icon={Wallet} 
-          colorClass="text-[#EF4444]" 
-          iconBgClass="bg-[#EF4444]/20" 
+          colorClass="text-[#DC2626]" 
+          iconBgClass="bg-white shadow-sm" 
         />
       </div>
 
       {/* Filter Bar */}
       <div className="flex items-center justify-between pt-2">
         <div className=" flex items-center gap-3 relative w-full max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#88888C]" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
           <Input
             placeholder="Search serial, model, or unit ID..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10 h-10 bg-[#1A1A20] border-white/10 text-[#EAEAEA] text-sm focus:border-[#10B981]/50 transition-colors"
+            className="pl-10 h-10 bg-white border-gray-200 text-gray-900 text-sm focus:border-[#10B981]/50 transition-colors"
           />
          
           <Button
             onClick={startScanning}
-            className="bg-[#10B981] text-[#050505] hover:bg-[#10B981]/90 font-bold h-9"
+            className="bg-[#10B981] text-white hover:bg-[#10B981]/90 font-bold h-9"
           >
             <Camera className="w-4 h-4 mr-2" />
             Scan QR
@@ -360,16 +360,16 @@ export default function ClientEquipment() {
                 className="w-full flex items-center justify-between p-4"
               >
                 <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded bg-[#005F73]/20 flex items-center justify-center">
-                    <Package className="w-4 h-4 text-[#005F73]" />
+                  <div className="w-9 h-9 rounded bg-white shadow-sm flex items-center justify-center">
+                    <Package className="w-4 h-4 text-[#66B2B2]" />
                   </div>
                   <div className="text-left">
                     <div className="flex items-center gap-2">
-                      <span className="text-base lg:text-lg font-semibold text-[#EAEAEA] font-mono-tech">{eq.unitId}</span>
-                      <span className="text-xs text-[#88888C]">{eq.equipmentType}</span>
+                      <span className="text-base lg:text-lg font-semibold text-gray-900 font-mono-tech">{eq.unitId}</span>
+                      <span className="text-xs text-gray-500">{eq.equipmentType}</span>
                       <span className={statusBadge(eq.status)}>{eq.status}</span>
                     </div>
-                    <div className="text-[10px] text-[#88888C]">{eq.manufacturer} {eq.model} — {eq.location}</div>
+                    <div className="text-[10px] text-gray-500">{eq.manufacturer} {eq.model} — {eq.location}</div>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
@@ -381,66 +381,66 @@ export default function ClientEquipment() {
                       setQrSerial(eq.serialNumber);
                       setShowQR(true);
                     }}
-                    className="h-8 w-8 p-0 text-[#88888C] hover:text-[#F2A900] hover:bg-[#F2A900]/10"
+                    className="h-8 w-8 p-0 text-gray-500 hover:text-[#66B2B2] hover:bg-[#66B2B2]/10"
                   >
                     <QrCode className="w-4 h-4" />
                   </Button>
                   {serviceDue && (
                     <span className="px-1.5 py-0.5 rounded text-[10px] bg-[#EF4444]/20 text-[#EF4444] font-medium">Service Due</span>
                   )}
-                  <span className="text-[10px] text-[#88888C]">{eqRecords.length} services</span>
+                  <span className="text-[10px] text-gray-500">{eqRecords.length} services</span>
                   {isExpanded ? (
-                    <ChevronUp className="w-4 h-4 text-[#88888C]" />
+                    <ChevronUp className="w-4 h-4 text-gray-500" />
                   ) : (
-                    <ChevronDown className="w-4 h-4 text-[#88888C]" />
+                    <ChevronDown className="w-4 h-4 text-gray-500" />
                   )}
                 </div>
               </button>
 
               {isExpanded && (
-                <div className="px-6 pb-4 border-t border-white/5 pt-3">
+                <div className="px-6 pb-4 border-t border-gray-200 pt-3">
                   <div className="grid grid-cols-4 gap-2 mb-3 text-xs">
                     <div>
-                      <div className="text-[10px] text-[#88888C]">Serial</div>
-                      <div className="text-[#EAEAEA] font-mono-tech">{eq.serialNumber}</div>
+                      <div className="text-[10px] text-gray-500">Serial</div>
+                      <div className="text-gray-900 font-mono-tech">{eq.serialNumber}</div>
                     </div>
                     <div>
-                      <div className="text-[10px] text-[#88888C]">Install Date</div>
-                      <div className="text-[#EAEAEA]">{new Date(eq.installDate).toLocaleDateString()}</div>
+                      <div className="text-[10px] text-gray-500">Install Date</div>
+                      <div className="text-gray-900">{new Date(eq.installDate).toLocaleDateString()}</div>
                     </div>
                     {eq.equipmentType === "Heavy Equipment" ? (
                       <>
                         <div className="col-span-2">
                           <div className="flex justify-between items-center mb-1">
-                            <div className="text-[10px] text-[#88888C]">Usage Progress</div>
-                            <div className="text-[10px] text-[#EAEAEA] font-mono-tech">{eq.currentHours} / {eq.nextPMSHours}h</div>
+                            <div className="text-[10px] text-gray-500">Usage Progress</div>
+                            <div className="text-[10px] text-gray-900 font-mono-tech">{eq.currentHours} / {eq.nextPMSHours}h</div>
                           </div>
-                          <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
+                          <div className="h-1.5 bg-gray-50 rounded-full overflow-hidden">
                             <div 
-                              className={`h-full rounded-full ${serviceDue ? "bg-[#EF4444]" : "bg-[#F2A900]"}`} 
+                              className={`h-full rounded-full ${serviceDue ? "bg-[#EF4444]" : "bg-[#66B2B2]"}`} 
                               style={{ width: `${Math.min(100, (eq.currentHours / eq.nextPMSHours) * 100)}%` }}
                             />
                           </div>
                         </div>
                         <div>
-                          <div className="text-[10px] text-[#88888C]">Last PMS</div>
-                          <div className="text-[#EAEAEA] font-mono-tech">{eq.lastPMSHours}h</div>
+                          <div className="text-[10px] text-gray-500">Last PMS</div>
+                          <div className="text-gray-900 font-mono-tech">{eq.lastPMSHours}h</div>
                         </div>
                       </>
                     ) : (
                       <>
                         <div>
-                          <div className="text-[10px] text-[#88888C]">Last Calibration</div>
-                          <div className="text-[#EAEAEA]">{eq.lastCalibrationDate ? new Date(eq.lastCalibrationDate).toLocaleDateString() : "—"}</div>
+                          <div className="text-[10px] text-gray-500">Last Calibration</div>
+                          <div className="text-gray-900">{eq.lastCalibrationDate ? new Date(eq.lastCalibrationDate).toLocaleDateString() : "—"}</div>
                         </div>
                         <div className="col-span-2">
-                           <div className="text-[10px] text-[#88888C]">Next Calibration</div>
+                           <div className="text-[10px] text-gray-500">Next Calibration</div>
                            <div className="flex items-center gap-2">
-                              <div className={`text-sm font-bold font-mono-tech ${serviceDue ? "text-[#EF4444]" : "text-[#EAEAEA]"}`}>
+                              <div className={`text-sm font-bold font-mono-tech ${serviceDue ? "text-[#EF4444]" : "text-gray-900"}`}>
                                 {eq.nextCalibrationDate ? new Date(eq.nextCalibrationDate).toLocaleDateString() : "—"}
                               </div>
                               {eq.nextCalibrationDate && (
-                                <span className={`text-[9px] px-1 py-0.5 rounded ${serviceDue ? "bg-[#EF4444]/20 text-[#EF4444]" : "bg-[#005F73]/20 text-[#005F73]"}`}>
+                                <span className={`text-[9px] px-1 py-0.5 rounded ${serviceDue ? "bg-[#EF4444]/20 text-[#EF4444]" : "bg-[#66B2B2]/20 text-[#66B2B2]"}`}>
                                   {Math.ceil((new Date(eq.nextCalibrationDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))}d left
                                 </span>
                               )}
@@ -452,33 +452,33 @@ export default function ClientEquipment() {
 
                   {eqRecords.length > 0 && (
                     <div className="mb-3">
-                      <div className="text-[10px] text-[#88888C] uppercase tracking-wider mb-1">Service Records</div>
+                      <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Service Records</div>
                       <div className="space-y-1">
                         {eqRecords.map((record) => (
-                          <div key={record.id} className="p-2 rounded bg-[#121214] space-y-2">
+                          <div key={record.id} className="p-2 rounded bg-gray-100 space-y-2">
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-2">
-                                <Wrench className="w-3 h-3 text-[#005F73]" />
-                                <span className="text-xs text-[#EAEAEA]">{record.serviceCategory}</span>
-                                <span className="text-[10px] text-[#88888C]">{record.technician}</span>
+                                <Wrench className="w-3 h-3 text-[#66B2B2]" />
+                                <span className="text-xs text-gray-900">{record.serviceCategory}</span>
+                                <span className="text-[10px] text-gray-500">{record.technician}</span>
                               </div>
                               <div className="flex items-center gap-2">
-                                <span className="text-[10px] text-[#F2A900] font-mono-tech">₱{record.cost.toFixed(2)}</span>
-                                <span className="text-[10px] text-[#88888C]">{record.completedDate ? new Date(record.completedDate).toLocaleDateString() : "—"}</span>
+                                <span className="text-[10px] text-[#66B2B2] font-mono-tech">₱{record.cost.toFixed(2)}</span>
+                                <span className="text-[10px] text-gray-500">{record.completedDate ? new Date(record.completedDate).toLocaleDateString() : "—"}</span>
                               </div>
                             </div>
                             {record.serviceCategory === "Lab Testing Service" && (
-                              <div className="grid grid-cols-3 gap-2 px-5 py-1 border-t border-white/5">
+                              <div className="grid grid-cols-3 gap-2 px-5 py-1 border-t border-gray-200">
                                 <div>
-                                  <div className="text-[8px] text-[#88888C] uppercase">Test Type</div>
-                                  <div className="text-[10px] text-[#EAEAEA]">{record.testType}</div>
+                                  <div className="text-[8px] text-gray-500 uppercase">Test Type</div>
+                                  <div className="text-[10px] text-gray-900">{record.testType}</div>
                                 </div>
                                 <div>
-                                  <div className="text-[8px] text-[#88888C] uppercase">Project</div>
-                                  <div className="text-[10px] text-[#EAEAEA]">{record.projectName}</div>
+                                  <div className="text-[8px] text-gray-500 uppercase">Project</div>
+                                  <div className="text-[10px] text-gray-900">{record.projectName}</div>
                                 </div>
                                 <div>
-                                  <div className="text-[8px] text-[#88888C] uppercase">Status</div>
+                                  <div className="text-[8px] text-gray-500 uppercase">Status</div>
                                   <div className="text-[10px] text-[#10B981] font-bold uppercase">{record.labStatus}</div>
                                 </div>
                               </div>
@@ -491,18 +491,18 @@ export default function ClientEquipment() {
 
                   {eqPhotos.length > 0 && (
                     <div>
-                      <div className="text-[10px] text-[#88888C] uppercase tracking-wider mb-1">Documentation</div>
+                      <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Documentation</div>
                       <div className="grid grid-cols-4 gap-1.5">
                         {eqPhotos.map((photo, idx) => (
                           <div key={idx} className="relative">
                             <img src={photo.url} alt={photo.caption} className="w-full h-16 object-cover rounded" />
-                            <span className={`absolute top-0.5 left-0.5 text-[8px] px-1 py-0.5 rounded font-medium ${photo.type === "before" ? "bg-[#F2A900]/80 text-[#050505]" : "bg-[#10B981]/80 text-[#050505]"}`}>{photo.type}</span>
+                            <span className={`absolute top-0.5 left-0.5 text-[8px] px-1 py-0.5 rounded font-medium ${photo.type === "before" ? "bg-[#66B2B2]/80 text-white" : "bg-[#10B981]/80 text-white"}`}>{photo.type}</span>
                           </div>
                         ))}
                         {eqRecords.some(r => r.reportAttachment) && (
-                           <div className="w-full h-16 rounded bg-[#005F73]/10 border border-[#005F73]/20 flex flex-col items-center justify-center gap-1 cursor-pointer hover:bg-[#005F73]/20 transition-colors">
-                              <FileText className="w-4 h-4 text-[#005F73]" />
-                              <span className="text-[8px] text-[#EAEAEA] font-medium">View Report</span>
+                           <div className="w-full h-16 rounded bg-[#66B2B2]/10 border border-[#66B2B2]/20 flex flex-col items-center justify-center gap-1 cursor-pointer hover:bg-[#66B2B2]/20 transition-colors">
+                              <FileText className="w-4 h-4 text-[#66B2B2]" />
+                              <span className="text-[8px] text-gray-900 font-medium">View Report</span>
                            </div>
                         )}
                       </div>
@@ -519,9 +519,9 @@ export default function ClientEquipment() {
       <Dialog open={showScanner} onOpenChange={(open) => {
         if (!open) stopScanning();
       }}>
-        <DialogContent className="bg-[#0A0A0C] border-white/10 sm:max-w-lg void-glass">
+        <DialogContent className="bg-gray-50 border-gray-200 sm:max-w-lg void-glass">
           <DialogHeader>
-            <DialogTitle className="text-[#EAEAEA] flex items-center gap-2">
+            <DialogTitle className="text-gray-900 flex items-center gap-2">
               <Camera className="w-5 h-5 text-[#10B981]" />
               Scan Equipment QR Code
             </DialogTitle>
@@ -542,22 +542,22 @@ export default function ClientEquipment() {
             <div className="relative">
               <div 
                 id="qr-reader" 
-                className="w-full max-w-sm mx-auto rounded-lg overflow-hidden bg-[#121214] border border-white/5"
+                className="w-full max-w-sm mx-auto rounded-lg overflow-hidden bg-gray-100 border border-gray-200"
               ></div>
               {scanning && !scannerError && (
                 <div className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-lg backdrop-blur-sm">
                   <div className="text-center">
                     <Loader2 className="w-8 h-8 text-[#10B981] animate-spin mx-auto mb-2" />
-                    <p className="text-sm text-[#EAEAEA] font-medium">Scanning...</p>
-                    <p className="text-xs text-[#88888C] mt-1">Position QR code within the frame</p>
+                    <p className="text-sm text-gray-900 font-medium">Scanning...</p>
+                    <p className="text-xs text-gray-500 mt-1">Position QR code within the frame</p>
                   </div>
                 </div>
               )}
             </div>
 
             {/* Manual Entry Fallback */}
-            <div className="space-y-3 pt-2 border-t border-white/5">
-              <div className="text-sm text-[#88888C] text-center">
+            <div className="space-y-3 pt-2 border-t border-gray-200">
+              <div className="text-sm text-gray-500 text-center">
                 Can't scan? Enter serial number manually:
               </div>
               <div className="flex gap-2">
@@ -565,7 +565,7 @@ export default function ClientEquipment() {
                   placeholder="Enter serial number..."
                   value={manualSerial}
                   onChange={(e) => setManualSerial(e.target.value)}
-                  className="bg-[#1A1A20] border-white/10 text-[#EAEAEA] text-sm focus:border-[#10B981]"
+                  className="bg-white border-gray-200 text-gray-900 text-sm focus:border-[#10B981]"
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
                       handleManualEntry();
@@ -587,18 +587,18 @@ export default function ClientEquipment() {
 
       {/* QR Code Dialog */}
       <Dialog open={showQR} onOpenChange={setShowQR}>
-        <DialogContent className="bg-[#0A0A0C] border-white/10 sm:max-w-md">
+        <DialogContent className="bg-gray-50 border-gray-200 sm:max-w-md">
           <DialogHeader>
-            <DialogTitle className="text-[#EAEAEA] flex items-center gap-2">
-              <QrCode className="w-5 h-5 text-[#F2A900]" />
+            <DialogTitle className="text-gray-900 flex items-center gap-2">
+              <QrCode className="w-5 h-5 text-[#66B2B2]" />
               Equipment QR Code
             </DialogTitle>
           </DialogHeader>
           <div className="flex flex-col items-center justify-center p-6 bg-white rounded-lg mt-4">
             <QRCodeSVG value={qrSerial} size={200} level="H" includeMargin={true} />
             <div className="mt-4 text-center">
-              <p className="text-sm font-bold text-[#050505] font-mono-tech">{qrSerial}</p>
-              <p className="text-xs text-[#88888C] mt-1 uppercase font-bold">
+              <p className="text-sm font-bold text-gray-900 font-mono-tech">{qrSerial}</p>
+              <p className="text-xs text-gray-500 mt-1 uppercase font-bold">
                 {equipment.find((e) => e.serialNumber === qrSerial)?.unitId}
               </p>
             </div>
@@ -606,7 +606,7 @@ export default function ClientEquipment() {
           <div className="flex justify-center mt-4">
             <Button
               onClick={() => window.print()}
-              className="bg-[#F2A900] text-[#050505] hover:bg-[#F2A900]/80 font-bold"
+              className="bg-[#66B2B2] text-white hover:bg-[#66B2B2]/80 font-bold"
             >
               <Printer className="w-4 h-4 mr-2" />
               Print QR Code
