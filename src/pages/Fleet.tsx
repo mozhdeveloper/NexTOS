@@ -1262,7 +1262,7 @@ export default function Fleet() {
       {/* Header */}
       <div className="flex items-center justify-between shrink-0">
         <div>
-          <h1 className="text-[32px] font-bold text-[#EAEAEA] tracking-[-0.02em]">Fleet Intelligence</h1>
+          <h1 className="text-[32px] font-bold text-gray-900  tracking-[-0.02em]">Fleet Intelligence</h1>
           <p className="text-sm text-[#88888C] mt-0.5">Real-time GPS tracking and telemetry</p>
         </div>
         <div className="flex items-center gap-3">
@@ -1628,7 +1628,7 @@ export default function Fleet() {
         <div className="w-[280px] data-card flex h-full min-h-0 flex-col overflow-hidden">
           <div className="p-3 border-b border-white/5">
             <div className="flex items-center justify-between gap-2">
-              <h3 className="text-sm font-semibold text-[#EAEAEA]">Fleet Units</h3>
+              <h3 className="text-sm font-semibold text-gray-900">Fleet Units</h3>
               <span className="text-[10px] text-[#88888C]">{sidebarDateWithPrefix}</span>
             </div>
             <p className="text-[10px] text-[#88888C]">{units.length} units tracked</p>
@@ -1775,7 +1775,7 @@ export default function Fleet() {
                                 }
                               }}
                             />
-                            <span className="truncate text-xs font-medium text-[#EAEAEA]">{displayHeader}</span>
+                            <span className="truncate text-xs font-medium text-gray-900">{displayHeader}</span>
                           </div>
                           <div className="relative" onClick={(e) => e.stopPropagation()}>
                         <button
