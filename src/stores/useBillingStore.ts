@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { Package, Invoice } from "@/types";
+import seedData from "@/data/seed-data.json";
 
 interface BillingState {
   packages: Package[];
@@ -90,10 +91,29 @@ const mockPackages: Package[] = [
   },
 ];
 
-const mockInvoices: Invoice[] = [
-  { id: 1, clientId: 1, packageId: null, serviceRecordId: 1, invoiceNumber: "INV-2024-0001", amount: 850.00, tax: 85.00, total: 935.00, status: "paid", dueDate: nextMonth, paidDate: lastWeek, createdAt: lastWeek },
-  { id: 2, clientId: 1, packageId: null, serviceRecordId: 2, invoiceNumber: "INV-2024-0002", amount: 450.00, tax: 45.00, total: 495.00, status: "paid", dueDate: nextMonth, paidDate: lastMonth, createdAt: lastMonth },
-];
+const clientIdMap: Record<string, number> = {};
+seedData.clients.forEach((c, index) => {
+  clientIdMap[c.id] = index + 1;
+});
+
+const mockInvoices: Invoice[] = seedData.invoices.map((inv, index) => {
+  const amount = inv.total / 1.12;
+  const tax = inv.total - amount;
+  return {
+    id: index + 1,
+    clientId: clientIdMap[inv.clientId] || 1,
+    packageId: null,
+    serviceRecordId: null,
+    invoiceNumber: inv.invoiceNumber,
+    amount: amount,
+    tax: tax,
+    total: inv.total,
+    status: inv.status.toLowerCase() as any,
+    dueDate: new Date(new Date(inv.createdAt).getTime() + 30 * 86400000).toISOString(),
+    paidDate: inv.status.toLowerCase() === "paid" ? inv.createdAt : null,
+    createdAt: inv.createdAt,
+  };
+});
 
 export const useBillingStore = create<BillingState>()(
   persist(
@@ -165,6 +185,7 @@ export const useBillingStore = create<BillingState>()(
     }),
     {
       name: "nextos-billing",
+      version: 1,
     }
   )
 );

@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { Equipment, ServiceRecord, ServicePhoto, Booking, ServiceCategory } from "@/types";
 import { useBillingStore } from "./useBillingStore";
+import seedData from "@/data/seed-data.json";
 
 interface OperationsState {
   equipment: Equipment[];
@@ -38,40 +39,34 @@ const twoMonthsAgo = new Date(Date.now() - 60 * 86400000).toISOString();
 const nextWeek = new Date(Date.now() + 7 * 86400000).toISOString();
 const sixMonthsFromNow = new Date(Date.now() + 180 * 86400000).toISOString();
 
-const mockEquipment: Equipment[] = [
-  { 
-    id: 1, clientId: 1, unitId: "EXC-320", type: "Excavator", equipmentType: "Heavy Equipment", 
-    serialNumber: "CAT-320-001", manufacturer: "Caterpillar", model: "320 GC", installDate: twoMonthsAgo, 
-    warrantyExpiry: nextWeek, status: "active", location: "Denver Site A", notes: "Main excavator", 
-    currentHours: 4980, lastPMSHours: 4000, pmsInterval: 1000, nextPMSHours: 5000,
-    lastCalibrationDate: null, calibrationFrequency: 0, nextCalibrationDate: null,
-    createdAt: twoMonthsAgo 
-  },
-  { 
-    id: 2, clientId: 1, unitId: "LAB-STS-01", type: "Concrete Tester", equipmentType: "Lab Equipment", 
-    serialNumber: "SN-LAB-2024", manufacturer: "Controls Group", model: "Automax E", installDate: lastMonth, 
-    warrantyExpiry: nextWeek, status: "active", location: "Main Lab", notes: "Concrete strength tester", 
-    currentHours: 0, lastPMSHours: 0, pmsInterval: 0, nextPMSHours: 0,
-    lastCalibrationDate: lastMonth, calibrationFrequency: 12, nextCalibrationDate: sixMonthsFromNow,
-    createdAt: lastMonth 
-  },
-  { 
-    id: 3, clientId: 1, unitId: "TST-BEAM-02", type: "Beam Tester", equipmentType: "Testing Equipment", 
-    serialNumber: "SN-BEAM-500", manufacturer: "Tinius Olsen", model: "Super L", installDate: lastMonth, 
-    warrantyExpiry: nextWeek, status: "active", location: "Chicago Depot", notes: "Steel beam strength testing", 
-    currentHours: 0, lastPMSHours: 0, pmsInterval: 0, nextPMSHours: 0,
-    lastCalibrationDate: lastWeek, calibrationFrequency: 6, nextCalibrationDate: nextWeek,
-    createdAt: lastMonth 
-  },
-  { 
-    id: 4, clientId: 1, unitId: "EXC-CAT-20", type: "Excavator", equipmentType: "Heavy Equipment", 
-    serialNumber: "SN-CAT-20", manufacturer: "Caterpillar", model: "320D", installDate: twoMonthsAgo, 
-    warrantyExpiry: nextWeek, status: "active", location: "Site B", notes: "Near service unit", 
-    currentHours: 5150, lastPMSHours: 4200, pmsInterval: 1000, nextPMSHours: 5200,
-    lastCalibrationDate: null, calibrationFrequency: 0, nextCalibrationDate: null,
-    createdAt: twoMonthsAgo 
-  },
-];
+const clientIdMap: Record<string, number> = {};
+seedData.clients.forEach((c, index) => {
+  clientIdMap[c.id] = index + 1;
+});
+
+const mockEquipment: Equipment[] = seedData.equipment.map((eq, index) => ({
+  id: index + 1,
+  clientId: clientIdMap[eq.clientId] || 1,
+  unitId: eq.id,
+  type: eq.name,
+  equipmentType: eq.equipmentType as any,
+  serialNumber: eq.serialNumber,
+  manufacturer: "Unknown",
+  model: "Generic",
+  installDate: lastMonth,
+  warrantyExpiry: nextWeek,
+  status: "active",
+  location: eq.location || "Main Site",
+  notes: "Seeded from seed-data.json",
+  currentHours: parseInt(eq.hoursTotal?.split("h")[0] || "0"),
+  lastPMSHours: 0,
+  pmsInterval: eq.pmsConfiguration?.serviceIntervalHours || 1000,
+  nextPMSHours: eq.pmsConfiguration?.serviceIntervalHours || 1000,
+  lastCalibrationDate: null,
+  calibrationFrequency: 12,
+  nextCalibrationDate: sixMonthsFromNow,
+  createdAt: lastMonth,
+}));
 
 const mockServiceRecords: ServiceRecord[] = [
   { 
@@ -260,6 +255,7 @@ export const useOperationsStore = create<OperationsState>()(
     }),
     {
       name: "nexvision-operations-v4",
+      version: 5,
     }
   )
 );

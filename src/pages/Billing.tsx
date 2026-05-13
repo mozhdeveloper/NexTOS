@@ -79,18 +79,34 @@ export default function Billing() {
     .reduce((sum, i) => sum + i.total, 0);
   const overdueCount = invoices.filter((i) => i.status === "overdue").length;
 
-  const monthlyData = [
-    { month: "Jan", revenue: 12500, expenses: 8200 },
-    { month: "Feb", revenue: 15200, expenses: 9100 },
-    { month: "Mar", revenue: 11800, expenses: 7800 },
-    { month: "Apr", revenue: 18900, expenses: 10200 },
-    { month: "May", revenue: 21400, expenses: 11500 },
-    { month: "Jun", revenue: 24300, expenses: 12800 },
-  ];
+  // Dynamically calculate monthly data for the chart based on invoices
+  const monthlyData = Object.values(
+    invoices.reduce((acc, inv) => {
+      const date = new Date(inv.createdAt);
+      const month = date.toLocaleString('default', { month: 'short' });
+      const year = date.getFullYear();
+      const key = `${month} ${year}`;
+      
+      if (!acc[key]) {
+        acc[key] = { month, year, revenue: 0, expenses: 0, timestamp: date.getTime() };
+      }
+      
+      if (inv.status === 'paid') {
+        acc[key].revenue += inv.total;
+      }
+      // Mock expenses as 45% of revenue for a healthy margin in the mock data
+      acc[key].expenses += (inv.status === 'paid' ? inv.total : inv.total * 0.5) * 0.45;
+      
+      return acc;
+    }, {} as Record<string, { month: string, year: number, revenue: number, expenses: number, timestamp: number }>)
+  )
+  .sort((a, b) => a.timestamp - b.timestamp)
+  .map(({ month, revenue, expenses }) => ({ month, revenue, expenses }))
+  .slice(-6);
 
   const statusData = [
     { name: "Paid", value: invoices.filter((i) => i.status === "paid").length, color: "#10B981" },
-    { name: "Outstanding", value: invoices.filter((i) => i.status === "sent").length, color: "#66B2B2" },
+    { name: "Outstanding", value: invoices.filter((i) => i.status === "sent" || i.status === "overdue").length, color: "#66B2B2" },
     { name: "Overdue", value: invoices.filter((i) => i.status === "overdue").length, color: "#EF4444" },
   ];
 

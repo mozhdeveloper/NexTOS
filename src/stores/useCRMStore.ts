@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { Client, Contact, Lead, Deal, Task, DealStage } from "@/types";
+import seedData from "@/data/seed-data.json";
 
 interface CRMState {
   clients: Client[];
@@ -30,16 +31,22 @@ const lastWeek = new Date(Date.now() - 7 * 86400000).toISOString();
 const tomorrow = new Date(Date.now() + 86400000).toISOString();
 const threeDaysAgo = new Date(Date.now() - 3 * 86400000).toISOString();
 
-const mockClients: Client[] = [
-  { id: 1, companyName: "Acme Security", industry: "Security Services", contactName: "Robert Hale", email: "robert@acme.com", phone: "+1-555-0101", status: "active", address: "100 Industrial Way", city: "Austin", country: "USA", contractValue: 125000, lastContact: yesterday, notes: "Enterprise client, multiple sites", createdAt: lastWeek },
-  { id: 2, companyName: "TechCorp Industries", industry: "Technology", contactName: "Lisa Park", email: "lisa@techcorp.com", phone: "+1-555-0102", status: "active", address: "500 Innovation Dr", city: "San Jose", country: "USA", contractValue: 85000, lastContact: now, notes: "Growing fast, needs expansion", createdAt: lastWeek },
-  { id: 3, companyName: "Guardian Properties", industry: "Real Estate", contactName: "David Kim", email: "david@guardian.com", phone: "+1-555-0103", status: "prospect", address: "200 Marina Blvd", city: "Miami", country: "USA", contractValue: 45000, lastContact: threeDaysAgo, notes: "High-value prospect", createdAt: lastWeek },
-  { id: 4, companyName: "Metro Logistics", industry: "Transportation", contactName: "Amanda Foster", email: "amanda@metrolog.com", phone: "+1-555-0104", status: "active", address: "300 Freight Lane", city: "Chicago", country: "USA", contractValue: 67000, lastContact: yesterday, notes: "Fleet tracking client", createdAt: lastWeek },
-  { id: 5, companyName: "SecureNet Solutions", industry: "Cybersecurity", contactName: "Carlos Mendez", email: "carlos@securenet.com", phone: "+1-555-0105", status: "active", address: "800 Cyber Ave", city: "Seattle", country: "USA", contractValue: 150000, lastContact: now, notes: "Premium support tier", createdAt: lastWeek },
-  { id: 6, companyName: "BrightStar Energy", industry: "Energy", contactName: "Jennifer Walsh", email: "jen@brightstar.com", phone: "+1-555-0106", status: "inactive", address: "400 Solar Rd", city: "Phoenix", country: "USA", contractValue: 32000, lastContact: lastWeek, notes: "Contract ending soon", createdAt: lastWeek },
-  { id: 7, companyName: "Harbor Medical", industry: "Healthcare", contactName: "Dr. Sam Patel", email: "sam@harbormed.com", phone: "+1-555-0107", status: "prospect", address: "700 Health St", city: "Boston", country: "USA", contractValue: 95000, lastContact: threeDaysAgo, notes: "Compliance requirements", createdAt: lastWeek },
-  { id: 8, companyName: "Atlas Construction", industry: "Construction", contactName: "Mike Torres", email: "mike@atlas.com", phone: "+1-555-0108", status: "active", address: "900 Builder Way", city: "Denver", country: "USA", contractValue: 78000, lastContact: yesterday, notes: "Site security systems", createdAt: lastWeek },
-];
+const mockClients: Client[] = seedData.clients.map((c, index) => ({
+  id: index + 1,
+  companyName: c.companyName,
+  industry: c.industry,
+  contactName: c.mainContact || "TBD",
+  email: `info@${c.companyName.toLowerCase().replace(/\s+/g, "")}.com`,
+  phone: "+63-2-888-0000",
+  status: "active",
+  address: c.location || "Metro Manila",
+  city: c.location || "Manila",
+  country: "Philippines",
+  contractValue: 0,
+  lastContact: yesterday,
+  notes: `Seeded from seed-data.json. ID: ${c.id}`,
+  createdAt: lastWeek,
+}));
 
 const mockContacts: Contact[] = [
   { id: 1, clientId: 1, name: "Robert Hale", role: "Security Director", department: "Operations", email: "robert@acme.com", phone: "+1-555-0101", isPrimary: true },
@@ -248,6 +255,7 @@ export const useCRMStore = create<CRMState>()(
     }),
     {
       name: "nextos-crm",
+      version: 1,
     }
   )
 );
