@@ -72,9 +72,18 @@ export default function ClientPortal() {
 
   const handleBookingSubmit = () => {
     // persist booking to operations store
+    const toServiceCategory = (type: ServiceType) => {
+      if (type === "pms") return "Heavy Equipment PMS" as const;
+      if (type === "calibration") return "Calibration PMS" as const;
+      if (type === "repair") return "Repair" as const;
+      if (type === "inspection") return "Inspection" as const;
+      return "Installation" as const;
+    };
+
     addBooking({
       clientId,
       equipmentId: parseInt(bookingEquipment),
+      serviceCategory: toServiceCategory(bookingType),
       serviceType: bookingType,
       requestedDate: bookingDate,
       preferredTime: bookingTime,
@@ -92,6 +101,17 @@ export default function ClientPortal() {
       setBookingNotes("");
       setActiveTab("history");
     }, 3000);
+  };
+
+  const isServiceDueFor = (eq: any) => {
+    if (!eq) return false;
+    if (eq.equipmentType === "Heavy Equipment") {
+      return typeof eq.nextPMSHours === "number" && eq.nextPMSHours > 0 && eq.currentHours >= eq.nextPMSHours;
+    }
+    if (eq.equipmentType === "Lab Equipment" || eq.equipmentType === "Testing Equipment") {
+      return eq.nextCalibrationDate ? new Date(eq.nextCalibrationDate) <= new Date() : false;
+    }
+    return false;
   };
 
   // When a booking completes inside the modal, auto-close the modal and return to bookings list
@@ -237,7 +257,7 @@ export default function ClientPortal() {
             const eqRecords = clientRecords.filter((r) => r.equipmentId === eq.id);
             const eqPhotos = servicePhotos.filter((p) => eqRecords.some((r) => r.id === p.serviceRecordId));
             const isExpanded = expandedEquipment === eq.id;
-            const serviceDue = eq.currentHours >= eq.nextServiceDue;
+            const serviceDue = isServiceDueFor(eq);
 
             return (
               <div key={eq.id} className="data-card">
@@ -293,9 +313,9 @@ export default function ClientPortal() {
                       </div>
                       <div>
                         <div className="text-[10px] text-gray-600">Next Service</div>
-                        <div className={`font-mono-tech ${serviceDue ? "text-[#EF4444]" : "text-black"}`}>
-                          {eq.nextServiceDue}h
-                        </div>
+                          <div className={`font-mono-tech ${serviceDue ? "text-[#EF4444]" : "text-black"}`}>
+                            {eq.equipmentType === "Heavy Equipment" ? (eq.nextPMSHours ? `${eq.nextPMSHours}h` : "—") : (eq.nextCalibrationDate ? new Date(eq.nextCalibrationDate).toLocaleDateString() : "—")}
+                          </div>
                       </div>
                     </div>
 

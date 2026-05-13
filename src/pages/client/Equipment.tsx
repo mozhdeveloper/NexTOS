@@ -92,6 +92,16 @@ export default function ClientEquipment() {
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const initTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  const handleMaybePromise = (val: any) => {
+    try {
+      if (val && typeof (val as any).then === "function") {
+        (val as Promise<any>).catch(() => {});
+      }
+    } catch (_) {
+      // ignore
+    }
+  };
+
   const clientEquipment = equipment.filter(
     (e) => e.clientId === clientId && 
     (searchQuery === "" || 
@@ -128,8 +138,8 @@ export default function ClientEquipment() {
       setScannerError("Camera failed to start. Please try again or use manual entry.");
       setScanning(false);
       if (scannerRef.current) {
-        scannerRef.current.stop().catch(console.error);
-        scannerRef.current.clear().catch(console.error);
+        handleMaybePromise(scannerRef.current.stop?.());
+        handleMaybePromise(scannerRef.current.clear?.());
         scannerRef.current = null;
       }
     }, 5000);
@@ -232,8 +242,8 @@ export default function ClientEquipment() {
     return () => {
       if (initTimeoutRef.current) clearTimeout(initTimeoutRef.current);
       if (scannerRef.current) {
-        scannerRef.current.stop().catch(() => {});
-        scannerRef.current.clear().catch(() => {});
+        handleMaybePromise(scannerRef.current.stop?.());
+        handleMaybePromise(scannerRef.current.clear?.());
       }
     };
   }, []);
