@@ -128,6 +128,7 @@ const HISTORY_DOT_STATUS_CACHE_KEY = "nextos-fleet-history-dot-statuses";
 const HISTORY_TABLE_DATA_CACHE_KEY = "nextos-fleet-history-table-data";
 const HISTORY_TABLE_TODAY_TIMESTAMP_KEY = "nextos-fleet-history-table-today-timestamps";
 const PROTECTED_EQUIPMENT_NAME = "Excavator CAT 320";
+const DEFAULT_SERVICE_TYPE = "PMS (Preventative Maintenance)";
 
 function readCachedGps001TotalHoursMs(): number {
   if (typeof window === "undefined") return 0;
@@ -601,6 +602,22 @@ export default function Fleet() {
         .map((type) => ({ value: type, label: type })),
     []
   );
+  const seedServiceTypeOptions = useMemo(() => {
+    const rawOptions = Array.isArray((seedData as any).serviceTypes) ? (seedData as any).serviceTypes : [];
+    const mapped = rawOptions
+      .map((entry: any) => ({
+        value: typeof entry?.label === "string" ? entry.label : "",
+        label: typeof entry?.label === "string" ? entry.label : "",
+      }))
+      .filter((entry: { value: string; label: string }) => entry.value.trim().length > 0);
+
+    if (mapped.length === 0) {
+      return [{ value: DEFAULT_SERVICE_TYPE, label: DEFAULT_SERVICE_TYPE }];
+    }
+
+    const hasDefault = mapped.some((entry: { value: string; label: string }) => entry.value === DEFAULT_SERVICE_TYPE);
+    return hasDefault ? mapped : [{ value: DEFAULT_SERVICE_TYPE, label: DEFAULT_SERVICE_TYPE }, ...mapped];
+  }, []);
   const seedClientsForModal: Client[] = useMemo(() =>
     seedData.clients.map((c, idx) => ({
       id: Number(String(c.id).replace(/\D/g, "")) || idx + 1,
@@ -1206,6 +1223,9 @@ export default function Fleet() {
       ? {
           serviceIntervalHours: equipment.pmsConfiguration.serviceIntervalHours,
           serviceIntervalUnit: equipment.pmsConfiguration.serviceIntervalUnit,
+          ...(equipment.pmsConfiguration.serviceType
+            ? { serviceType: equipment.pmsConfiguration.serviceType }
+            : {}),
         }
       : undefined;
 
@@ -2103,6 +2123,7 @@ export default function Fleet() {
         onSubmitEquipment={handleSubmitEquipment}
         initialEquipment={editingEquipment}
         equipmentTypeOptions={seedEquipmentTypeOptions}
+        serviceTypeOptions={seedServiceTypeOptions}
       />
 
       <AlertDialog

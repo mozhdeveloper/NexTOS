@@ -18,6 +18,7 @@ type SeedEquipmentEntry = {
   pmsConfiguration?: {
     serviceIntervalHours: number;
     serviceIntervalUnit: "Hours" | "KM" | "Weeks" | "Months" | "Years";
+    serviceType?: string;
   };
 };
 
@@ -74,6 +75,7 @@ export const appRouter = createRouter({
             .object({
               serviceIntervalHours: z.number().min(0),
               serviceIntervalUnit: z.enum(["Hours", "KM", "Weeks", "Months", "Years"]),
+              serviceType: z.string().min(1).optional(),
             })
             .optional(),
         })
@@ -121,6 +123,7 @@ export const appRouter = createRouter({
             .object({
               serviceIntervalHours: z.number().min(0),
               serviceIntervalUnit: z.enum(["Hours", "KM", "Weeks", "Months", "Years"]),
+              serviceType: z.string().min(1).optional(),
             })
             .optional(),
         })
