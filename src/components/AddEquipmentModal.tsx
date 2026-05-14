@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -193,6 +194,7 @@ export function AddEquipmentModal({
       await onSubmitEquipment(equipmentToSave);
     } catch (error) {
       console.error("Failed to save equipment", error);
+      toast.error(error instanceof Error ? error.message : "Failed to save equipment. Please try again.");
       return;
     }
 

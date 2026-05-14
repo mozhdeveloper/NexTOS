@@ -785,8 +785,26 @@ export default function Fleet() {
 
   useEffect(() => {
     setAddedEquipment((prev) => {
-      const sanitized = prev.filter((entry) => !isLiveMappedSeedEquipmentEntry(entry));
-      return sanitized.length === prev.length ? prev : sanitized;
+      // Normalize legacy "eq-{timestamp}" IDs to "seed-EQ-XXX" by matching on name.
+      // Entries added before the seed-prefix fix had no "seed-" prefix, which caused
+      // handleSubmitEquipment to skip updateSeedEquipmentMutation silently.
+      let changed = false;
+      const next = prev.map((entry) => {
+        if (entry.id.startsWith("seed-") || entry.id.startsWith("unit-")) return entry;
+        const sn = entry.serialNumber?.trim();
+        const matchingSeed = seedData.equipment.find((s) =>
+          s.name === entry.name ||
+          (sn && (s as any).serialNumber?.trim() === sn)
+        );
+        if (matchingSeed) {
+          changed = true;
+          return { ...entry, id: `seed-${matchingSeed.id}` };
+        }
+        return entry;
+      });
+      const sanitized = next.filter((entry) => !isLiveMappedSeedEquipmentEntry(entry));
+      if (!changed && sanitized.length === prev.length) return prev;
+      return sanitized;
     });
   }, []);
 
@@ -1244,6 +1262,7 @@ export default function Fleet() {
         equipmentType: equipment.type,
         clientId: seedClient.id,
         serialNumber: equipment.serialNumber?.trim() || undefined,
+        notes: equipment.notes?.trim() || undefined,
         image: equipment.image,
         ...(pmsConfiguration ? { pmsConfiguration } : {}),
       });
@@ -1280,6 +1299,7 @@ export default function Fleet() {
         equipmentType: equipment.type,
         clientId: seedClient.id,
         serialNumber: equipment.serialNumber?.trim() || undefined,
+        notes: equipment.notes?.trim() || undefined,
         image: equipment.image,
         ...(pmsConfiguration ? { pmsConfiguration } : {}),
       });
@@ -1941,7 +1961,7 @@ export default function Fleet() {
                                     clientId: clientNum || (client?.id ?? 0),
                                     serialNumber: (seedEntry as any)?.serialNumber || "",
                                     image: (seedEntry as any)?.image,
-                                    notes: "",
+                                    notes: (seedEntry as any)?.notes ?? "",
                                     hoursToday: "",
                                     hoursTotal: "",
                                     pmsConfiguration: (seedEntry as any)?.pmsConfiguration,

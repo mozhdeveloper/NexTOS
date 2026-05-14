@@ -10,6 +10,7 @@ type SeedEquipmentEntry = {
   clientId: string;
   equipmentType: string;
   serialNumber?: string;
+  notes?: string;
   image?: string;
   lat?: number;
   lng?: number;
@@ -70,6 +71,7 @@ export const appRouter = createRouter({
           equipmentType: z.string().min(1),
           clientId: z.string().regex(/^CL-\d{3}$/),
           serialNumber: z.string().optional(),
+          notes: z.string().optional(),
           image: z.string().optional(),
           pmsConfiguration: z
             .object({
@@ -99,6 +101,9 @@ export const appRouter = createRouter({
           ...(input.serialNumber && input.serialNumber.trim().length > 0
             ? { serialNumber: input.serialNumber.trim() }
             : {}),
+          ...(input.notes && input.notes.trim().length > 0
+            ? { notes: input.notes.trim() }
+            : {}),
           ...(input.image && input.image.trim().length > 0
             ? { image: input.image.trim() }
             : {}),
@@ -118,6 +123,7 @@ export const appRouter = createRouter({
           equipmentType: z.string().min(1),
           clientId: z.string().regex(/^CL-\d{3}$/),
           serialNumber: z.string().optional(),
+          notes: z.string().optional(),
           image: z.string().optional(),
           pmsConfiguration: z
             .object({
@@ -148,6 +154,9 @@ export const appRouter = createRouter({
           ...(input.serialNumber && input.serialNumber.trim().length > 0
             ? { serialNumber: input.serialNumber.trim() }
             : {}),
+          ...(input.notes && input.notes.trim().length > 0
+            ? { notes: input.notes.trim() }
+            : {}),
           ...(input.image && input.image.trim().length > 0
             ? { image: input.image.trim() }
             : {}),
@@ -156,6 +165,10 @@ export const appRouter = createRouter({
 
         if (!input.serialNumber || input.serialNumber.trim().length === 0) {
           delete updatedEntry.serialNumber;
+        }
+
+        if (!input.notes || input.notes.trim().length === 0) {
+          delete updatedEntry.notes;
         }
 
         if (!input.image || input.image.trim().length === 0) {

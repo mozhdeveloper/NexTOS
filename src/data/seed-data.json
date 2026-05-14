@@ -379,27 +379,6 @@
             "bookingsGenerated": 14
         }
     ],
-    "gpsFleet": [
-        {
-            "device": "GPS-001",
-            "equipmentId": "EQ-001",
-            "status": "Online",
-            "location": "Quezon City Site A",
-            "currentHours": 980,
-            "lastUpdate": "2026-05-11T08:58:00.000Z",
-            "speedKmh": 12
-        },
-        {
-            "device": "GPS-002",
-            "equipmentId": "EQ-002",
-            "status": "Offline",
-            "location": "Unknown",
-            "currentHours": 1250,
-            "lastUpdate": "2026-05-11T05:00:00.000Z",
-            "speedKmh": 0,
-            "serviceStatus": "Overdue"
-        }
-    ],
     "dashboardAlerts": [
         "Excavator CAT 320 has 20 hrs left before PMS",
         "Soil Compaction Machine calibration overdue by 65 days",
