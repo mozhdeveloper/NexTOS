@@ -89,7 +89,8 @@
                 "serviceIntervalHours": 2,
                 "serviceIntervalUnit": "Weeks",
                 "serviceType": "Installation"
-            }
+            },
+            "days": 10
         },
         {
             "id": "EQ-003",
@@ -99,15 +100,16 @@
             "lat": 14.56331,
             "lng": 121.04812,
             "hoursToday": "4h 20m",
-            "hoursTotal": "3890h 40m",
+            "hoursTotal": "5000h 40m",
             "kmToday": 37,
             "kmTotal": 25410,
             "serialNumber": "GEN500-GBD-003",
             "pmsConfiguration": {
-                "serviceIntervalHours": 5000,
+                "serviceIntervalHours": 4500,
                 "serviceIntervalUnit": "Hours",
                 "serviceType": "Inspection"
-            }
+            },
+            "days": 13
         },
         {
             "id": "LAB-001",
@@ -118,14 +120,15 @@
             "lat": 14.5764,
             "lng": 121.08511,
             "hoursToday": "6h 15m",
-            "hoursTotal": "2100h 40m",
+            "hoursTotal": "3780h 40m",
             "kmToday": 12,
             "kmTotal": 9620,
             "pmsConfiguration": {
                 "serviceIntervalHours": 5000,
                 "serviceIntervalUnit": "Hours",
                 "serviceType": "PMS (Preventative Maintenance)"
-            }
+            },
+            "days": 16
         },
         {
             "id": "LAB-002",
@@ -143,7 +146,8 @@
                 "serviceIntervalHours": 2,
                 "serviceIntervalUnit": "Months",
                 "serviceType": "Repair"
-            }
+            },
+            "days": 19
         },
         {
             "id": "LAB-003",
@@ -159,10 +163,11 @@
             "kmTotal": 14110,
             "serialNumber": "SCM-PIS-003",
             "pmsConfiguration": {
-                "serviceIntervalHours": 1,
-                "serviceIntervalUnit": "Years",
+                "serviceIntervalHours": 3000,
+                "serviceIntervalUnit": "Hours",
                 "serviceType": "Calibration"
-            }
+            },
+            "days": 22
         },
         {
             "id": "EQ-004",
@@ -180,7 +185,8 @@
                 "serviceIntervalHours": 3000,
                 "serviceIntervalUnit": "Hours",
                 "serviceType": "PMS (Preventative Maintenance)"
-            }
+            },
+            "days": 25
         }
     ],
     "serviceRecords": [
