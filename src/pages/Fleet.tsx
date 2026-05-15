@@ -450,7 +450,7 @@ function parseSeedDays(value: unknown): number | null {
   return null;
 }
 
-function parseServiceMetricFromSeedEntry(entry: any): number | null {
+function parseServiceMetricFromSeedEntry(entry: any, hoursMetricOverride?: number | null): number | null {
   const pmsConfig = entry?.pmsConfiguration;
   const interval = Number(pmsConfig?.serviceInterval ?? 0);
   if (!Number.isFinite(interval) || interval <= 0) {
@@ -460,6 +460,9 @@ function parseServiceMetricFromSeedEntry(entry: any): number | null {
   const unit = String(pmsConfig?.serviceIntervalUnit ?? "Hours").toLowerCase();
 
   if (unit === "hours") {
+    if (Number.isFinite(hoursMetricOverride) && (hoursMetricOverride as number) >= 0) {
+      return hoursMetricOverride as number;
+    }
     return parseHoursTextToHours(entry?.hoursTotal);
   }
 
@@ -486,8 +489,8 @@ function parseServiceMetricFromSeedEntry(entry: any): number | null {
   return null;
 }
 
-function computeServiceStatusFromSeedEntry(entry: any): ServiceStatus | null {
-  if (!entry || entry.id === "EQ-001") {
+function computeServiceStatusFromSeedEntry(entry: any, hoursMetricOverride?: number | null): ServiceStatus | null {
+  if (!entry) {
     return null;
   }
 
@@ -496,7 +499,7 @@ function computeServiceStatusFromSeedEntry(entry: any): ServiceStatus | null {
     return null;
   }
 
-  const metric = parseServiceMetricFromSeedEntry(entry);
+  const metric = parseServiceMetricFromSeedEntry(entry, hoursMetricOverride);
   if (metric === null || !Number.isFinite(metric) || metric < 0) {
     return null;
   }
@@ -795,6 +798,10 @@ export default function Fleet() {
   const [gps001HoursTotalMs, setGps001HoursTotalMs] = useState(() => readCachedGps001TotalHoursMs());
   const [gps001KmTotal, setGps001KmTotal] = useState(() => readCachedGps001TotalKm());
   const [gps001WorkingDays, setGps001WorkingDays] = useState(0);
+  const gps001TotalHoursValue =
+    Number.isFinite(gps001HoursTotalMs) && gps001HoursTotalMs > 0
+      ? gps001HoursTotalMs / (1000 * 60 * 60)
+      : null;
 
   // Unique ID for this page load — resets on every full reload, preventing stale localStorage milestones
   // from blocking the toast when the same threshold is crossed again after editing seed data.
@@ -821,7 +828,10 @@ export default function Fleet() {
   const selectedUnitLabel = selectedEquipment?.unitId || selectedUnit?.unitName || "Unit";
   const selectedSeedDisplay = getSeedDisplayForUnit(selectedUnitLabel);
   const selectedSeedEquipment = getSeedEquipmentForUnit(selectedUnitLabel);
-  const selectedServiceStatus = computeServiceStatusFromSeedEntry(selectedSeedEquipment);
+  const selectedServiceStatus = computeServiceStatusFromSeedEntry(
+    selectedSeedEquipment,
+    (selectedSeedEquipment as any)?.id === "EQ-001" ? gps001TotalHoursValue : undefined
+  );
 
   const seedEquipmentTypeOptions = useMemo(
     () =>
@@ -1177,6 +1187,62 @@ export default function Fleet() {
   }, [selectedHistoryDay]);
 
   useEffect(() => {
+    if (!Array.isArray(seedData?.equipment)) return;
+
+    const excavatorEntry = seedData.equipment.find((equipment: any) => equipment.id === "EQ-001");
+    if (!excavatorEntry?.pmsConfiguration) return;
+
+    const pmsConfig = excavatorEntry.pmsConfiguration;
+    const interval = Number(pmsConfig?.serviceInterval ?? pmsConfig?.serviceIntervalHours);
+    const intervalUnit = String(pmsConfig?.serviceIntervalUnit ?? "Hours");
+    const intervalUnitLower = intervalUnit.toLowerCase();
+
+    if (!Number.isFinite(interval) || interval <= 0) return;
+    if (intervalUnitLower !== "hours") return;
+    if (gps001TotalHoursValue === null || gps001TotalHoursValue <= 0) return;
+
+    const currentMetricText = formatHoursFromMsForSidebar(gps001HoursTotalMs);
+    const achievedMilestone = Math.floor(gps001TotalHoursValue / interval);
+    const milestoneStore = readServiceIntervalToastMilestones();
+    const milestoneKey = `${excavatorEntry.id}:${interval}:${intervalUnitLower}`;
+    const stored = milestoneStore[milestoneKey];
+
+    const storedCount = typeof stored === "number" ? stored : (stored?.count ?? 0);
+    const storedHoursText = typeof stored === "object" && stored !== null ? stored.hoursText : undefined;
+    const storedSessionId = typeof stored === "object" && stored !== null ? stored.sessionId : undefined;
+    const previousMilestone =
+      storedSessionId === pmsToastSessionId && storedHoursText === currentMetricText
+        ? storedCount
+        : 0;
+
+    if (achievedMilestone <= 0) {
+      writeServiceIntervalToastMilestones({
+        ...milestoneStore,
+        [milestoneKey]: { count: 0, hoursText: currentMetricText, sessionId: pmsToastSessionId },
+      });
+      return;
+    }
+
+    if (achievedMilestone <= previousMilestone) return;
+
+    const intervalUnitDisplay = intervalUnitLower === "km" ? "Km" : intervalUnit;
+    const serviceType =
+      typeof pmsConfig?.serviceType === "string" && pmsConfig.serviceType.trim().length > 0
+        ? pmsConfig.serviceType
+        : "Service";
+
+    toast(
+      `${interval} ${intervalUnitDisplay} achieved with ${excavatorEntry.name ?? "Equipment"} – ${serviceType} needed`,
+      { style: { color: "#FFFFFF" } }
+    );
+
+    writeServiceIntervalToastMilestones({
+      ...milestoneStore,
+      [milestoneKey]: { count: achievedMilestone, hoursText: currentMetricText, sessionId: pmsToastSessionId },
+    });
+  }, [gps001HoursTotalMs, gps001TotalHoursValue, pmsToastSessionId]);
+
+  useEffect(() => {
     // Fire for either a GPS unit or an added-equipment sidebar item
     if (!selectedUnit && !selectedAddedEquipmentId) return;
 
@@ -1187,7 +1253,7 @@ export default function Fleet() {
     let equipmentNameForToast = "Equipment";
 
     if (selectedUnit) {
-      // Do not involve Excavator CAT 320 (live GPS data path) in this interval-to-toast pass.
+      // Excavator CAT 320 milestone toasts are handled by the dedicated live GPS watcher.
       if ((selectedSeedEntry as any)?.id === "EQ-001") return;
 
       const selectedUnitKey = selectedUnitLabel.toUpperCase();
@@ -2390,7 +2456,10 @@ export default function Fleet() {
                 const seedEntry = displayEquipmentName
                   ? seedData.equipment.find((s) => s.name === displayEquipmentName)
                   : null;
-                const serviceStatus = computeServiceStatusFromSeedEntry(seedEntry);
+                const serviceStatus = computeServiceStatusFromSeedEntry(
+                  seedEntry,
+                  isGps001 && seedEntry?.id === "EQ-001" ? gps001TotalHoursValue : undefined
+                );
                 const seedEntryImage = seedEntry?.id
                   ? seedImageOverrides[seedEntry.id] ?? (seedEntry as any)?.image
                   : undefined;
