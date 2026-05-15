@@ -98,6 +98,8 @@ type SeedEquipmentDisplay = {
   clientName: string | null;
 };
 
+type ServiceStatus = "OK" | "Near Service" | "Overdue";
+
 interface HistoryRow {
   id: string;
   name: string;
@@ -448,6 +450,122 @@ function parseSeedDays(value: unknown): number | null {
   return null;
 }
 
+function parseServiceMetricFromSeedEntry(entry: any): number | null {
+  const pmsConfig = entry?.pmsConfiguration;
+  const interval = Number(pmsConfig?.serviceInterval ?? 0);
+  if (!Number.isFinite(interval) || interval <= 0) {
+    return null;
+  }
+
+  const unit = String(pmsConfig?.serviceIntervalUnit ?? "Hours").toLowerCase();
+
+  if (unit === "hours") {
+    return parseHoursTextToHours(entry?.hoursTotal);
+  }
+
+  if (unit === "km" || unit === "kms") {
+    return parseSeedKm(entry?.kmTotal);
+  }
+
+  const days = parseSeedDays(entry?.days);
+  if (days === null) {
+    return null;
+  }
+
+  const periods = convertDaysToPeriods(days);
+  if (unit === "weeks") {
+    return periods.weeks;
+  }
+  if (unit === "months") {
+    return periods.months;
+  }
+  if (unit === "years") {
+    return periods.years;
+  }
+
+  return null;
+}
+
+function computeServiceStatusFromSeedEntry(entry: any): ServiceStatus | null {
+  if (!entry || entry.id === "EQ-001") {
+    return null;
+  }
+
+  const interval = Number(entry?.pmsConfiguration?.serviceInterval ?? 0);
+  if (!Number.isFinite(interval) || interval <= 0) {
+    return null;
+  }
+
+  const metric = parseServiceMetricFromSeedEntry(entry);
+  if (metric === null || !Number.isFinite(metric) || metric < 0) {
+    return null;
+  }
+
+  const progress = (metric / interval) * 100;
+  if (progress >= 100) return "Overdue";
+  if (progress >= 80) return "Near Service";
+  return "OK";
+}
+
+function computeServiceStatusFromAddedEntry(entry: ModalEquipment, seedEntry?: any | null): ServiceStatus | null {
+  const sourceEntry = seedEntry ?? entry;
+
+  if (!sourceEntry) {
+    return null;
+  }
+
+  if (
+    sourceEntry.id === "EQ-001" ||
+    sourceEntry.id === "seed-EQ-001" ||
+    sourceEntry.name === PROTECTED_EQUIPMENT_NAME
+  ) {
+    return null;
+  }
+
+  const interval = Number(sourceEntry?.pmsConfiguration?.serviceInterval ?? 0);
+  if (!Number.isFinite(interval) || interval <= 0) {
+    return null;
+  }
+
+  const unit = String(sourceEntry?.pmsConfiguration?.serviceIntervalUnit ?? "Hours").toLowerCase();
+
+  let metric: number | null = null;
+  if (unit === "hours") {
+    metric = parseHoursTextToHours(sourceEntry?.hoursTotal);
+  } else if (unit === "km" || unit === "kms") {
+    metric = parseSeedKm(sourceEntry?.kmTotal);
+  } else {
+    const days = parseSeedDays(sourceEntry?.days);
+    if (days !== null) {
+      const periods = convertDaysToPeriods(days);
+      if (unit === "weeks") metric = periods.weeks;
+      if (unit === "months") metric = periods.months;
+      if (unit === "years") metric = periods.years;
+    }
+  }
+
+  if (metric === null || !Number.isFinite(metric) || metric < 0) {
+    return null;
+  }
+
+  const progress = (metric / interval) * 100;
+  if (progress >= 100) return "Overdue";
+  if (progress >= 80) return "Near Service";
+  return "OK";
+}
+
+function serviceStatusTextClass(status: ServiceStatus): string {
+  if (status === "Overdue") return "text-[#EF4444]";
+  if (status === "Near Service") return "text-[#F2A900]";
+  return "text-[#10B981]";
+}
+
+function serviceStatusDotClass(status: ServiceStatus): string {
+  if (status === "Overdue") return "bg-[#EF4444]";
+  if (status === "Near Service") return "bg-[#F2A900]";
+  return "bg-[#10B981]";
+}
+
 function parseHoursTextToHours(value: string | undefined): number | null {
   if (!value) return null;
   const match = value.match(/(\d+)\s*h\s*(\d+)\s*m/i);
@@ -631,12 +749,17 @@ const gpsNameMapping: Record<string, string> = {
 
 const LIVE_SEED_EQUIPMENT_IDS = new Set(Object.values(unitIdToSeedEquipmentId));
 
-function getSeedDisplayForUnit(unitId: string): SeedEquipmentDisplay | null {
+function getSeedEquipmentForUnit(unitId: string): any | null {
   const normalizedUnitId = unitId.trim().toUpperCase();
   const seedEquipmentId = unitIdToSeedEquipmentId[normalizedUnitId];
   if (!seedEquipmentId) return null;
 
   const equipment = seedData.equipment.find((entry) => entry.id === seedEquipmentId);
+  return equipment ?? null;
+}
+
+function getSeedDisplayForUnit(unitId: string): SeedEquipmentDisplay | null {
+  const equipment = getSeedEquipmentForUnit(unitId);
   if (!equipment) return null;
 
   const client = seedData.clients.find((entry) => entry.id === equipment.clientId);
@@ -697,6 +820,8 @@ export default function Fleet() {
   const selectedEquipment = equipment.find((e) => e.id === selectedUnit?.equipmentId);
   const selectedUnitLabel = selectedEquipment?.unitId || selectedUnit?.unitName || "Unit";
   const selectedSeedDisplay = getSeedDisplayForUnit(selectedUnitLabel);
+  const selectedSeedEquipment = getSeedEquipmentForUnit(selectedUnitLabel);
+  const selectedServiceStatus = computeServiceStatusFromSeedEntry(selectedSeedEquipment);
 
   const seedEquipmentTypeOptions = useMemo(
     () =>
@@ -1977,24 +2102,35 @@ export default function Fleet() {
                 {/* Simulated equipment markers */}
                 {addedEquipment
                   .filter((eq) => typeof eq.lat === "number" && typeof eq.lng === "number")
-                  .map((eq) => (
-                    <Marker
-                      key={`sim-${eq.id}`}
-                      position={[eq.lat!, eq.lng!]}
-                      icon={defaultIcon}
-                    >
-                      <Popup className="dark-popup">
-                        <div className="bg-[#121214] p-2 min-w-[180px]">
-                          <div className="text-xs font-bold text-[#EAEAEA] mb-1">{eq.name}</div>
-                          <div className="text-[10px] text-[#88888C] space-y-0.5">
-                            <div>Status: <span className="text-[#F2A900]">Simulated</span></div>
-                            {eq.type && <div>Type: {eq.type}</div>}
-                            <div>Hours: {eq.hoursTotal}</div>
+                  .map((eq) => {
+                    const addedSeedEntry = eq.id.startsWith("seed-")
+                      ? seedData.equipment.find((entry) => `seed-${entry.id}` === eq.id) ?? null
+                      : null;
+                    const addedServiceStatus = computeServiceStatusFromAddedEntry(eq, addedSeedEntry);
+
+                    return (
+                      <Marker
+                        key={`sim-${eq.id}`}
+                        position={[eq.lat!, eq.lng!]}
+                        icon={defaultIcon}
+                      >
+                        <Popup className="dark-popup">
+                          <div className="bg-[#121214] p-2 min-w-[180px]">
+                            <div className="text-xs font-bold text-[#EAEAEA] mb-1">{eq.name}</div>
+                            <div className="text-[10px] text-[#88888C] space-y-0.5">
+                              {addedServiceStatus && (
+                                <div>
+                                  Status: <span className={serviceStatusTextClass(addedServiceStatus)}>{addedServiceStatus}</span>
+                                </div>
+                              )}
+                              {eq.type && <div>Type: {eq.type}</div>}
+                              <div>Hours: {(addedSeedEntry as any)?.hoursTotal ?? eq.hoursTotal}</div>
+                            </div>
                           </div>
-                        </div>
-                      </Popup>
-                    </Marker>
-                  ))}
+                        </Popup>
+                      </Marker>
+                    );
+                  })}
                 {selectedUnit &&
                   typeof selectedUnit.telemetry.lat === "number" &&
                   typeof selectedUnit.telemetry.lng === "number" &&
@@ -2044,10 +2180,14 @@ export default function Fleet() {
                       <span className="text-[#88888C]">Engine Hours</span>
                       <span className="text-[#F2A900]">{formatHoursMinutes(selectedUnit.telemetry)}</span>
                     </div>
-                    {selectedUnit.serviceDue && (
+                    {selectedServiceStatus && (
                       <div className="flex items-center gap-1 mt-1 pt-1 border-t border-white/5">
-                        <AlertTriangle className="w-3 h-3 text-[#EF4444]" />
-                        <span className="text-[#EF4444]">Service Due</span>
+                        {selectedServiceStatus === "OK" ? (
+                          <span className={`h-2 w-2 rounded-full ${serviceStatusDotClass(selectedServiceStatus)}`} />
+                        ) : (
+                          <AlertTriangle className={`w-3 h-3 ${serviceStatusTextClass(selectedServiceStatus)}`} />
+                        )}
+                        <span className={serviceStatusTextClass(selectedServiceStatus)}>{selectedServiceStatus}</span>
                       </div>
                     )}
                   </div>
@@ -2250,6 +2390,7 @@ export default function Fleet() {
                 const seedEntry = displayEquipmentName
                   ? seedData.equipment.find((s) => s.name === displayEquipmentName)
                   : null;
+                const serviceStatus = computeServiceStatusFromSeedEntry(seedEntry);
                 const seedEntryImage = seedEntry?.id
                   ? seedImageOverrides[seedEntry.id] ?? (seedEntry as any)?.image
                   : undefined;
@@ -2464,10 +2605,14 @@ export default function Fleet() {
                             <div>Days: {daysText}</div>
                             {dayPeriodsText && <div>Approx: {dayPeriodsText}</div>}
                           </div>
-                          {unit.serviceDue && (
-                            <div className="flex items-center gap-1 text-[#EF4444]">
-                              <AlertTriangle className="w-2.5 h-2.5" />
-                              <span>Service due</span>
+                          {serviceStatus && (
+                            <div className={`flex items-center gap-1 ${serviceStatusTextClass(serviceStatus)}`}>
+                              {serviceStatus === "OK" ? (
+                                <span className={`h-2 w-2 rounded-full ${serviceStatusDotClass(serviceStatus)}`} />
+                              ) : (
+                                <AlertTriangle className="w-2.5 h-2.5" />
+                              )}
+                              <span>{serviceStatus}</span>
                             </div>
                           )}
                         </div>
@@ -2478,6 +2623,14 @@ export default function Fleet() {
               })}
               {addedEquipment.map((eq) => {
                 const eqClient = seedClientsForModal.find((c) => c.id === eq.clientId) || clients.find((c) => c.id === eq.clientId);
+                const addedSeedEntry = eq.id.startsWith("seed-")
+                  ? seedData.equipment.find((entry) => `seed-${entry.id}` === eq.id) ?? null
+                  : null;
+                const addedServiceStatus = computeServiceStatusFromAddedEntry(eq, addedSeedEntry);
+                const addedKmTodayValue = parseSeedKm((addedSeedEntry as any)?.kmToday ?? (eq as any)?.kmToday);
+                const addedKmTotalValue = parseSeedKm((addedSeedEntry as any)?.kmTotal ?? (eq as any)?.kmTotal);
+                const addedDaysValue = parseSeedDays((addedSeedEntry as any)?.days ?? (eq as any)?.days);
+                const addedDayPeriodsText = formatDayPeriodsForSidebar(addedDaysValue);
                 const isProtectedEquipment =
                   eq.name === PROTECTED_EQUIPMENT_NAME || eq.id === "seed-EQ-001" || eq.id === "EQ-001";
                 const isSelectedAddedEquipment = selectedAddedEquipmentId === eq.id;
@@ -2513,7 +2666,13 @@ export default function Fleet() {
                       <div className="min-w-0 flex-1">
                         <div className="mb-1 flex items-start justify-between gap-2">
                           <div className="flex min-w-0 items-center gap-1.5">
-                            <div className="w-2 h-2 rounded-full bg-[#F2A900]" />
+                            <div
+                              className={`w-2 h-2 rounded-full ${
+                                addedServiceStatus
+                                  ? serviceStatusDotClass(addedServiceStatus)
+                                  : "bg-[#F2A900]"
+                              }`}
+                            />
                             <span className="truncate text-xs font-medium text-[#EAEAEA]">{eq.name}</span>
                           </div>
                           <div className="relative" onClick={(e) => e.stopPropagation()}>
@@ -2567,9 +2726,21 @@ export default function Fleet() {
                           <div>{eqClient?.companyName || "—"}</div>
                           <div>Type: {eq.type}</div>
                           <div className="space-y-0.5 pt-0.5">
-                            <div>T: {eq.hoursToday || "—"} / —km</div>
-                            <div>Σ: {eq.hoursTotal || "—"} / —km</div>
+                            <div>Today: {((addedSeedEntry as any)?.hoursToday ?? eq.hoursToday) || "—"} / {addedKmTodayValue !== null ? formatSidebarKm(addedKmTodayValue) : "—km"}</div>
+                            <div>Total: {((addedSeedEntry as any)?.hoursTotal ?? eq.hoursTotal) || "—"} / {addedKmTotalValue !== null ? formatSidebarKm(addedKmTotalValue) : "—km"}</div>
+                            <div>Days: {formatDaysForSidebar(addedDaysValue)}</div>
+                            {addedDayPeriodsText && <div>Approx: {addedDayPeriodsText}</div>}
                           </div>
+                          {addedServiceStatus && (
+                            <div className={`flex items-center gap-1 ${serviceStatusTextClass(addedServiceStatus)}`}>
+                              {addedServiceStatus === "OK" ? (
+                                <span className={`h-2 w-2 rounded-full ${serviceStatusDotClass(addedServiceStatus)}`} />
+                              ) : (
+                                <AlertTriangle className="w-2.5 h-2.5" />
+                              )}
+                              <span>{addedServiceStatus}</span>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>

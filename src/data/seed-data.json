@@ -78,6 +78,7 @@
             "name": "Boom Truck X500",
             "clientId": "CL-002",
             "equipmentType": "Heavy Equipment",
+            "status": "OK",
             "lat": 14.59986,
             "lng": 121.03679,
             "hoursToday": "3h 24m",
@@ -98,6 +99,7 @@
             "name": "Generator 500KVA",
             "clientId": "CL-004",
             "equipmentType": "Heavy Equipment",
+            "status": "OK",
             "lat": 14.56331,
             "lng": 121.04812,
             "hoursToday": "4h 20m",
@@ -118,6 +120,7 @@
             "clientId": "CL-003",
             "equipmentType": "Lab Equipment",
             "serialNumber": "CST-DTL-001",
+            "status": "Near Service",
             "lat": 14.5764,
             "lng": 121.08511,
             "hoursToday": "6h 15m",
@@ -136,6 +139,7 @@
             "name": "Steel Beam Tester",
             "clientId": "CL-001",
             "equipmentType": "Lab Equipment",
+            "status": "OK",
             "lat": 14.62123,
             "lng": 121.04789,
             "hoursToday": "3h 50m",
@@ -155,7 +159,7 @@
             "name": "Soil Compaction Machine",
             "clientId": "CL-002",
             "equipmentType": "Lab Equipment",
-            "status": "In Progress",
+            "status": "OK",
             "lat": 14.55412,
             "lng": 121.01445,
             "hoursToday": "5h 05m",
@@ -175,6 +179,7 @@
             "name": "kumatsu",
             "clientId": "CL-001",
             "equipmentType": "Heavy Equipment",
+            "status": "Near Service",
             "lat": 14.60736,
             "lng": 121.04556,
             "hoursToday": "4h 42m",
@@ -190,6 +195,8 @@
             "days": 25
         }
     ],
+
+    
     "serviceRecords": [
         {
             "id": "SRV-001",

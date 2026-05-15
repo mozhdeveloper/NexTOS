@@ -16,9 +16,13 @@ type SeedEquipmentEntry = {
   lng?: number;
   hoursToday?: string;
   hoursTotal?: string;
+  kmToday?: number | string;
+  kmTotal?: number | string;
+  days?: number | string;
+  status?: "OK" | "Near Service" | "Overdue";
   pmsConfiguration?: {
     serviceInterval: number;
-    serviceIntervalUnit: "Hours" | "KM" | "Weeks" | "Months" | "Years";
+    serviceIntervalUnit: "Hours" | "KM" | "Km" | "Weeks" | "Months" | "Years";
     serviceType?: string;
   };
 };
@@ -58,6 +62,103 @@ function buildSimulatedTelemetry(): Pick<SeedEquipmentEntry, "lat" | "lng" | "ho
     hoursToday: `${todayHours}h ${String(todayMinutes).padStart(2, "0")}m`,
     hoursTotal: `${totalHours}h ${String(totalMinutes).padStart(2, "0")}m`,
   };
+}
+
+function parseHoursTextToHours(value: string | undefined): number | null {
+  if (!value) return null;
+  const match = value.match(/(\d+)\s*h\s*(\d+)\s*m/i);
+  if (!match) return null;
+  const hours = Number(match[1] ?? 0);
+  const minutes = Number(match[2] ?? 0);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes) || hours < 0 || minutes < 0) {
+    return null;
+  }
+  return hours + minutes / 60;
+}
+
+function parseNumericMetric(value: number | string | undefined): number | null {
+  if (typeof value === "number") {
+    return Number.isFinite(value) && value >= 0 ? value : null;
+  }
+  if (typeof value === "string") {
+    const normalized = value.replace(/[^\d.]/g, "");
+    const parsed = Number.parseFloat(normalized);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+  }
+  return null;
+}
+
+function convertDaysToPeriods(days: number): { weeks: number; months: number; years: number } {
+  return {
+    weeks: days / 7,
+    months: days / 30.44,
+    years: days / 365.25,
+  };
+}
+
+function calculateServiceStatus(entry: SeedEquipmentEntry): "OK" | "Near Service" | "Overdue" | null {
+  if (entry.id === "EQ-001") {
+    return null;
+  }
+
+  const pms = entry.pmsConfiguration;
+  if (!pms) {
+    return null;
+  }
+
+  const interval = Number(pms.serviceInterval ?? 0);
+  if (!Number.isFinite(interval) || interval <= 0) {
+    return null;
+  }
+
+  const unit = String(pms.serviceIntervalUnit ?? "Hours").toLowerCase();
+
+  let usage: number | null = null;
+  if (unit === "hours") {
+    usage = parseHoursTextToHours(entry.hoursTotal);
+  } else if (unit === "km") {
+    usage = parseNumericMetric(entry.kmTotal);
+  } else {
+    const days = parseNumericMetric(entry.days);
+    if (days !== null) {
+      const periods = convertDaysToPeriods(days);
+      if (unit === "weeks") usage = periods.weeks;
+      if (unit === "months") usage = periods.months;
+      if (unit === "years") usage = periods.years;
+    }
+  }
+
+  if (usage === null || !Number.isFinite(usage) || usage < 0) {
+    return null;
+  }
+
+  const progress = (usage / interval) * 100;
+  if (progress >= 100) return "Overdue";
+  if (progress >= 80) return "Near Service";
+  return "OK";
+}
+
+function applyComputedServiceStatuses(parsed: SeedDataShape): void {
+  if (!Array.isArray(parsed.equipment)) {
+    return;
+  }
+
+  parsed.equipment = parsed.equipment.map((entry) => {
+    if (entry.id === "EQ-001") {
+      return entry;
+    }
+
+    const status = calculateServiceStatus(entry);
+    if (!status) {
+      const { status: _status, ...rest } = entry;
+      return rest;
+    }
+
+    return {
+      ...entry,
+      status,
+    };
+  });
 }
 
 export const appRouter = createRouter({
@@ -111,6 +212,7 @@ export const appRouter = createRouter({
         };
 
         parsed.equipment = [...equipment, newEntry];
+        applyComputedServiceStatuses(parsed);
         await fs.writeFile(seedDataPath, `${JSON.stringify(parsed, null, 4)}\n`, "utf-8");
 
         return { ok: true, entry: newEntry };
@@ -181,6 +283,7 @@ export const appRouter = createRouter({
 
         equipment[existingIndex] = updatedEntry;
         parsed.equipment = equipment;
+        applyComputedServiceStatuses(parsed);
         await fs.writeFile(seedDataPath, `${JSON.stringify(parsed, null, 4)}\n`, "utf-8");
 
         return { ok: true, entry: updatedEntry };
@@ -210,6 +313,7 @@ export const appRouter = createRouter({
         }
 
         parsed.equipment = equipment.filter((item) => item.id !== input.id);
+        applyComputedServiceStatuses(parsed);
         await fs.writeFile(seedDataPath, `${JSON.stringify(parsed, null, 4)}\n`, "utf-8");
 
         return { ok: true };
@@ -248,6 +352,7 @@ export const appRouter = createRouter({
           };
 
           parsed.pmsConfigurations = [...list, newEntry];
+          applyComputedServiceStatuses(parsed);
           await fs.writeFile(seedDataPath, `${JSON.stringify(parsed, null, 4)}\n`, "utf-8");
 
           return { ok: true, entry: newEntry };
@@ -282,6 +387,7 @@ export const appRouter = createRouter({
 
           list[idx] = updated;
           parsed.pmsConfigurations = list;
+          applyComputedServiceStatuses(parsed);
           await fs.writeFile(seedDataPath, `${JSON.stringify(parsed, null, 4)}\n`, "utf-8");
 
           return { ok: true, entry: updated };
@@ -303,6 +409,7 @@ export const appRouter = createRouter({
           }
 
           parsed.pmsConfigurations = filtered;
+          applyComputedServiceStatuses(parsed);
           await fs.writeFile(seedDataPath, `${JSON.stringify(parsed, null, 4)}\n`, "utf-8");
 
           return { ok: true };
