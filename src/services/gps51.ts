@@ -1266,3 +1266,359 @@ export async function fetchAllTimeWorkingMs(
 
   return totalWorkingMs;
 }
+
+export async function fetchAllTimeWorkingDays(
+  username: string,
+  password: string,
+  startDay = "2000-01-01",
+  endDay?: string
+): Promise<number> {
+  const finalEndDay = endDay ?? new Date().toISOString().slice(0, 10);
+
+  const toYmd = (date: Date): string => {
+    const year = date.getFullYear();
+    const month = `${date.getMonth() + 1}`.padStart(2, "0");
+    const day = `${date.getDate()}`.padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
+  const parseYmd = (value: string): Date | null => {
+    const parsed = new Date(`${value}T00:00:00`);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  };
+
+  const toDayKey = (value: unknown): string | null => {
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      const ymdMatch = trimmed.match(/\d{4}-\d{2}-\d{2}/);
+      if (ymdMatch) return ymdMatch[0] ?? null;
+      const parsed = new Date(trimmed);
+      if (!Number.isNaN(parsed.getTime())) return toYmd(parsed);
+      return null;
+    }
+
+    if (typeof value === "number" && Number.isFinite(value)) {
+      const normalized = value > 1e12 ? value : value * 1000;
+      const parsed = new Date(normalized);
+      if (!Number.isNaN(parsed.getTime())) return toYmd(parsed);
+    }
+
+    return null;
+  };
+
+  const resolveRecordDay = (record: Record<string, unknown>): string | null => {
+    const candidates: unknown[] = [
+      record.day,
+      record.startday,
+      record.endday,
+      record.date,
+      record.deviceday,
+      record.gpsdate,
+      record.recorddate,
+      record.starttime,
+      record.endtime,
+      record.updatetime,
+      record.time,
+      record.devicetime,
+    ];
+
+    for (const candidate of candidates) {
+      const dayKey = toDayKey(candidate);
+      if (dayKey) return dayKey;
+    }
+
+    return null;
+  };
+
+  const resolveRecordWorkingMs = (record: Record<string, unknown>): number => {
+    const explicitMs = pickFirstNonNegative(
+      record.totalacc,
+      record.workingduration,
+      record.workingtime,
+      record.accontime,
+      record.totalacctime,
+      record.totalworkingtime,
+      record.worktime,
+      record.onlinetime
+    ) ?? 0;
+
+    const parsedDurationMs = Math.max(
+      parseDurationFromRecordStrings(record, /(totalacc|accon|working|work|online).*(str|text|duration|time)/i),
+      parseDurationFromRecordStrings(record, /(str|text|duration).*(totalacc|accon|working|work|online)/i)
+    );
+
+    return Math.max(explicitMs, parsedDurationMs);
+  };
+
+  const resolveRecordMileageMeters = (record: Record<string, unknown>): number => {
+    const starterMeters = toFiniteNumber(record.starter, 0);
+    const endDistanceMeters = toFiniteNumber(record.enddis, 0);
+    const edgeDistanceMeters = endDistanceMeters - starterMeters;
+
+    return pickFirstNonNegative(
+      record.totaldistance,
+      record.distance,
+      record.allmile,
+      edgeDistanceMeters > 0 ? edgeDistanceMeters : undefined
+    ) ?? 0;
+  };
+
+  const resolveRecordDrivingMs = (record: Record<string, unknown>): number => {
+    const explicitMs = pickFirstNonNegative(
+      record.totaltriptime,
+      record.drivingduration,
+      record.drivingtime,
+      record.triptime
+    ) ?? 0;
+
+    const parsedDurationMs = Math.max(
+      parseDurationFromRecordStrings(record, /(trip|driving|drive).*(str|text|duration|time)/i),
+      parseDurationFromRecordStrings(record, /(str|text|duration).*(trip|driving|drive)/i)
+    );
+
+    return Math.max(explicitMs, parsedDurationMs);
+  };
+
+  const resolveRecordIdleMs = (record: Record<string, unknown>): number => {
+    const explicitMs = pickFirstNonNegative(
+      record.totalidle,
+      record.idleduration,
+      record.idletime
+    ) ?? 0;
+
+    const parsedDurationMs = Math.max(
+      parseDurationFromRecordStrings(record, /(idle).*(str|text|duration|time)/i),
+      parseDurationFromRecordStrings(record, /(str|text|duration).*(idle)/i)
+    );
+
+    return Math.max(explicitMs, parsedDurationMs);
+  };
+
+  const resolveRecordParkingMs = (record: Record<string, unknown>): number => {
+    const explicitMs = pickFirstNonNegative(
+      record.parkingduration,
+      record.parkduration,
+      record.parkingtime,
+      record.totalpark,
+      record.totalparking,
+      record.parktime,
+      record.stopduration
+    ) ?? 0;
+
+    const parsedDurationMs = Math.max(
+      parseDurationFromRecordStrings(record, /(park|parking|stop).*(str|text|duration|time)/i),
+      parseDurationFromRecordStrings(record, /(str|text|duration).*(park|parking|stop)/i)
+    );
+
+    return Math.max(explicitMs, parsedDurationMs);
+  };
+
+  const fetchRangeRecords = async (rangeStart: string, rangeEnd: string): Promise<Record<string, unknown>[]> => {
+    const data = await postGps51Action("reportmileagedetail", username, password, {
+      deviceid: DEVICE_ID,
+      startday: rangeStart,
+      endday: rangeEnd,
+      offset: 8,
+    });
+
+    if (data?.status !== 0) {
+      logGPS51("alltime.working.days.range.error", {
+        rangeStart,
+        rangeEnd,
+        status: data?.status,
+        cause: data?.cause,
+      });
+      return [];
+    }
+
+    return Array.isArray(data?.records)
+      ? (data.records as Record<string, unknown>[])
+      : [];
+  };
+
+  let records = await fetchRangeRecords(startDay, finalEndDay);
+  let usedYearlyFallback = false;
+
+  if (!records.length) {
+    const parsedStart = parseYmd(startDay);
+    const parsedEnd = parseYmd(finalEndDay);
+
+    if (parsedStart && parsedEnd && parsedStart <= parsedEnd) {
+      usedYearlyFallback = true;
+      const yearlyRecords: Record<string, unknown>[] = [];
+      let cursorYear = parsedStart.getFullYear();
+      const endYear = parsedEnd.getFullYear();
+
+      while (cursorYear <= endYear) {
+        const rangeStartDate =
+          cursorYear === parsedStart.getFullYear()
+            ? parsedStart
+            : new Date(cursorYear, 0, 1);
+        const rangeEndDate =
+          cursorYear === endYear
+            ? parsedEnd
+            : new Date(cursorYear, 11, 31);
+
+        const chunkRecords = await fetchRangeRecords(
+          toYmd(rangeStartDate),
+          toYmd(rangeEndDate)
+        );
+        yearlyRecords.push(...chunkRecords);
+        cursorYear += 1;
+      }
+
+      records = yearlyRecords;
+    }
+  }
+
+  const activeDayKeys = new Set<string>();
+
+  for (const record of records) {
+    const dayKey = resolveRecordDay(record);
+    if (!dayKey) continue;
+    if (dayKey < startDay || dayKey > finalEndDay) continue;
+
+    const mileageMeters = resolveRecordMileageMeters(record);
+    const maxSpeed = toFiniteNumber(record.maxspeed, 0);
+    const avgSpeed = toFiniteNumber(record.avgspeed, 0);
+    const drivingMs = resolveRecordDrivingMs(record);
+    const workingMs = resolveRecordWorkingMs(record);
+    const idleMs = resolveRecordIdleMs(record);
+    const parkingMs = resolveRecordParkingMs(record);
+
+    const hasMovementEvidence =
+      Math.abs(mileageMeters) > 0 ||
+      Math.abs(maxSpeed) > 0 ||
+      Math.abs(avgSpeed) > 0 ||
+      drivingMs > 0;
+
+    const hasSupportedStationaryEvidence =
+      workingMs > 0 || idleMs > 0 || parkingMs > 0;
+
+    if (!hasMovementEvidence && !hasSupportedStationaryEvidence) continue;
+
+    activeDayKeys.add(dayKey);
+  }
+
+  const totalWorkingDays = activeDayKeys.size;
+
+  logGPS51("alltime.working.days", {
+    startDay,
+    endDay: finalEndDay,
+    days: totalWorkingDays,
+    records: records.length,
+    usedYearlyFallback,
+  });
+
+  return totalWorkingDays;
+}
+
+export async function fetchAllTimeMileageKm(
+  username: string,
+  password: string,
+  startDay = "2000-01-01",
+  endDay?: string
+): Promise<number> {
+  const finalEndDay = endDay ?? new Date().toISOString().slice(0, 10);
+
+  const toYmd = (date: Date): string => {
+    const year = date.getFullYear();
+    const month = `${date.getMonth() + 1}`.padStart(2, "0");
+    const day = `${date.getDate()}`.padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
+  const parseYmd = (value: string): Date | null => {
+    const parsed = new Date(`${value}T00:00:00`);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  };
+
+  const resolveRecordMileageMeters = (record: Record<string, unknown>): number => {
+    const starterMeters = toFiniteNumber(record.starter, 0);
+    const endMeters = toFiniteNumber(record.enddis, 0);
+    const edgeMeters = endMeters - starterMeters;
+    return pickFirstNonNegative(
+      record.totaldistance,
+      record.distance,
+      record.allmile,
+      edgeMeters > 0 ? edgeMeters : undefined
+    ) ?? 0;
+  };
+
+  const fetchRangeRecords = async (rangeStart: string, rangeEnd: string): Promise<Record<string, unknown>[]> => {
+    const data = await postGps51Action("reportmileagedetail", username, password, {
+      deviceid: DEVICE_ID,
+      startday: rangeStart,
+      endday: rangeEnd,
+      offset: 8,
+    });
+
+    if (data?.status !== 0) {
+      logGPS51("alltime.mileage.range.error", {
+        rangeStart,
+        rangeEnd,
+        status: data?.status,
+        cause: data?.cause,
+      });
+      return [];
+    }
+
+    return Array.isArray(data?.records)
+      ? (data.records as Record<string, unknown>[])
+      : [];
+  };
+
+  let records = await fetchRangeRecords(startDay, finalEndDay);
+  let usedYearlyFallback = false;
+
+  if (!records.length) {
+    const parsedStart = parseYmd(startDay);
+    const parsedEnd = parseYmd(finalEndDay);
+
+    if (parsedStart && parsedEnd && parsedStart <= parsedEnd) {
+      usedYearlyFallback = true;
+      const yearlyRecords: Record<string, unknown>[] = [];
+      let cursorYear = parsedStart.getFullYear();
+      const endYear = parsedEnd.getFullYear();
+
+      while (cursorYear <= endYear) {
+        const rangeStartDate =
+          cursorYear === parsedStart.getFullYear()
+            ? parsedStart
+            : new Date(cursorYear, 0, 1);
+        const rangeEndDate =
+          cursorYear === endYear
+            ? parsedEnd
+            : new Date(cursorYear, 11, 31);
+
+        const chunkRecords = await fetchRangeRecords(
+          toYmd(rangeStartDate),
+          toYmd(rangeEndDate)
+        );
+        yearlyRecords.push(...chunkRecords);
+        cursorYear += 1;
+      }
+
+      records = yearlyRecords;
+    }
+  }
+
+  if (!records.length) return 0;
+
+  const totalMeters = records.reduce((sum: number, record: Record<string, unknown>) => {
+    return sum + resolveRecordMileageMeters(record);
+  }, 0);
+
+  const totalKm = Number((totalMeters / 1000).toFixed(2));
+
+  logGPS51("alltime.mileage.km", {
+    startDay,
+    endDay: finalEndDay,
+    days: records.length,
+    usedYearlyFallback,
+    totalMeters,
+    totalKm,
+  });
+
+  return totalKm;
+}
