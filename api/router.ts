@@ -17,7 +17,7 @@ type SeedEquipmentEntry = {
   hoursToday?: string;
   hoursTotal?: string;
   pmsConfiguration?: {
-    serviceIntervalHours: number;
+    serviceInterval: number;
     serviceIntervalUnit: "Hours" | "KM" | "Weeks" | "Months" | "Years";
     serviceType?: string;
   };
@@ -75,7 +75,7 @@ export const appRouter = createRouter({
           image: z.string().optional(),
           pmsConfiguration: z
             .object({
-              serviceIntervalHours: z.number().min(0),
+              serviceInterval: z.number().min(0),
               serviceIntervalUnit: z.enum(["Hours", "KM", "Weeks", "Months", "Years"]),
               serviceType: z.string().min(1).optional(),
             })
@@ -127,7 +127,7 @@ export const appRouter = createRouter({
           image: z.string().optional(),
           pmsConfiguration: z
             .object({
-              serviceIntervalHours: z.number().min(0),
+              serviceInterval: z.number().min(0),
               serviceIntervalUnit: z.enum(["Hours", "KM", "Weeks", "Months", "Years"]),
               serviceType: z.string().min(1).optional(),
             })
@@ -221,7 +221,7 @@ export const appRouter = createRouter({
         .input(
           z.object({
             equipmentType: z.string().min(1),
-            serviceIntervalHours: z.number().min(0),
+            serviceInterval: z.number().min(0),
             serviceIntervalUnit: z.enum(["Hours", "KM"]).optional(),
           })
         )
@@ -243,7 +243,7 @@ export const appRouter = createRouter({
           const newEntry = {
             id: nextId,
             equipmentType: input.equipmentType,
-            serviceIntervalHours: input.serviceIntervalHours,
+            serviceInterval: input.serviceInterval,
             serviceIntervalUnit: input.serviceIntervalUnit || "Hours",
           };
 
@@ -258,7 +258,7 @@ export const appRouter = createRouter({
           z.object({
             id: z.string().min(1),
             equipmentType: z.string().min(1),
-            serviceIntervalHours: z.number().min(0),
+            serviceInterval: z.number().min(0),
             serviceIntervalUnit: z.enum(["Hours", "KM"]).optional(),
           })
         )
@@ -276,7 +276,7 @@ export const appRouter = createRouter({
           const updated = {
             id: input.id,
             equipmentType: input.equipmentType,
-            serviceIntervalHours: input.serviceIntervalHours,
+            serviceInterval: input.serviceInterval,
             serviceIntervalUnit: input.serviceIntervalUnit || "Hours",
           };
 

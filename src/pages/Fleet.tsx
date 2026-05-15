@@ -814,7 +814,9 @@ export default function Fleet() {
     [selectedSeedEquipmentId, seedData.equipment]
   );
   const selectedSeedHoursTotalText = (selectedSeedEntry as any)?.hoursTotal;
-  const selectedSeedServiceIntervalHours = (selectedSeedEntry as any)?.pmsConfiguration?.serviceIntervalHours;
+  const selectedSeedServiceInterval =
+    (selectedSeedEntry as any)?.pmsConfiguration?.serviceInterval
+    ?? (selectedSeedEntry as any)?.pmsConfiguration?.serviceIntervalHours;
   const selectedSeedServiceIntervalUnit = (selectedSeedEntry as any)?.pmsConfiguration?.serviceIntervalUnit;
 
   // For PMS toast when an added-equipment sidebar item is selected (not a GPS unit)
@@ -835,9 +837,11 @@ export default function Fleet() {
   const selectedAddedEquipmentHoursTotalText =
     (selectedAddedEquipmentSeedEntry as any)?.hoursTotal
     ?? selectedAddedEquipmentEntry?.hoursTotal;
-  const selectedAddedEquipmentIntervalHours =
-    (selectedAddedEquipmentSeedEntry as any)?.pmsConfiguration?.serviceIntervalHours
-    ?? selectedAddedEquipmentEntry?.pmsConfiguration?.serviceIntervalHours;
+  const selectedAddedEquipmentInterval =
+    (selectedAddedEquipmentSeedEntry as any)?.pmsConfiguration?.serviceInterval
+    ?? (selectedAddedEquipmentSeedEntry as any)?.pmsConfiguration?.serviceIntervalHours
+    ?? selectedAddedEquipmentEntry?.pmsConfiguration?.serviceInterval
+    ?? (selectedAddedEquipmentEntry as any)?.pmsConfiguration?.serviceIntervalHours;
   const selectedAddedEquipmentIntervalUnit =
     (selectedAddedEquipmentSeedEntry as any)?.pmsConfiguration?.serviceIntervalUnit
     ?? selectedAddedEquipmentEntry?.pmsConfiguration?.serviceIntervalUnit;
@@ -1051,80 +1055,120 @@ export default function Fleet() {
     // Fire for either a GPS unit or an added-equipment sidebar item
     if (!selectedUnit && !selectedAddedEquipmentId) return;
 
-    let pmsConfig: { serviceIntervalHours?: unknown; serviceIntervalUnit?: unknown } | undefined;
-    let hoursTotalForCalc: number;
-    let currentHoursText: string | undefined;
+    let pmsConfig: { serviceInterval?: unknown; serviceIntervalHours?: unknown; serviceIntervalUnit?: unknown; serviceType?: unknown } | undefined;
+    let metricValueForCalc = 0;
+    let currentMetricText = "";
     let milestoneEntityId: string;
+    let equipmentNameForToast = "Equipment";
 
     if (selectedUnit) {
-      // GPS unit path
+      // Do not involve Excavator CAT 320 (live GPS data path) in this interval-to-toast pass.
+      if ((selectedSeedEntry as any)?.id === "EQ-001") return;
+
       const selectedUnitKey = selectedUnitLabel.toUpperCase();
       pmsConfig = (selectedSeedEntry as any)?.pmsConfiguration;
-      const seedHoursText = (selectedSeedEntry as any)?.hoursTotal as string | undefined;
-      currentHoursText = seedHoursText
-        ?? STATIC_HOURS_BY_UNIT[selectedUnitKey]?.total
-        ?? FALLBACK_STATIC_HOURS.total;
-      hoursTotalForCalc = isGps51UnitSelected
-        ? gps001HoursTotalMs / (1000 * 60 * 60)
-        : (parseHoursTextToHours(currentHoursText) ?? 0);
+      equipmentNameForToast = (selectedSeedEntry as any)?.name ?? selectedUnitLabel;
       milestoneEntityId = selectedSeedEntry?.id ?? `unit-${selectedUnit.id}`;
+
+      const intervalUnitRaw = String(pmsConfig?.serviceIntervalUnit ?? "Hours").toLowerCase();
+      if (intervalUnitRaw === "hours") {
+        const seedHoursText = (selectedSeedEntry as any)?.hoursTotal as string | undefined;
+        currentMetricText = seedHoursText
+          ?? STATIC_HOURS_BY_UNIT[selectedUnitKey]?.total
+          ?? FALLBACK_STATIC_HOURS.total;
+        metricValueForCalc = parseHoursTextToHours(currentMetricText) ?? 0;
+      } else if (intervalUnitRaw === "km") {
+        const seedKmTotal = Number((selectedSeedEntry as any)?.kmTotal ?? 0);
+        metricValueForCalc = Number.isFinite(seedKmTotal) ? seedKmTotal : 0;
+        currentMetricText = String(metricValueForCalc);
+      } else {
+        const days = parseSeedDays((selectedSeedEntry as any)?.days);
+        if (!Number.isFinite(days) || days === null) return;
+        const periods = convertDaysToPeriods(days);
+        if (intervalUnitRaw === "weeks") metricValueForCalc = periods.weeks;
+        else if (intervalUnitRaw === "months") metricValueForCalc = periods.months;
+        else if (intervalUnitRaw === "years") metricValueForCalc = periods.years;
+        else return;
+        currentMetricText = String(metricValueForCalc);
+      }
     } else {
       // Added-equipment path
       pmsConfig =
         (selectedAddedEquipmentSeedEntry as any)?.pmsConfiguration
         ?? (selectedAddedEquipmentEntry as any)?.pmsConfiguration;
-      currentHoursText = selectedAddedEquipmentHoursTotalText ?? undefined;
-      hoursTotalForCalc = parseHoursTextToHours(currentHoursText) ?? 0;
+      equipmentNameForToast =
+        (selectedAddedEquipmentSeedEntry as any)?.name
+        ?? selectedAddedEquipmentEntry?.name
+        ?? "Equipment";
       milestoneEntityId = selectedAddedEquipmentId!;
+
+      const intervalUnitRaw = String(pmsConfig?.serviceIntervalUnit ?? "Hours").toLowerCase();
+      if (intervalUnitRaw === "hours") {
+        currentMetricText = selectedAddedEquipmentHoursTotalText ?? "";
+        metricValueForCalc = parseHoursTextToHours(currentMetricText) ?? 0;
+      } else if (intervalUnitRaw === "km") {
+        const kmFromSeed = Number((selectedAddedEquipmentSeedEntry as any)?.kmTotal ?? Number.NaN);
+        const kmFromEntry = Number((selectedAddedEquipmentEntry as any)?.kmTotal ?? Number.NaN);
+        metricValueForCalc = Number.isFinite(kmFromSeed) ? kmFromSeed : (Number.isFinite(kmFromEntry) ? kmFromEntry : 0);
+        currentMetricText = String(metricValueForCalc);
+      } else {
+        const days = parseSeedDays(
+          (selectedAddedEquipmentSeedEntry as any)?.days
+            ?? (selectedAddedEquipmentEntry as any)?.days
+        );
+        if (!Number.isFinite(days) || days === null) return;
+        const periods = convertDaysToPeriods(days);
+        if (intervalUnitRaw === "weeks") metricValueForCalc = periods.weeks;
+        else if (intervalUnitRaw === "months") metricValueForCalc = periods.months;
+        else if (intervalUnitRaw === "years") metricValueForCalc = periods.years;
+        else return;
+        currentMetricText = String(metricValueForCalc);
+      }
     }
 
-    const intervalHours = Number(pmsConfig?.serviceIntervalHours);
+    const interval = Number(pmsConfig?.serviceInterval ?? pmsConfig?.serviceIntervalHours);
     const intervalUnit = typeof pmsConfig?.serviceIntervalUnit === "string"
       ? pmsConfig.serviceIntervalUnit
       : "Hours";
+    const intervalUnitDisplay = intervalUnit.toLowerCase() === "km" ? "Km" : intervalUnit;
+    const serviceType = typeof pmsConfig?.serviceType === "string" && pmsConfig.serviceType.trim().length > 0
+      ? pmsConfig.serviceType
+      : "Service";
 
-    if (!Number.isFinite(intervalHours) || intervalHours <= 0) return;
-    if (intervalUnit.toLowerCase() !== "hours") return;
-    if (!Number.isFinite(hoursTotalForCalc) || hoursTotalForCalc <= 0) return;
+    if (!Number.isFinite(interval) || interval <= 0) return;
+    if (!Number.isFinite(metricValueForCalc) || metricValueForCalc <= 0) return;
 
-    const achievedMilestone = Math.floor(hoursTotalForCalc / intervalHours);
+    const achievedMilestone = Math.floor(metricValueForCalc / interval);
     const milestoneStore = readServiceIntervalToastMilestones();
-    const milestoneKey = `${milestoneEntityId}:${intervalHours}`;
+    const milestoneKey = `${milestoneEntityId}:${interval}:${String(intervalUnit).toLowerCase()}`;
     const stored = milestoneStore[milestoneKey];
 
-    // Parse the stored entry — support both old numeric format and new {count, hoursText} format.
-    // If hoursText is missing (old format) or differs from current, treat as a fresh start (previousMilestone = 0)
-    // so the toast re-fires whenever hours cross the threshold again.
     const storedCount = typeof stored === "number" ? stored : (stored?.count ?? 0);
     const storedHoursText = typeof stored === "object" && stored !== null ? stored.hoursText : undefined;
     const storedSessionId = typeof stored === "object" && stored !== null ? stored.sessionId : undefined;
-    // previousMilestone = 0 unless: same page-load session AND same hoursText as when we last fired.
-    // A new sessionId (page reload) always resets to 0, so the toast re-fires even for the same hours value.
     const previousMilestone =
-      storedSessionId === pmsToastSessionId && storedHoursText === currentHoursText
+      storedSessionId === pmsToastSessionId && storedHoursText === currentMetricText
         ? storedCount
         : 0;
 
     if (achievedMilestone <= 0) {
       writeServiceIntervalToastMilestones({
         ...milestoneStore,
-        [milestoneKey]: { count: 0, hoursText: currentHoursText ?? "", sessionId: pmsToastSessionId },
+        [milestoneKey]: { count: 0, hoursText: currentMetricText, sessionId: pmsToastSessionId },
       });
       return;
     }
 
-    // Only fire toast when crossing upward to a new milestone
     if (achievedMilestone <= previousMilestone) return;
 
     toast(
-      achievedMilestone > 1
-        ? `PMS interval of ${intervalHours} Hours has been achieved (${achievedMilestone}x)`
-        : `PMS interval of ${intervalHours} Hours has been achieved`
+      `${interval} ${intervalUnitDisplay} achieved with ${equipmentNameForToast} – ${serviceType} needed`,
+      { style: { color: "#FFFFFF" } }
     );
 
     writeServiceIntervalToastMilestones({
       ...milestoneStore,
-      [milestoneKey]: { count: achievedMilestone, hoursText: currentHoursText ?? "", sessionId: pmsToastSessionId },
+      [milestoneKey]: { count: achievedMilestone, hoursText: currentMetricText, sessionId: pmsToastSessionId },
     });
   }, [
     selectedUnit,
@@ -1132,7 +1176,7 @@ export default function Fleet() {
     selectedSeedEquipmentId,
     selectedSeedEntry,
     selectedSeedHoursTotalText,
-    selectedSeedServiceIntervalHours,
+    selectedSeedServiceInterval,
     selectedSeedServiceIntervalUnit,
     isGps51UnitSelected,
     gps001HoursTotalMs,
@@ -1140,10 +1184,95 @@ export default function Fleet() {
     selectedAddedEquipmentEntry,
     selectedAddedEquipmentSeedEntry,
     selectedAddedEquipmentHoursTotalText,
-    selectedAddedEquipmentIntervalHours,
+    selectedAddedEquipmentInterval,
     selectedAddedEquipmentIntervalUnit,
     pmsToastSessionId,
   ]);
+
+  // Global seed data watcher: fire toasts for milestone crossings in ANY equipment, regardless of selection
+  useEffect(() => {
+    if (!Array.isArray(seedData?.equipment)) return;
+
+    const milestoneStore = readServiceIntervalToastMilestones();
+
+    seedData.equipment.forEach((equipment: any) => {
+      // Skip if no PMS config or protected Excavator
+      if (!equipment.pmsConfiguration || equipment.id === "EQ-001") return;
+
+      const pmsConfig = equipment.pmsConfiguration;
+      const equipmentName = equipment.name ?? "Equipment";
+      const interval = Number(pmsConfig?.serviceInterval ?? pmsConfig?.serviceIntervalHours);
+      const intervalUnit = String(pmsConfig?.serviceIntervalUnit ?? "Hours");
+      const serviceType = String(pmsConfig?.serviceType ?? "Service");
+
+      if (!Number.isFinite(interval) || interval <= 0) return;
+
+      const intervalUnitDisplay = intervalUnit.toLowerCase() === "km" ? "Km" : intervalUnit;
+
+      // Determine metric value based on unit
+      let metricValueForCalc = 0;
+      let currentMetricText = "";
+
+      if (intervalUnit.toLowerCase() === "hours") {
+        const hoursText = equipment.hoursTotal ?? "";
+        currentMetricText = hoursText;
+        metricValueForCalc = parseHoursTextToHours(hoursText) ?? 0;
+      } else if (intervalUnit.toLowerCase() === "km") {
+        metricValueForCalc = Number(equipment.kmTotal ?? 0);
+        currentMetricText = String(metricValueForCalc);
+      } else {
+        const days = parseSeedDays(equipment.days);
+        if (!Number.isFinite(days) || days === null) return;
+        const periods = convertDaysToPeriods(days);
+        if (intervalUnit.toLowerCase() === "weeks") metricValueForCalc = periods.weeks;
+        else if (intervalUnit.toLowerCase() === "months") metricValueForCalc = periods.months;
+        else if (intervalUnit.toLowerCase() === "years") metricValueForCalc = periods.years;
+        else return;
+        currentMetricText = String(metricValueForCalc);
+      }
+
+      if (!Number.isFinite(metricValueForCalc) || metricValueForCalc <= 0) return;
+
+      const achievedMilestone = Math.floor(metricValueForCalc / interval);
+      const milestoneKey = `${equipment.id}:${interval}:${intervalUnit.toLowerCase()}`;
+      const stored = milestoneStore[milestoneKey];
+
+      const storedCount = typeof stored === "number" ? stored : (stored?.count ?? 0);
+      const storedHoursText = typeof stored === "object" && stored !== null ? stored.hoursText : undefined;
+      const storedSessionId = typeof stored === "object" && stored !== null ? stored.sessionId : undefined;
+
+      // Only fire if this is a new session OR the metric text changed (fresh start)
+      const previousMilestone =
+        storedSessionId === pmsToastSessionId && storedHoursText === currentMetricText
+          ? storedCount
+          : 0;
+
+      if (achievedMilestone <= 0 || achievedMilestone <= previousMilestone) {
+        // Just update storage without toasting
+        milestoneStore[milestoneKey] = {
+          count: achievedMilestone,
+          hoursText: currentMetricText,
+          sessionId: pmsToastSessionId,
+        };
+        return;
+      }
+
+      // Fire toast on milestone crossing
+      toast(
+        `${interval} ${intervalUnitDisplay} achieved with ${equipmentName} – ${serviceType} needed`,
+        { style: { color: "#FFFFFF" } }
+      );
+
+      // Update milestone store
+      milestoneStore[milestoneKey] = {
+        count: achievedMilestone,
+        hoursText: currentMetricText,
+        sessionId: pmsToastSessionId,
+      };
+    });
+
+    writeServiceIntervalToastMilestones(milestoneStore);
+  }, [seedData?.equipment, pmsToastSessionId]);
 
   useEffect(() => {
     let ignore = false;
@@ -1555,7 +1684,9 @@ export default function Fleet() {
     const isLiveMappedSeedEquipmentEdit = Boolean(seedEquipmentId && LIVE_SEED_EQUIPMENT_IDS.has(seedEquipmentId));
     const pmsConfiguration = equipment.pmsConfiguration
       ? {
-          serviceIntervalHours: equipment.pmsConfiguration.serviceIntervalHours,
+          serviceInterval: equipment.pmsConfiguration.serviceInterval,
+          // Keep legacy alias for older tRPC input typing during transition.
+          serviceIntervalHours: equipment.pmsConfiguration.serviceInterval,
           serviceIntervalUnit: equipment.pmsConfiguration.serviceIntervalUnit,
           ...(equipment.pmsConfiguration.serviceType
             ? { serviceType: equipment.pmsConfiguration.serviceType }
@@ -2224,9 +2355,14 @@ export default function Fleet() {
                                     if (current === 0) {
                                       const pmsList = (seedData as any).pmsConfigurations || [];
                                       const labCfg = pmsList.find((c: any) => typeof c.equipmentType === "string" && c.equipmentType.toLowerCase().includes("lab"));
-                                      const hours = labCfg?.serviceIntervalHours ?? 4000;
+                                      const interval = labCfg?.serviceInterval ?? 4000;
                                       const unitText = labCfg?.serviceIntervalUnit ?? "Hours";
-                                      toast(`PMS interval of ${hours} ${unitText} has been achieved`);
+                                      const unitDisplay = String(unitText).toLowerCase() === "km" ? "Km" : unitText;
+                                      const serviceType = labCfg?.serviceType ?? "PMS (Preventative Maintenance)";
+                                      toast(
+                                        `${interval} ${unitDisplay} achieved with Concrete Strength Tester – ${serviceType} needed`,
+                                        { style: { color: "#FFFFFF" } }
+                                      );
                                     }
                                     setDemoStages((prev) => ({ ...prev, [unit.id]: next }));
                                   }

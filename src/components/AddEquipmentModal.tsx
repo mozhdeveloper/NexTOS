@@ -16,7 +16,7 @@ import type { Client } from "@/types";
 export type ServiceIntervalUnit = "Hours" | "KM" | "Weeks" | "Months" | "Years";
 
 export interface EquipmentPMSConfiguration {
-  serviceIntervalHours: number;
+  serviceInterval: number;
   serviceIntervalUnit: ServiceIntervalUnit;
   serviceType?: string;
 }
@@ -102,9 +102,11 @@ export function AddEquipmentModal({
       setImage(initialEquipment.image ?? "");
       setServiceType(initialEquipment.pmsConfiguration?.serviceType ?? DEFAULT_SERVICE_TYPE);
       setServiceIntervalValue(
-        initialEquipment.pmsConfiguration?.serviceIntervalHours !== undefined
-          ? String(initialEquipment.pmsConfiguration.serviceIntervalHours)
-          : ""
+        initialEquipment.pmsConfiguration?.serviceInterval !== undefined
+          ? String(initialEquipment.pmsConfiguration.serviceInterval)
+          : (initialEquipment.pmsConfiguration as any)?.serviceIntervalHours !== undefined
+            ? String((initialEquipment.pmsConfiguration as any).serviceIntervalHours)
+            : ""
       );
       setServiceIntervalUnit(initialEquipment.pmsConfiguration?.serviceIntervalUnit ?? "Hours");
       setMissingFields([]);
@@ -171,7 +173,7 @@ export function AddEquipmentModal({
     const pmsConfiguration =
       trimmedInterval.length > 0 && Number.isFinite(numericInterval)
         ? {
-            serviceIntervalHours: numericInterval,
+            serviceInterval: numericInterval,
             serviceIntervalUnit,
             ...(selectedServiceType ? { serviceType: selectedServiceType } : {}),
           }
