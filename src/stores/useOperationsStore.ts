@@ -1,7 +1,8 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import type { Equipment, ServiceRecord, ServicePhoto, Booking, ServiceCategory } from "@/types";
+import type { Equipment, ServiceRecord, ServicePhoto, Booking, ServiceCategory, Package } from "@/types";
 import { useBillingStore } from "./useBillingStore";
+import { toast } from "sonner";
 
 interface OperationsState {
   equipment: Equipment[];
@@ -18,6 +19,14 @@ interface OperationsState {
   addBooking: (booking: Omit<Booking, "id" | "createdAt">) => void;
   updateBooking: (id: number, data: Partial<Booking>) => void;
   
+  // Package & Task Flow Logic
+  registerEquipmentToPackage: (equipmentId: number, pkg: Package) => void;
+  checkServiceThresholds: () => void;
+  
+  // Simulation Actions (Non-persistent labeling)
+  injectSimulationTask: () => void;
+  clearSimulationData: () => void;
+
   // Logic Helpers
   getHoursRemaining: (equipmentId: number) => number | null;
   getDaysUntilCalibration: (equipmentId: number) => number | null;
@@ -118,6 +127,10 @@ export const useOperationsStore = create<OperationsState>()(
         set((state) => ({
           equipment: state.equipment.map((e) => (e.id === id ? { ...e, ...data } : e)),
         }));
+        
+        if (data.currentHours !== undefined) {
+          get().checkServiceThresholds();
+        }
       },
 
       addServiceRecord: (record) => {
@@ -140,11 +153,13 @@ export const useOperationsStore = create<OperationsState>()(
           if (record && data.status === "completed") {
             const eq = state.equipment.find(e => e.id === record.equipmentId);
             if (eq) {
-              const updates: Partial<Equipment> = {};
+              const updates: Partial<Equipment> = {
+                status: "active"
+              };
               
               if (record.serviceCategory === "Heavy Equipment PMS") {
                 updates.lastPMSHours = record.hoursAtService || eq.currentHours;
-                updates.nextPMSHours = updates.lastPMSHours + eq.pmsInterval;
+                updates.nextPMSHours = updates.lastPMSHours + (eq.pmsInterval || 500);
               } else if (record.serviceCategory === "Calibration PMS") {
                 const completedDate = record.completedDate || new Date().toISOString();
                 updates.lastCalibrationDate = completedDate;
@@ -196,6 +211,121 @@ export const useOperationsStore = create<OperationsState>()(
         set((state) => ({
           bookings: state.bookings.map((b) => (b.id === id ? { ...b, ...data } : b)),
         }));
+      },
+
+      // Simulation Logic
+      injectSimulationTask: () => {
+        const simId = Date.now();
+        const simUnit: Equipment = {
+          id: simId,
+          clientId: 1,
+          unitId: `SIM-UNIT-${simId.toString().slice(-4)}`,
+          type: "Demo Unit",
+          equipmentType: "Heavy Equipment",
+          serialNumber: `SN-SIM-${simId}`,
+          manufacturer: "NexVision",
+          model: "SIM-PRO-X",
+          installDate: new Date().toISOString(),
+          warrantyExpiry: new Date().toISOString(),
+          status: "service_due",
+          location: "Simulation Site",
+          notes: "AUTO-GENERATED TEST DATA",
+          currentHours: 1005,
+          lastPMSHours: 0,
+          pmsInterval: 1000,
+          nextPMSHours: 1000,
+          lastCalibrationDate: null,
+          calibrationFrequency: 0,
+          nextCalibrationDate: null,
+          packageId: 1001,
+          createdAt: new Date().toISOString()
+        };
+
+        const simTask: ServiceRecord = {
+          id: simId + 1,
+          equipmentId: simId,
+          clientId: 1,
+          technician: "Unassigned",
+          serviceCategory: "Heavy Equipment PMS",
+          description: "SIMULATION TASK: Complete the guided flow (Photos & Signatures) to test automation.",
+          partsUsed: "Pending",
+          status: "scheduled",
+          scheduledDate: new Date().toISOString(),
+          completedDate: null,
+          cost: 0,
+          findings: "",
+          workDone: "",
+          recommendation: "",
+          hoursAtService: 1005,
+          createdAt: new Date().toISOString()
+        };
+
+        set((state) => ({
+          equipment: [...state.equipment, simUnit],
+          serviceRecords: [...state.serviceRecords, simTask]
+        }));
+        
+        toast.success("Simulation task created!", { description: `Unit ${simUnit.unitId} is ready in 'My Tasks'.` });
+      },
+
+      clearSimulationData: () => {
+        set((state) => ({
+          equipment: state.equipment.filter(e => !e.notes.includes("TEST DATA") && !e.unitId.startsWith("SIM-")),
+          serviceRecords: state.serviceRecords.filter(r => !r.description.includes("SIMULATION")),
+          servicePhotos: state.servicePhotos.filter(p => !p.caption.includes("Simulation"))
+        }));
+        toast.info("Simulation data cleared.");
+      },
+
+      // Package & Task Flow Logic
+      registerEquipmentToPackage: (equipmentId, pkg) => {
+        const threshold = pkg.tier === "enterprise" ? 1000 : 500;
+        const eq = get().equipment.find(e => e.id === equipmentId);
+        if (!eq) return;
+
+        get().updateEquipment(equipmentId, {
+          packageId: pkg.id,
+          pmsInterval: threshold,
+          nextPMSHours: eq.currentHours + threshold
+        });
+        toast.success(`Equipment Registered`, { description: `Registered under ${pkg.name}. PMS threshold: ${threshold}h.` });
+      },
+
+      checkServiceThresholds: () => {
+        const { equipment, serviceRecords, addServiceRecord, updateEquipment } = get();
+        
+        equipment.forEach(eq => {
+          if (eq.equipmentType === "Heavy Equipment" && eq.nextPMSHours > 0 && eq.currentHours >= eq.nextPMSHours) {
+            const activeTask = serviceRecords.find(r => r.equipmentId === eq.id && r.status !== "completed" && r.status !== "cancelled");
+            
+            if (!activeTask) {
+              addServiceRecord({
+                equipmentId: eq.id,
+                clientId: eq.clientId,
+                technician: "Unassigned",
+                serviceCategory: "Heavy Equipment PMS",
+                description: `AUTOMATED: PMS threshold reached (${eq.currentHours}h). Unit requires standard preventive maintenance.`,
+                partsUsed: "Pending Inspection",
+                status: "scheduled",
+                scheduledDate: new Date().toISOString(),
+                completedDate: null,
+                cost: 0,
+                findings: "",
+                workDone: "",
+                recommendation: "",
+                hoursAtService: eq.currentHours
+              });
+              
+              set((state) => ({
+                equipment: state.equipment.map((e) => (e.id === eq.id ? { ...e, status: "service_due" } : e)),
+              }));
+              
+              toast.info(`Maintenance Triggered`, {
+                description: `Unit ${eq.unitId} has reached its service threshold. Task generated.`
+              });
+            }
+          }
+        });
       },
 
       // Logic Helpers
@@ -256,6 +386,8 @@ export const useOperationsStore = create<OperationsState>()(
             return eq;
           }),
         }));
+        
+        get().checkServiceThresholds();
       },
     }),
     {

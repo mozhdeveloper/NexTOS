@@ -23,6 +23,14 @@ import {
   ChevronUp,
   PenTool,
   Loader2,
+  Play,
+  Check,
+  History,
+  ClipboardList,
+  ChevronRight,
+  UserCheck,
+  TestTube,
+  Trash2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -40,89 +48,9 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 
-type TabType = "equipment" | "reports" | "new";
-
-type ServiceTypeOption = {
-  value: string;
-  label: string;
-};
-
-type SeedClientOption = {
-  id: string;
-  companyName: string;
-};
-
-type SeedEquipmentOption = {
-  id: string;
-  name: string;
-  clientId: string;
-  equipmentType: string;
-};
-
-type ReportClientOption = {
-  id: string;
-  companyName: string;
-  numericId: number;
-};
-
-const fallbackServiceTypeOptions: ServiceTypeOption[] = [
-  { value: "pms", label: "PMS (Preventative Maintenance)" },
-  { value: "calibration", label: "Calibration" },
-  { value: "repair", label: "Repair" },
-  { value: "inspection", label: "Inspection" },
-  { value: "installation", label: "Installation" },
-];
-
-const serviceTypeOptions: ServiceTypeOption[] = Array.isArray(seedData.serviceTypes)
-  ? seedData.serviceTypes
-      .filter((option): option is ServiceTypeOption => {
-        return Boolean(
-          option &&
-            typeof option === "object" &&
-            typeof (option as ServiceTypeOption).value === "string" &&
-            typeof (option as ServiceTypeOption).label === "string"
-        );
-      })
-  : fallbackServiceTypeOptions;
-
-const seedClientOptions: SeedClientOption[] = Array.isArray(seedData.clients)
-  ? (seedData.clients as unknown[])
-      .filter((client) => {
-        return Boolean(
-          client &&
-            typeof client === "object" &&
-            typeof (client as SeedClientOption).id === "string" &&
-            typeof (client as SeedClientOption).companyName === "string"
-        );
-      })
-      .map((client) => ({
-        id: (client as SeedClientOption).id,
-        companyName: (client as SeedClientOption).companyName,
-      }))
-  : [];
-
-const seedEquipmentOptions: SeedEquipmentOption[] = Array.isArray(seedData.equipment)
-  ? (seedData.equipment as unknown[])
-      .filter((eq) => {
-        return Boolean(
-          eq &&
-            typeof eq === "object" &&
-            typeof (eq as SeedEquipmentOption).id === "string" &&
-            typeof (eq as SeedEquipmentOption).name === "string" &&
-            typeof (eq as SeedEquipmentOption).clientId === "string" &&
-            typeof (eq as SeedEquipmentOption).equipmentType === "string"
-        );
-      })
-      .map((eq) => ({
-        id: (eq as SeedEquipmentOption).id,
-        name: (eq as SeedEquipmentOption).name,
-        clientId: (eq as SeedEquipmentOption).clientId,
-        equipmentType: (eq as SeedEquipmentOption).equipmentType,
-      }))
-  : [];
+type TabType = "tasks" | "equipment" | "reports" | "new";
 
 export default function Services() {
   const { user } = useAuthStore();
@@ -132,9 +60,14 @@ export default function Services() {
     serviceRecords,
     servicePhotos,
     addServiceRecord,
-    getServiceHistory,
+    updateServiceRecord,
+    addServicePhoto,
+    injectSimulationTask,
+    clearSimulationData
   } = useOperationsStore();
-  const [activeTab, setActiveTab] = useState<TabType>("equipment");
+  const { packages } = useBillingStore();
+  
+  const [activeTab, setActiveTab] = useState<TabType>("tasks");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedEquipment, setSelectedEquipment] = useState<number | null>(null);
   const [qrSerial, setQrSerial] = useState("");
@@ -152,10 +85,14 @@ export default function Services() {
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const initTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Form state
+  // Execution state (Technician Side - My Tasks)
+  const [activeTask, setActiveTask] = useState<ServiceRecord | null>(null);
+  const [executionStep, setExecutionStep] = useState<"detail" | "before" | "work" | "after" | "signature">("detail");
+
+  // Form state (for Manual Log & Task Execution)
   const [formClientId, setFormClientId] = useState("");
   const [formEquipmentId, setFormEquipmentId] = useState("");
-  const [formType, setFormType] = useState<ServiceType>("pms");
+  const [formType, setFormType] = useState<string>("Heavy Equipment PMS");
   const [formTechnician, setFormTechnician] = useState(user?.name || "");
   const [formDescription, setFormDescription] = useState("");
   const [formFindings, setFormFindings] = useState("");
@@ -167,13 +104,6 @@ export default function Services() {
   const [beforePhotos, setBeforePhotos] = useState<string[]>([]);
   const [afterPhotos, setAfterPhotos] = useState<string[]>([]);
   const [showReport, setShowReport] = useState<ServiceRecord | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const techSignatureCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const isDrawingTechSignatureRef = useRef(false);
-  const hasTechSignatureRef = useRef(false);
-  const clientSignatureCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const isDrawingClientSignatureRef = useRef(false);
-  const hasClientSignatureRef = useRef(false);
 
   const location = useLocation();
 
@@ -181,129 +111,10 @@ export default function Services() {
     const state = location.state as { selectedUnitId?: number };
     if (state?.selectedUnitId) {
       setSelectedEquipment(state.selectedUnitId);
+      setActiveTab("equipment");
       window.history.replaceState({}, document.title);
     }
   }, [location]);
-
-  const initCanvas = (canvas: HTMLCanvasElement) => {
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.lineJoin = "round";
-    ctx.lineCap = "round";
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = "#111827";
-  };
-
-  useEffect(() => {
-    if (techSignatureCanvasRef.current) initCanvas(techSignatureCanvasRef.current);
-  }, []);
-
-  useEffect(() => {
-    if (clientSignatureCanvasRef.current) initCanvas(clientSignatureCanvasRef.current);
-  }, []);
-
-  const getCanvasPoint = (event: React.PointerEvent<HTMLCanvasElement>, canvas: HTMLCanvasElement | null) => {
-    if (!canvas) return null;
-    const rect = canvas.getBoundingClientRect();
-    return {
-      x: event.clientX - rect.left,
-      y: event.clientY - rect.top,
-    };
-  };
-
-  const handleTechSignatureStart = (event: React.PointerEvent<HTMLCanvasElement>) => {
-    const canvas = techSignatureCanvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    const point = getCanvasPoint(event, canvas);
-    if (!point) return;
-    isDrawingTechSignatureRef.current = true;
-    hasTechSignatureRef.current = true;
-    canvas.setPointerCapture(event.pointerId);
-    ctx.beginPath();
-    ctx.moveTo(point.x, point.y);
-  };
-
-  const handleTechSignatureMove = (event: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!isDrawingTechSignatureRef.current) return;
-    const canvas = techSignatureCanvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    const point = getCanvasPoint(event, canvas);
-    if (!point) return;
-    ctx.lineTo(point.x, point.y);
-    ctx.stroke();
-  };
-
-  const handleTechSignatureEnd = () => {
-    if (!isDrawingTechSignatureRef.current) return;
-    isDrawingTechSignatureRef.current = false;
-    const canvas = techSignatureCanvasRef.current;
-    if (canvas) setFormTechSign(hasTechSignatureRef.current ? canvas.toDataURL("image/png") : "");
-  };
-
-  const clearTechSignature = () => {
-    const canvas = techSignatureCanvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.beginPath();
-    hasTechSignatureRef.current = false;
-    setFormTechSign("");
-  };
-
-  const handleClientSignatureStart = (event: React.PointerEvent<HTMLCanvasElement>) => {
-    const canvas = clientSignatureCanvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    const point = getCanvasPoint(event, canvas);
-    if (!point) return;
-    isDrawingClientSignatureRef.current = true;
-    hasClientSignatureRef.current = true;
-    canvas.setPointerCapture(event.pointerId);
-    ctx.beginPath();
-    ctx.moveTo(point.x, point.y);
-  };
-
-  const handleClientSignatureMove = (event: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!isDrawingClientSignatureRef.current) return;
-    const canvas = clientSignatureCanvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    const point = getCanvasPoint(event, canvas);
-    if (!point) return;
-    ctx.lineTo(point.x, point.y);
-    ctx.stroke();
-  };
-
-  const handleClientSignatureEnd = () => {
-    if (!isDrawingClientSignatureRef.current) return;
-    isDrawingClientSignatureRef.current = false;
-    const canvas = clientSignatureCanvasRef.current;
-    if (canvas) setFormClientSign(hasClientSignatureRef.current ? canvas.toDataURL("image/png") : "");
-  };
-
-  const clearClientSignature = () => {
-    const canvas = clientSignatureCanvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.beginPath();
-    hasClientSignatureRef.current = false;
-    setFormClientSign("");
-  };
 
   // Scanning functions
   const checkCameraPermission = async (): Promise<boolean> => {
@@ -418,6 +229,7 @@ export default function Services() {
       if (element) element.scrollIntoView({ behavior: 'smooth', block: 'center' });
       setSelectedEquipment(foundEquipment.id);
       setHighlightedEquipment(foundEquipment.id);
+      setActiveTab("equipment");
       setTimeout(() => setHighlightedEquipment(null), 3000);
       toast.success(`Found equipment: ${foundEquipment.unitId}`);
     } else {
@@ -425,165 +237,97 @@ export default function Services() {
     }
   };
 
-  useEffect(() => {
-    return () => {
-      if (initTimeoutRef.current) clearTimeout(initTimeoutRef.current);
-      if (scannerRef.current) {
-        scannerRef.current.stop().catch(() => {});
-        scannerRef.current.clear().catch(() => {});
+  const handlePhotoUpload = (type: "before" | "after", event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (!files) return;
+    Array.from(files).forEach((file: File) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const url = e.target?.result as string;
+        if (type === "before") setBeforePhotos((prev) => [...prev, url]);
+        else setAfterPhotos((prev) => [...prev, url]);
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const startTaskExecution = (task: ServiceRecord) => {
+    setActiveTask(task);
+    setExecutionStep("detail");
+    setFormFindings(task.findings || "");
+    setFormWorkDone(task.workDone || "");
+    setFormRecommendation(task.recommendation || "");
+    setFormParts(task.partsUsed || "");
+    setBeforePhotos([]);
+    setAfterPhotos([]);
+    setFormClientSign("");
+    setFormTechSign("");
+  };
+
+  const handleTaskStep = (next: typeof executionStep) => {
+    if (next === "work" && executionStep === "before") {
+      if (beforePhotos.length === 0) {
+        toast.error("Please capture a before-service photo.");
+        return;
       }
-    };
-  }, []);
+      if (activeTask) {
+        updateServiceRecord(activeTask.id, { status: "in_progress" });
+      }
+    }
+    
+    if (next === "signature" && executionStep === "after") {
+       if (afterPhotos.length === 0) {
+         toast.error("Please capture an after-service photo.");
+         return;
+       }
+    }
+
+    setExecutionStep(next);
+  };
+
+  const finalizeTask = () => {
+    if (!formTechSign || !formClientSign) {
+      toast.error("Signatures from both technician and client are required.");
+      return;
+    }
+
+    if (activeTask) {
+      const eq = equipment.find(e => e.id === activeTask.equipmentId);
+      
+      updateServiceRecord(activeTask.id, {
+        status: "completed",
+        findings: formFindings,
+        workDone: formWorkDone,
+        recommendation: formRecommendation,
+        partsUsed: formParts,
+        techSignature: formTechSign,
+        clientSignature: formClientSign,
+        completedDate: new Date().toISOString(),
+        hoursAtService: eq?.currentHours || 0
+      });
+
+      beforePhotos.forEach(url => {
+        addServicePhoto({ serviceRecordId: activeTask.id, type: "before", url, caption: "Before Service (Simulation)" });
+      });
+      afterPhotos.forEach(url => {
+        addServicePhoto({ serviceRecordId: activeTask.id, type: "after", url, caption: "After Service (Simulation)" });
+      });
+
+      toast.success("Service task completed successfully!");
+      setActiveTask(null);
+      setActiveTab("reports");
+    }
+  };
+
+  const activeTasks = serviceRecords.filter(r => r.status === "scheduled" || r.status === "in_progress");
 
   const filteredEquipment = equipment.filter(
     (eq: Equipment) =>
       searchQuery === "" ||
       eq.unitId.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      eq.type.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      eq.manufacturer.toLowerCase().includes(searchQuery.toLowerCase()) ||
       eq.serialNumber.toLowerCase().includes(searchQuery.toLowerCase())
   );
-
-  const reportClientOptions: ReportClientOption[] =
-    seedClientOptions.length > 0
-      ? seedClientOptions.map((clientOption, index) => ({
-          id: clientOption.id,
-          companyName: clientOption.companyName,
-          numericId: index + 1,
-        }))
-      : clients.map((client) => ({
-          id: client.id.toString(),
-          companyName: client.companyName,
-          numericId: client.id,
-        }));
-
-  const seedReportEquipmentOptions: SeedEquipmentOption[] =
-    seedClientOptions.length > 0 && formClientId
-      ? seedEquipmentOptions.filter((eqItem) => eqItem.clientId === formClientId)
-      : [];
-
-  const fallbackReportEquipmentOptions: Equipment[] =
-    seedClientOptions.length === 0 && formClientId
-      ? equipment.filter((eqItem: Equipment) => eqItem.clientId === parseInt(formClientId, 10))
-      : [];
-
-  const handlePhotoUpload = useCallback(
-    (type: "before" | "after", event: React.ChangeEvent<HTMLInputElement>) => {
-      const files = event.target.files;
-      if (!files) return;
-      Array.from(files).forEach((file: File) => {
-        const reader = new FileReader();
-        reader.onload = (e: ProgressEvent<FileReader>) => {
-          const url = e.target?.result as string;
-          if (type === "before") {
-            setBeforePhotos((prev) => [...prev, url]);
-          } else {
-            setAfterPhotos((prev) => [...prev, url]);
-          }
-        };
-        reader.readAsDataURL(file);
-      });
-    },
-    []
-  );
-
-  const handleSubmitReport = () => {
-    setError(null);
-    
-    // Rule: Must have before and after photos to complete
-    if (beforePhotos.length === 0 || afterPhotos.length === 0) {
-      setError("Technician Rule: You must upload at least one BEFORE and one AFTER photo to complete this service.");
-      return;
-    }
-
-    if (!formClientId || !formEquipmentId || !formDescription || !formClientSign || !formTechSign) {
-      setError("Please fill all required fields, including signatures.");
-      return;
-    }
-
-    const resolvedClientId =
-      reportClientOptions.find((c) => c.id === formClientId)?.numericId ??
-      parseInt(formClientId, 10);
-
-    const resolvedEquipmentId =
-      seedClientOptions.length > 0
-        ? (() => {
-            const index = seedEquipmentOptions.findIndex((eqItem) => eqItem.id === formEquipmentId);
-            return index >= 0 ? index + 1 : parseInt(formEquipmentId, 10);
-          })()
-        : parseInt(formEquipmentId, 10);
-
-    const newRecordId = Date.now();
-    const record = {
-      equipmentId: resolvedEquipmentId,
-      clientId: resolvedClientId,
-      technician: formTechnician,
-      serviceType: formType,
-      description: formDescription,
-      findings: formFindings,
-      workDone: formWorkDone,
-      recommendation: formRecommendation,
-      hoursAtService: equipment.find((e) => e.id === resolvedEquipmentId)?.currentHours || 0,
-      partsUsed: formParts,
-      status: "completed" as const,
-      scheduledDate: new Date().toISOString(),
-      completedDate: new Date().toISOString(),
-      cost: Math.floor(Math.random() * 800) + 150,
-      clientSignature: formClientSign,
-      techSignature: formTechSign,
-    };
-    
-    // 1. Add the record
-    addServiceRecord({ ...record });
-    
-    // 2. Add the photos associated with this record
-    beforePhotos.forEach(url => {
-      useOperationsStore.getState().addServicePhoto({
-        serviceRecordId: newRecordId,
-        type: "before",
-        url,
-        caption: "Before service photo",
-      });
-    });
-
-    afterPhotos.forEach(url => {
-      useOperationsStore.getState().addServicePhoto({
-        serviceRecordId: newRecordId,
-        type: "after",
-        url,
-        caption: "After service photo",
-      });
-    });
-
-    // 3. Automated Visit Tracking (Module 8 Connection)
-    // Decrement the visits remaining for the client's package
-    useBillingStore.getState().decrementPackageVisits(resolvedClientId, formType);
-    
-    // Reset form
-    setFormClientId("");
-    setFormEquipmentId("");
-    setFormDescription("");
-    setFormFindings("");
-    setFormWorkDone("");
-    setFormRecommendation("");
-    setFormParts("");
-    setFormClientSign("");
-    setFormTechSign("");
-    setBeforePhotos([]);
-    setAfterPhotos([]);
-    setError(null);
-    setActiveTab("reports");
-  };
-
-  const handlePrintReport = () => {
-    window.print();
-  };
-
-  const statusColors: Record<string, string> = {
-    active: "bg-[#10B981]/20 text-[#10B981]",
-    inactive: "bg-[#EF4444]/20 text-[#EF4444]",
-    maintenance: "bg-[#66B2B2]/20 text-[#66B2B2]",
-    retired: "bg-gray-100 text-gray-600",
-  };
 
   return (
     <div className="space-y-4">
@@ -591,16 +335,34 @@ export default function Services() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-[32px] font-bold text-black tracking-[-0.02em]">Services</h1>
-          <p className="text-sm text-gray-600 mt-0.5">Equipment, service records &amp; PMS</p>
+          <p className="text-sm text-gray-600 mt-0.5">Automated PMS, Task Management & Documentation</p>
+        </div>
+        <div className="flex items-center gap-2">
+            <Button 
+                onClick={clearSimulationData} 
+                variant="ghost" 
+                className="text-red-500 hover:text-red-600 hover:bg-red-50 text-xs font-bold"
+            >
+                <Trash2 className="w-3.5 h-3.5 mr-1.5" />
+                Clear Test Data
+            </Button>
+            <Button 
+                onClick={injectSimulationTask} 
+                className="bg-[#66B2B2] text-white hover:bg-[#5A9E9E] font-bold shadow-lg shadow-[#66B2B2]/20"
+            >
+                <TestTube className="w-4 h-4 mr-2" />
+                Start Simulation Task
+            </Button>
         </div>
       </div>
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-gray-200">
         {[
+          { id: "tasks" as TabType, label: "My Tasks", icon: ClipboardList, count: activeTasks.length },
           { id: "equipment" as TabType, label: "Equipment", icon: Package },
           { id: "reports" as TabType, label: "Service Reports", icon: FileText },
-          { id: "new" as TabType, label: "New Report", icon: Wrench },
+          { id: "new" as TabType, label: "Manual Log", icon: PenTool },
         ].map((tab) => (
           <button
             key={tab.id}
@@ -613,515 +375,587 @@ export default function Services() {
           >
             <tab.icon className="w-3.5 h-3.5" />
             {tab.label}
+            {tab.count !== undefined && tab.count > 0 && (
+              <span className="ml-1 px-1.5 py-0.5 rounded-full bg-[#EF4444] text-white text-[9px] font-bold">
+                {tab.count}
+              </span>
+            )}
           </button>
         ))}
       </div>
 
-      {/* Equipment Tab */}
-      {activeTab === "equipment" && (
-        <div className="space-y-3">
-          <div className="flex items-center gap-3">
-            <div className="relative flex-1 max-w-xs">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500" />
-              <Input
-                placeholder="Search equipment..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-8 h-8 bg-white border-gray-200 text-black text-xs"
-              />
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                if (selectedEquipment) {
-                  const eq = equipment.find(e => e.id === selectedEquipment);
-                  if (eq) {
-                    setQrSerial(eq.serialNumber);
-                    setShowQR(true);
+      {/* Tab Content */}
+      <div className="min-h-[400px]">
+        {/* Tasks Tab */}
+        {activeTab === "tasks" && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 animate-in fade-in duration-300">
+            {activeTasks.length > 0 ? (
+              activeTasks.map(task => {
+                const eq = equipment.find(e => e.id === task.equipmentId);
+                const client = clients.find(c => c.id === task.clientId);
+                return (
+                  <div key={task.id} className="data-card p-4 flex flex-col justify-between hover:border-[#66B2B2]/40 transition-all cursor-pointer group" onClick={() => startTaskExecution(task)}>
+                     <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase ${task.status === 'scheduled' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>
+                            {task.status === 'scheduled' ? 'Awaiting Start' : 'In Progress'}
+                          </span>
+                          <span className="text-[10px] text-gray-500 font-mono-tech">ID: {task.id}</span>
+                        </div>
+                        <h4 className="text-sm font-bold text-gray-900 group-hover:text-[#66B2B2] transition-colors">{eq?.unitId}</h4>
+                        <p className="text-[10px] text-gray-500 mb-2">{eq?.manufacturer} {eq?.model}</p>
+                        
+                        <div className="space-y-1 mt-3">
+                          <div className="flex justify-between text-[11px]">
+                            <span className="text-gray-500">Service:</span>
+                            <span className="text-gray-900 font-bold">{task.serviceCategory}</span>
+                          </div>
+                          <div className="flex justify-between text-[11px]">
+                            <span className="text-gray-500">Client:</span>
+                            <span className="text-gray-900">{client?.companyName || "Unknown Client"}</span>
+                          </div>
+                          <div className="flex justify-between text-[11px]">
+                            <span className="text-gray-500">Hours Logged:</span>
+                            <span className="text-gray-900 font-mono-tech">{eq?.currentHours}h</span>
+                          </div>
+                        </div>
+                     </div>
+
+                     <Button className="w-full mt-4 h-9 bg-gray-900 hover:bg-[#66B2B2] text-white text-xs font-bold transition-all">
+                        {task.status === 'scheduled' ? (
+                          <><Play className="w-3 h-3 mr-2" /> Start Service</>
+                        ) : (
+                          <><CheckCircle2 className="w-3 h-3 mr-2" /> Continue Execution</>
+                        )}
+                     </Button>
+                  </div>
+                );
+              })
+            ) : (
+              <div className="col-span-full py-20 text-center data-card bg-gray-50/50">
+                <ClipboardList className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                <h3 className="text-gray-900 font-bold">No Active Tasks</h3>
+                <p className="text-xs text-gray-500 mt-1">New tasks will appear here automatically when equipment reaches service thresholds.</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Equipment Tab */}
+        {activeTab === "equipment" && (
+          <div className="space-y-3 animate-in fade-in duration-300">
+            <div className="flex items-center gap-3">
+              <div className="relative flex-1 max-w-xs">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500" />
+                <Input
+                  placeholder="Search unit ID or serial..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-8 h-8 bg-white border-gray-200 text-black text-xs"
+                />
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  if (selectedEquipment) {
+                    const eq = equipment.find(e => e.id === selectedEquipment);
+                    if (eq) {
+                      setQrSerial(eq.serialNumber);
+                      setShowQR(true);
+                    }
                   }
-                }
-              }}
-              className="h-8 border-gray-200 bg-white text-gray-700 hover:bg-[#66B2B2] hover:text-white"
-              disabled={!selectedEquipment}
-            >
-              <QrCode className="w-3.5 h-3.5 mr-1.5" />
-              Generate QR
-            </Button>
-            <Button
-              onClick={startScanning}
-              className="bg-[#10B981] text-white hover:bg-[#10B981]/90 font-bold h-8 text-xs"
-            >
-              <Camera className="w-3.5 h-3.5 mr-1.5" />
-              Scan QR
-            </Button>
-          </div>
-
-          <div className="data-card overflow-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="bg-gray-50">
-                  <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Unit ID</th>
-                  <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Type</th>
-                  <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Serial</th>
-                  <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Client</th>
-                  <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Status</th>
-                  <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Hours</th>
-                  <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Next Service</th>
-                  <th className="text-left py-2.5 px-3 text-gray-600 font-medium">QR</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredEquipment.map((eq) => {
-                  const client = clients.find((c) => c.id === eq.clientId);
-                  const serviceDue = eq.currentHours >= eq.nextServiceDue;
-                  return (
-                    <tr
-                      key={eq.id}
-                      ref={(el) => {
-                        if (el) {
-                          equipmentRefs.current.set(eq.id, el);
-                        } else {
-                          equipmentRefs.current.delete(eq.id);
-                        }
-                      }}
-                      className={`grid-table-row border-b border-gray-200 cursor-pointer hover:bg-gray-50 transition-all duration-300 ${
-                        highlightedEquipment === eq.id 
-                          ? 'ring-2 ring-[#10B981] shadow-lg shadow-[#10B981]/20 bg-[#10B981]/5' 
-                          : ''
-                      }`}
-                      onClick={() => setSelectedEquipment(selectedEquipment === eq.id ? null : eq.id)}
-                    >
-                      <td className="py-2.5 px-3 text-black font-mono-tech font-bold">{eq.unitId}</td>
-                      <td className="py-2.5 px-3 text-black">{eq.type}</td>
-                      <td className="py-2.5 px-3 text-gray-600 font-mono-tech">{eq.serialNumber}</td>
-                      <td className="py-2.5 px-3 text-black">{client?.companyName || "—"}</td>
-                      <td className="py-2.5 px-3">
-                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${statusColors[eq.status]}`}>
-                          {eq.status}
-                        </span>
-                      </td>
-                      <td className="py-2.5 px-3">
-                        <span className={`font-mono-tech ${serviceDue ? "text-[#EF4444]" : "text-black"}`}>
-                          {eq.currentHours}
-                        </span>
-                      </td>
-                      <td className="py-2.5 px-3">
-                        <span className={`font-mono-tech ${serviceDue ? "text-[#EF4444]" : "text-gray-600"}`}>
-                          {eq.nextServiceDue}h
-                          {serviceDue && <AlertTriangle className="w-3 h-3 inline ml-1 text-[#EF4444]" />}
-                        </span>
-                      </td>
-                      <td className="py-2.5 px-3">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setQrSerial(eq.serialNumber);
-                            setShowQR(true);
-                          }}
-                          className="h-7 w-7 p-0 text-gray-500 hover:text-[#66B2B2] hover:bg-[#66B2B2]/10"
-                        >
-                          <QrCode className="w-3.5 h-3.5" />
-                        </Button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-
-          {selectedEquipment && (
-            <EquipmentDetail
-              equipment={equipment.find((eqItem: Equipment) => eqItem.id === selectedEquipment)!}
-              client={clients.find((c: Client) => c.id === equipment.find((eqItem: Equipment) => eqItem.id === selectedEquipment)?.clientId)}
-              serviceHistory={getServiceHistory(selectedEquipment)}
-              photos={servicePhotos}
-              onViewReport={(record) => setShowReport(record)}
-            />
-          )}
-        </div>
-      )}
-
-      {/* Reports Tab */}
-      {activeTab === "reports" && (
-        <div className="space-y-3">
-          <div className="data-card overflow-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="bg-gray-50">
-                  <th className="text-left py-2.5 px-3 text-gray-600 font-medium">ID</th>
-                  <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Equipment</th>
-                  <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Type</th>
-                  <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Technician</th>
-                  <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Date</th>
-                  <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Status</th>
-                  <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {serviceRecords.map((record: ServiceRecord) => {
-                  const eq = equipment.find((eqItem: Equipment) => eqItem.id === record.equipmentId);
-                  return (
-                    <tr key={record.id} className="grid-table-row border-b border-gray-200">
-                      <td className="py-2.5 px-3 text-gray-600 font-mono-tech">#{record.id}</td>
-                      <td className="py-2.5 px-3 text-black font-mono-tech">{eq?.unitId || "—"}</td>
-                      <td className="py-2.5 px-3">
-                        <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-[#66B2B2]/20 text-[#66B2B2] uppercase">
-                          {record.serviceType}
-                        </span>
-                      </td>
-                      <td className="py-2.5 px-3 text-black">{record.technician}</td>
-                      <td className="py-2.5 px-3 text-gray-600 font-mono-tech">
-                        {record.completedDate ? new Date(record.completedDate).toLocaleDateString() : "—"}
-                      </td>
-                      <td className="py-2.5 px-3">
-                        <span className="bg-[#10B981]/20 text-[#10B981] px-1.5 py-0.5 rounded text-[10px] font-medium uppercase">
-                          {record.status}
-                        </span>
-                      </td>
-                      <td className="py-2.5 px-3">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setShowReport(record)}
-                          className="h-6 text-[10px] text-gray-600 hover:text-[#66B2B2]"
-                        >
-                          <FileText className="w-3 h-3 mr-1" />
-                          View
-                        </Button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* New Report Tab */}
-      {activeTab === "new" && (
-        <div className="max-w-4xl space-y-4">
-          {error && (
-            <div className="p-3 rounded bg-[#EF4444]/10 border border-[#EF4444]/20 flex items-center gap-2 text-[#EF4444] text-xs font-bold">
-              <AlertTriangle className="w-4 h-4" />
-              {error}
-            </div>
-          )}
-
-          <div className="data-card p-5 space-y-6">
-            <h3 className="text-base font-bold text-black flex items-center gap-2">
-              <Wrench className="w-4 h-4 text-[#66B2B2]" />
-              Technician Service Logging
-            </h3>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-4">
-                <div>
-                  <label className="text-[10px] text-gray-600 uppercase tracking-wider mb-1 block font-bold">Client</label>
-                  <Select
-                    value={formClientId}
-                    onValueChange={(value) => {
-                      setFormClientId(value);
-                      setFormEquipmentId("");
-                    }}
-                  >
-                    <SelectTrigger className="h-9 bg-white border-gray-200 text-black text-xs">
-                      <SelectValue placeholder="Select client" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-white border-gray-200 text-black">
-                      {reportClientOptions.map((c) => (
-                        <SelectItem key={c.id} value={c.id} className="text-xs text-black">
-                          {c.companyName}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <label className="text-[10px] text-gray-600 uppercase tracking-wider mb-1 block font-bold">Equipment</label>
-                  <Select
-                    value={formEquipmentId}
-                    onValueChange={setFormEquipmentId}
-                    disabled={!formClientId}
-                  >
-                    <SelectTrigger
-                      className={`h-9 border-gray-200 text-xs ${
-                        formClientId
-                          ? "bg-white text-black"
-                          : "bg-gray-100 text-gray-400 cursor-not-allowed"
-                      }`}
-                    >
-                      <SelectValue placeholder={formClientId ? "Select unit" : "Select client first"} />
-                    </SelectTrigger>
-                    <SelectContent className="bg-white border-gray-200 text-black">
-                      {seedClientOptions.length > 0
-                        ? seedReportEquipmentOptions.map((eqItem) => (
-                            <SelectItem key={eqItem.id} value={eqItem.id} className="text-xs text-black">
-                              {eqItem.id} — {eqItem.name}
-                            </SelectItem>
-                          ))
-                        : fallbackReportEquipmentOptions.map((eqItem: Equipment) => (
-                            <SelectItem key={eqItem.id} value={eqItem.id.toString()} className="text-xs text-black">
-                              {eqItem.unitId} — {eqItem.type}
-                            </SelectItem>
-                          ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div className="space-y-4">
-                <div>
-                  <label className="text-[10px] text-gray-600 uppercase tracking-wider mb-1 block font-bold">Service Type</label>
-                  <Select value={formType} onValueChange={(v) => setFormType(v as ServiceType)}>
-                    <SelectTrigger className="h-9 bg-white border-gray-200 text-black text-xs">
-                      <SelectValue placeholder="Select service type" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-white border-gray-200 text-black">
-                      {serviceTypeOptions.map((option) => (
-                        <SelectItem key={option.value} value={option.value} className="text-xs text-black">
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <label className="text-[10px] text-gray-600 uppercase tracking-wider mb-1 block font-bold">Technician</label>
-                  <Input
-                    value={formTechnician}
-                    onChange={(e) => setFormTechnician(e.target.value)}
-                    className="h-9 bg-white border-gray-200 text-black text-xs"
-                  />
-                </div>
-              </div>
+                }}
+                className="h-8 border-gray-200 bg-white text-gray-700 hover:bg-[#66B2B2] hover:text-white"
+                disabled={!selectedEquipment}
+              >
+                <QrCode className="w-3.5 h-3.5 mr-1.5" />
+                Generate QR
+              </Button>
+              <Button
+                onClick={startScanning}
+                className="bg-[#10B981] text-white hover:bg-[#10B981]/90 font-bold h-8 text-xs"
+              >
+                <Camera className="w-3.5 h-3.5 mr-1.5" />
+                Scan QR
+              </Button>
             </div>
 
-            <div className="grid grid-cols-3 gap-4">
-              <div className="col-span-1 space-y-4">
-                <div>
-                  <label className="text-[10px] text-gray-600 uppercase tracking-wider mb-1 block font-bold">Findings</label>
-                  <textarea
-                    value={formFindings}
-                    onChange={(e) => setFormFindings(e.target.value)}
-                    rows={4}
-                    className="w-full px-3 py-2 rounded bg-white border border-gray-200 text-black text-xs focus:outline-none focus:border-[#66B2B2]/50 resize-none"
-                    placeholder="Describe initial state & faults..."
-                  />
-                </div>
-              </div>
-              <div className="col-span-1 space-y-4">
-                <div>
-                  <label className="text-[10px] text-gray-600 uppercase tracking-wider mb-1 block font-bold">Work Performed</label>
-                  <textarea
-                    value={formWorkDone}
-                    onChange={(e) => setFormWorkDone(e.target.value)}
-                    rows={4}
-                    className="w-full px-3 py-2 rounded bg-white border border-gray-200 text-black text-xs focus:outline-none focus:border-[#66B2B2]/50 resize-none"
-                    placeholder="List all actions taken..."
-                  />
-                </div>
-              </div>
-              <div className="col-span-1 space-y-4">
-                <div>
-                  <label className="text-[10px] text-gray-600 uppercase tracking-wider mb-1 block font-bold">Recommendation</label>
-                  <textarea
-                    value={formRecommendation}
-                    onChange={(e) => setFormRecommendation(e.target.value)}
-                    rows={4}
-                    className="w-full px-3 py-2 rounded bg-white border border-gray-200 text-black text-xs focus:outline-none focus:border-[#66B2B2]/50 resize-none"
-                    placeholder="Advise on future maintenance..."
-                  />
-                </div>
-              </div>
+            <div className="data-card overflow-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-200">
+                    <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider">Unit ID</th>
+                    <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider">Manufacturer/Model</th>
+                    <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider">Client</th>
+                    <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider">Status</th>
+                    <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider text-right">Hours</th>
+                    <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider text-right">Next PMS</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredEquipment.map((eq) => {
+                    const client = clients.find((c) => c.id === eq.clientId);
+                    const serviceDue = eq.currentHours >= eq.nextPMSHours && eq.nextPMSHours > 0;
+                    return (
+                      <tr
+                        key={eq.id}
+                        ref={(el) => {
+                          if (el) equipmentRefs.current.set(eq.id, el);
+                          else equipmentRefs.current.delete(eq.id);
+                        }}
+                        className={`grid-table-row border-b border-gray-100 cursor-pointer hover:bg-[#66B2B2]/5 transition-all ${
+                          selectedEquipment === eq.id || highlightedEquipment === eq.id ? 'bg-[#66B2B2]/10 border-[#66B2B2]/30' : ''
+                        }`}
+                        onClick={() => setSelectedEquipment(selectedEquipment === eq.id ? null : eq.id)}
+                      >
+                        <td className="py-3 px-3 text-black font-mono-tech font-bold text-sm">{eq.unitId}</td>
+                        <td className="py-3 px-3 text-gray-700">
+                           <div className="font-medium">{eq.manufacturer}</div>
+                           <div className="text-[10px] text-gray-500">{eq.model}</div>
+                        </td>
+                        <td className="py-3 px-3 text-black">{client?.companyName || "—"}</td>
+                        <td className="py-3 px-3">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                            serviceDue ? 'bg-red-100 text-red-700 animate-pulse' : 'bg-green-100 text-green-700'
+                          }`}>
+                            {serviceDue ? 'PMS Due' : eq.status}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3 text-right font-mono-tech font-bold text-gray-900">{eq.currentHours}h</td>
+                        <td className="py-3 px-3 text-right font-mono-tech text-gray-500">{eq.nextPMSHours > 0 ? `${eq.nextPMSHours}h` : '—'}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
 
-            <div className="space-y-4">
-              <div>
-                <label className="text-[10px] text-gray-600 uppercase tracking-wider mb-1 block font-bold">Overall Summary</label>
-                <Input
-                  value={formDescription}
-                  onChange={(e) => setFormDescription(e.target.value)}
-                  placeholder="General summary of the service visit"
-                  className="h-9 bg-white border-gray-200 text-black text-xs"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] text-gray-600 uppercase tracking-wider mb-1 block font-bold">Parts Used</label>
-                <Input
-                  value={formParts}
-                  onChange={(e) => setFormParts(e.target.value)}
-                  placeholder="Serial numbers or names of replaced parts"
-                  className="h-9 bg-white border-gray-200 text-black text-xs"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <PhotoDropzone
-                label="BEFORE"
-                photos={beforePhotos}
-                onUpload={(e) => handlePhotoUpload("before", e)}
-                onRemove={(idx) => setBeforePhotos((prev) => prev.filter((_, i) => i !== idx))}
+            {selectedEquipment && (
+              <EquipmentDetail
+                equipment={equipment.find((eqItem) => eqItem.id === selectedEquipment)!}
+                client={clients.find((c) => c.id === equipment.find((eqItem) => eqItem.id === selectedEquipment)?.clientId)}
+                serviceHistory={serviceRecords.filter(r => r.equipmentId === selectedEquipment)}
+                onViewReport={(record) => setShowReport(record)}
               />
-              <PhotoDropzone
-                label="AFTER"
-                photos={afterPhotos}
-                onUpload={(e) => handlePhotoUpload("after", e)}
-                onRemove={(idx) => setBeforePhotos((prev) => prev.filter((_, i) => i !== idx))}
-              />
-            </div>
+            )}
+          </div>
+        )}
 
-            <div className="grid grid-cols-2 gap-4 border-t border-gray-200 pt-6">
-              <div className="space-y-2">
-                <label className="text-[10px] text-gray-600 uppercase tracking-wider block font-bold">Technician Signature</label>
-                <div className="space-y-2">
-                  <canvas
-                    ref={techSignatureCanvasRef}
-                    width={560}
-                    height={160}
-                    onPointerDown={handleTechSignatureStart}
-                    onPointerMove={handleTechSignatureMove}
-                    onPointerUp={handleTechSignatureEnd}
-                    onPointerLeave={handleTechSignatureEnd}
-                    className="w-full h-24 rounded border border-gray-200 bg-white touch-none"
-                  />
-                  <div className="flex items-center justify-between">
-                    <p className="text-[10px] text-gray-500">Draw technician signature above</p>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={clearTechSignature}
-                      className="h-7 px-2 text-[10px] text-gray-600"
-                    >
-                      Clear
-                    </Button>
+        {/* Service Reports Tab */}
+        {activeTab === "reports" && (
+          <div className="space-y-3 animate-in fade-in duration-300">
+            <div className="data-card overflow-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-200">
+                    <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider">Ref ID</th>
+                    <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider">Equipment</th>
+                    <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider">Service Category</th>
+                    <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider">Technician</th>
+                    <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider">Completed</th>
+                    <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {serviceRecords.filter(r => r.status === 'completed').map((record) => {
+                    const eq = equipment.find(e => e.id === record.equipmentId);
+                    return (
+                      <tr key={record.id} className="grid-table-row border-b border-gray-100 hover:bg-gray-50 transition-all">
+                        <td className="py-3 px-3 text-gray-500 font-mono-tech">#{record.id}</td>
+                        <td className="py-3 px-3 text-black font-bold">{eq?.unitId}</td>
+                        <td className="py-3 px-3">
+                          <span className="text-gray-900 font-medium">{record.serviceCategory}</span>
+                        </td>
+                        <td className="py-3 px-3 text-gray-700">{record.technician}</td>
+                        <td className="py-3 px-3 text-gray-500 font-mono-tech">
+                          {record.completedDate ? new Date(record.completedDate).toLocaleDateString() : "—"}
+                        </td>
+                        <td className="py-3 px-3">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setShowReport(record)}
+                            className="h-7 text-[10px] border-gray-200 hover:bg-[#66B2B2] hover:text-white transition-all"
+                          >
+                            <FileText className="w-3 h-3 mr-1" />
+                            View Report
+                          </Button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* Manual Log Tab */}
+        {activeTab === "new" && (
+          <div className="max-w-4xl space-y-4 animate-in fade-in duration-300">
+            <div className="data-card p-6 space-y-6 bg-white shadow-sm border border-gray-200 rounded-xl">
+              <div className="flex items-center gap-3 mb-2">
+                 <div className="w-10 h-10 rounded-full bg-[#66B2B2]/10 flex items-center justify-center">
+                    <PenTool className="w-5 h-5 text-[#66B2B2]" />
+                 </div>
+                 <div>
+                    <h3 className="text-lg font-bold text-gray-900">Manual Service Entry</h3>
+                    <p className="text-xs text-gray-500">Record ad-hoc repairs and inspections directly</p>
+                 </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-6 pt-4 border-t border-gray-50">
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-[10px] text-gray-500 uppercase font-bold mb-1.5 block tracking-wider">Client Company</label>
+                    <Select value={formClientId} onValueChange={(v) => { setFormClientId(v); setFormEquipmentId(""); }}>
+                      <SelectTrigger className="h-11 bg-white border-gray-200 text-gray-900 focus:ring-[#66B2B2]/30">
+                        <SelectValue placeholder="Select client..." />
+                      </SelectTrigger>
+                      <SelectContent className="bg-white border-gray-200 z-50">
+                        {clients.length > 0 ? clients.map(c => (
+                          <SelectItem key={c.id} value={c.id.toString()} className="text-gray-900">{c.companyName}</SelectItem>
+                        )) : <div className="p-2 text-xs text-gray-400">No clients found</div>}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-gray-500 uppercase font-bold mb-1.5 block tracking-wider">Equipment Unit</label>
+                    <Select value={formEquipmentId} onValueChange={setFormEquipmentId} disabled={!formClientId}>
+                      <SelectTrigger className="h-11 bg-white border-gray-200 text-gray-900 focus:ring-[#66B2B2]/30 disabled:bg-gray-50">
+                        <SelectValue placeholder={formClientId ? "Select unit ID..." : "Select client first"} />
+                      </SelectTrigger>
+                      <SelectContent className="bg-white border-gray-200 z-50">
+                        {equipment.filter(e => e.clientId === parseInt(formClientId)).map(e => (
+                          <SelectItem key={e.id} value={e.id.toString()} className="text-gray-900">{e.unitId} — {e.manufacturer} {e.model}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-[10px] text-gray-500 uppercase font-bold mb-1.5 block tracking-wider">Service Category</label>
+                    <Select value={formType} onValueChange={setFormType}>
+                      <SelectTrigger className="h-11 bg-white border-gray-200 text-gray-900 focus:ring-[#66B2B2]/30">
+                        <SelectValue placeholder="Select type..." />
+                      </SelectTrigger>
+                      <SelectContent className="bg-white border-gray-200 z-50">
+                        <SelectItem value="Heavy Equipment PMS" className="text-gray-900">Heavy Equipment PMS</SelectItem>
+                        <SelectItem value="Calibration PMS" className="text-gray-900">Calibration PMS</SelectItem>
+                        <SelectItem value="Repair" className="text-gray-900">General Repair</SelectItem>
+                        <SelectItem value="Inspection" className="text-gray-900">Standard Inspection</SelectItem>
+                        <SelectItem value="Installation" className="text-gray-900">New Installation</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-gray-500 uppercase font-bold mb-1.5 block tracking-wider">Performing Technician</label>
+                    <Input value={formTechnician} onChange={(e) => setFormTechnician(e.target.value)} className="h-11 bg-white border-gray-200 text-gray-900 focus:ring-[#66B2B2]/30" />
                   </div>
                 </div>
               </div>
-              <div className="space-y-2">
-                <label className="text-[10px] text-gray-600 uppercase tracking-wider block font-bold">Client Confirmation Signature</label>
-                <div className="space-y-2">
-                  <canvas
-                    ref={clientSignatureCanvasRef}
-                    width={560}
-                    height={160}
-                    onPointerDown={handleClientSignatureStart}
-                    onPointerMove={handleClientSignatureMove}
-                    onPointerUp={handleClientSignatureEnd}
-                    onPointerLeave={handleClientSignatureEnd}
-                    className="w-full h-24 rounded border border-gray-200 bg-white touch-none"
-                  />
-                  <div className="flex items-center justify-between">
-                    <p className="text-[10px] text-gray-500">Draw client signature above</p>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={clearClientSignature}
-                      className="h-7 px-2 text-[10px] text-gray-600"
-                    >
-                      Clear
-                    </Button>
-                  </div>
-                </div>
+
+              <div className="space-y-4">
+                 <div>
+                    <label className="text-[10px] text-gray-500 uppercase font-bold mb-1.5 block tracking-wider">Work Description & Notes</label>
+                    <textarea 
+                      className="w-full p-4 rounded-xl border border-gray-200 text-sm text-gray-900 focus:border-[#66B2B2] focus:ring-2 focus:ring-[#66B2B2]/10 outline-none transition-all resize-none" 
+                      rows={5}
+                      value={formDescription}
+                      onChange={(e) => setFormDescription(e.target.value)}
+                      placeholder="Detail the work performed, findings, and any parts replaced..."
+                    />
+                 </div>
               </div>
+
+              <div className="bg-amber-50 border border-amber-100 p-4 rounded-xl flex gap-3">
+                 <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
+                    <AlertTriangle className="w-4 h-4 text-amber-600" />
+                 </div>
+                 <p className="text-[11px] text-amber-800 leading-relaxed">
+                   <strong>Technician Protocol:</strong> Manual logs are intended for recording work that was not pre-scheduled via automated triggers. Note that manual entries bypass the mandatory "Before/After" photo and digital signature verification flow. Use <strong>"My Tasks"</strong> for automated compliance jobs.
+                 </p>
+              </div>
+
+              <Button 
+                className="w-full h-12 bg-[#66B2B2] text-white font-bold hover:bg-[#5A9E9E] rounded-xl shadow-lg shadow-[#66B2B2]/20 transition-all active:scale-[0.98]"
+                onClick={() => {
+                  if (!formClientId || !formEquipmentId || !formDescription) {
+                    toast.error("Required fields missing", { description: "Please ensure Client, Equipment and Description are filled." });
+                    return;
+                  }
+                  addServiceRecord({
+                    equipmentId: parseInt(formEquipmentId),
+                    clientId: parseInt(formClientId),
+                    technician: formTechnician,
+                    serviceCategory: formType as any,
+                    description: formDescription,
+                    partsUsed: "",
+                    status: "completed",
+                    scheduledDate: new Date().toISOString(),
+                    completedDate: new Date().toISOString(),
+                    cost: 0,
+                    findings: "Manually Logged Entry",
+                    workDone: formDescription,
+                    recommendation: "Regular monitoring advised",
+                    hoursAtService: equipment.find(e => e.id === parseInt(formEquipmentId))?.currentHours || 0
+                  });
+                  toast.success("Service Logged Successfully", { description: "Manual entry has been added to service history." });
+                  
+                  // Reset form
+                  setFormClientId("");
+                  setFormEquipmentId("");
+                  setFormDescription("");
+                  setActiveTab("reports");
+                }}
+              >
+                 <CheckCircle2 className="w-4 h-4 mr-2" />
+                 Complete & Save Manual Entry
+              </Button>
             </div>
-
-            <Button
-              onClick={handleSubmitReport}
-              className="w-full h-12 bg-[#66B2B2] hover:bg-[#66B2B2]/80 text-white font-bold text-base shadow-[0_4px_20px_-5px_rgba(102,178,178,0.3)] transition-all"
-            >
-              <CheckCircle2 className="w-5 h-5 mr-2" />
-              Finalize & Complete Service
-            </Button>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
-      {/* Service Report Dialog */}
+      {/* MODALS & DIALOGS */}
+
+      {/* Task Execution Modal */}
+      <Dialog open={!!activeTask} onOpenChange={(open) => !open && setActiveTask(null)}>
+        <DialogContent className="max-w-2xl bg-white border-gray-200 max-h-[90vh] overflow-auto scrollbar-hide rounded-2xl shadow-2xl">
+          <DialogHeader className="border-b border-gray-50 pb-4 mb-4">
+            <DialogTitle className="flex items-center gap-2 text-gray-900 text-lg">
+              <div className="w-8 h-8 rounded bg-[#66B2B2]/10 flex items-center justify-center">
+                 <ClipboardList className="w-4 h-4 text-[#66B2B2]" />
+              </div>
+              Service Execution: <span className="font-mono-tech">{equipment.find(e => e.id === activeTask?.equipmentId)?.unitId}</span>
+            </DialogTitle>
+          </DialogHeader>
+
+          {activeTask && (
+            <div className="space-y-6 py-2 animate-in slide-in-from-bottom duration-300">
+               {/* Progress indicator */}
+               <div className="flex items-center justify-between px-8 mb-6">
+                  {[
+                    { id: 'detail', label: 'Details' },
+                    { id: 'before', label: 'Start' },
+                    { id: 'work', label: 'Work' },
+                    { id: 'after', label: 'Finish' },
+                    { id: 'signature', label: 'Sign' }
+                  ].map((s, i) => (
+                    <div key={s.id} className="flex items-center flex-1 last:flex-none">
+                       <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
+                         executionStep === s.id ? 'bg-[#66B2B2] text-white ring-4 ring-[#66B2B2]/10 scale-110' : 
+                         i < ['detail', 'before', 'work', 'after', 'signature'].indexOf(executionStep) ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-400'
+                       }`}>
+                          {i < ['detail', 'before', 'work', 'after', 'signature'].indexOf(executionStep) ? <Check className="w-4 h-4" /> : i + 1}
+                       </div>
+                       {i < 4 && <div className={`h-1 flex-1 mx-2 rounded-full ${i < ['detail', 'before', 'work', 'after', 'signature'].indexOf(executionStep) ? 'bg-green-500' : 'bg-gray-100'}`} />}
+                    </div>
+                  ))}
+               </div>
+
+               <div className="px-1">
+                  {executionStep === 'detail' && (
+                      <div className="space-y-6">
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="p-4 rounded-xl bg-gray-50 border border-gray-100">
+                              <div className="text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-1">Equipment Unit</div>
+                              <div className="text-base font-bold text-gray-900">{equipment.find(e => e.id === activeTask.equipmentId)?.unitId}</div>
+                              <div className="text-xs text-gray-500 font-mono-tech mt-1">{equipment.find(e => e.id === activeTask.equipmentId)?.serialNumber}</div>
+                            </div>
+                            <div className="p-4 rounded-xl bg-gray-50 border border-gray-100">
+                              <div className="text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-1">Client Representative</div>
+                              <div className="text-base font-bold text-gray-900">{clients.find(c => c.id === activeTask.clientId)?.companyName}</div>
+                              <div className="flex justify-between items-center mt-1">
+                                <span className="text-xs text-[#66B2B2] font-bold">Runtime: {equipment.find(e => e.id === activeTask.equipmentId)?.currentHours}h</span>
+                                {(() => {
+                                  const eq = equipment.find(e => e.id === activeTask.equipmentId);
+                                  const pkg = packages.find(p => p.id === eq?.packageId);
+                                  return pkg ? (
+                                    <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-gray-200 text-gray-700 font-bold uppercase">{pkg.name}</span>
+                                  ) : null;
+                                })()}
+                              </div>
+                            </div>
+                        </div>
+                        <div className="p-5 rounded-xl border-l-4 border-[#66B2B2] bg-[#66B2B2]/5 shadow-sm">
+                            <h5 className="text-xs font-bold text-[#66B2B2] uppercase tracking-[0.1em] mb-2">Service Requirement</h5>
+                            <p className="text-base text-gray-900 font-bold">{activeTask.serviceCategory}</p>
+                            <p className="text-sm text-gray-600 mt-2 leading-relaxed">{activeTask.description}</p>
+                        </div>
+                        <Button className="w-full h-12 bg-gray-900 hover:bg-black text-white font-bold rounded-xl transition-all shadow-xl" onClick={() => handleTaskStep('before')}>
+                            Accept Assignment & Proceed
+                        </Button>
+                      </div>
+                  )}
+
+                  {executionStep === 'before' && (
+                      <div className="space-y-6">
+                        <div className="text-center py-4">
+                            <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-3">
+                                <Camera className="w-8 h-8 text-gray-400" />
+                            </div>
+                            <h4 className="text-lg font-bold text-gray-900">Pre-Service Documentation</h4>
+                            <p className="text-sm text-gray-500">Please capture clear photos of the equipment state before work.</p>
+                        </div>
+                        <PhotoDropzone 
+                            label="BEFORE" 
+                            photos={beforePhotos} 
+                            onUpload={(e) => handlePhotoUpload('before', e)} 
+                            onRemove={(idx) => setBeforePhotos(prev => prev.filter((_, i) => i !== idx))} 
+                        />
+                        <Button className="w-full h-12 bg-[#66B2B2] hover:bg-[#5A9E9E] text-white font-bold rounded-xl" onClick={() => handleTaskStep('work')}>
+                            Confirm Photos & Open Checklist
+                        </Button>
+                      </div>
+                  )}
+
+                  {executionStep === 'work' && (
+                      <div className="space-y-6">
+                        <div className="space-y-4">
+                            <div>
+                                <label className="text-[10px] text-gray-500 uppercase font-bold mb-1.5 block tracking-widest">Initial Findings / Faults</label>
+                                <textarea 
+                                  className="w-full p-4 rounded-xl border border-gray-200 text-sm text-gray-900 focus:border-[#66B2B2] focus:ring-2 focus:ring-[#66B2B2]/10 outline-none transition-all resize-none" 
+                                  rows={3} 
+                                  value={formFindings}
+                                  onChange={(e) => setFormFindings(e.target.value)}
+                                  placeholder="List any damage, leaks, or performance issues discovered..."
+                                />
+                            </div>
+                            <div>
+                                <label className="text-[10px] text-gray-500 uppercase font-bold mb-1.5 block tracking-widest">Technical Work Performed</label>
+                                <textarea 
+                                  className="w-full p-4 rounded-xl border border-gray-200 text-sm text-gray-900 focus:border-[#66B2B2] focus:ring-2 focus:ring-[#66B2B2]/10 outline-none transition-all resize-none" 
+                                  rows={4} 
+                                  value={formWorkDone}
+                                  onChange={(e) => setFormWorkDone(e.target.value)}
+                                  placeholder="Describe all services, adjustments and checks completed..."
+                                />
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                  <label className="text-[10px] text-gray-500 uppercase font-bold mb-1.5 block tracking-widest">Parts/Consumables Used</label>
+                                  <Input className="h-11 rounded-xl" value={formParts} onChange={(e) => setFormParts(e.target.value)} placeholder="e.g. Filters, Lube" />
+                                </div>
+                                <div>
+                                  <label className="text-[10px] text-gray-500 uppercase font-bold mb-1.5 block tracking-widest">Recommendations</label>
+                                  <Input className="h-11 rounded-xl" value={formRecommendation} onChange={(e) => setFormRecommendation(e.target.value)} placeholder="e.g. Belt change in 500h" />
+                                </div>
+                            </div>
+                        </div>
+                        <Button className="w-full h-12 bg-gray-900 hover:bg-black text-white font-bold rounded-xl shadow-lg" onClick={() => handleTaskStep('after')}>
+                            Save Progress & Proceed
+                        </Button>
+                      </div>
+                  )}
+
+                  {executionStep === 'after' && (
+                      <div className="space-y-6">
+                        <div className="text-center py-4">
+                            <div className="w-16 h-16 rounded-full bg-green-50 flex items-center justify-center mx-auto mb-3">
+                                <CheckCircle2 className="w-8 h-8 text-[#10B981]" />
+                            </div>
+                            <h4 className="text-lg font-bold text-gray-900">Post-Service Documentation</h4>
+                            <p className="text-sm text-gray-500">Capture final photos showing completed work and clean workspace.</p>
+                        </div>
+                        <PhotoDropzone 
+                            label="AFTER" 
+                            photos={afterPhotos} 
+                            onUpload={(e) => handlePhotoUpload('after', e)} 
+                            onRemove={(idx) => setAfterPhotos(prev => prev.filter((_, i) => i !== idx))} 
+                        />
+                        <Button className="w-full h-12 bg-[#10B981] hover:bg-[#059669] text-white font-bold rounded-xl" onClick={() => handleTaskStep('signature')}>
+                            Finalize Service & Capture Signatures
+                        </Button>
+                      </div>
+                  )}
+
+                  {executionStep === 'signature' && (
+                      <div className="space-y-8 pb-4">
+                        <SignatureSection 
+                            label="Technician Verification" 
+                            value={formTechSign} 
+                            onChange={setFormTechSign} 
+                            helper="I certify that the listed work has been completed to specification." 
+                        />
+                        <SignatureSection 
+                            label="Client Acceptance" 
+                            value={formClientSign} 
+                            onChange={setFormClientSign} 
+                            helper="Client representative acknowledgment of work completion." 
+                        />
+                        <Button className="w-full h-14 bg-[#66B2B2] text-white text-lg font-bold rounded-xl shadow-2xl hover:bg-[#5A9E9E] transition-all active:scale-[0.98]" onClick={finalizeTask}>
+                            Seal & Submit Final Report
+                        </Button>
+                      </div>
+                  )}
+               </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Service Report View Modal */}
       <Dialog open={!!showReport} onOpenChange={() => setShowReport(null)}>
-        <DialogContent className="bg-white border-gray-200 max-w-4xl max-h-[95vh] overflow-auto scrollbar-hide">
+        <DialogContent className="bg-white border-gray-200 max-w-4xl max-h-[95vh] overflow-auto scrollbar-hide rounded-2xl">
           {showReport && (
             <ServiceReportView
               record={showReport}
-              equipment={equipment.find((eqItem: Equipment) => eqItem.id === showReport.equipmentId)}
-              client={clients.find((c: Client) => c.id === showReport.clientId)}
-              photos={servicePhotos.filter((p: { serviceRecordId: number }) => p.serviceRecordId === showReport.id)}
-              onPrint={handlePrintReport}
+              equipment={equipment.find((eqItem) => eqItem.id === showReport.equipmentId)}
+              client={clients.find((c) => c.id === showReport.clientId)}
+              photos={servicePhotos.filter((p) => p.serviceRecordId === showReport.id)}
             />
           )}
         </DialogContent>
       </Dialog>
 
       {/* QR Scanner Modal */}
-      <Dialog open={showScanner} onOpenChange={(open) => {
-        if (!open) stopScanning();
-      }}>
-        <DialogContent className="bg-white border-gray-200 sm:max-w-lg">
+      <Dialog open={showScanner} onOpenChange={(open) => !open && stopScanning()}>
+        <DialogContent className="bg-white border-gray-200 sm:max-w-lg rounded-2xl shadow-2xl">
           <DialogHeader>
-            <DialogTitle className="text-black flex items-center gap-2">
+            <DialogTitle className="text-gray-900 flex items-center gap-2 text-lg">
               <Camera className="w-5 h-5 text-[#10B981]" />
-              Scan Equipment QR Code
+              Field Asset Recognition
             </DialogTitle>
           </DialogHeader>
           
-          <div className="space-y-4">
-            {/* Error Message */}
+          <div className="space-y-6 pt-2">
             {scannerError && (
-              <div className="p-3 rounded-lg bg-[#EF4444]/10 border border-[#EF4444]/20">
-                <div className="flex items-center gap-2">
-                  <X className="w-4 h-4 text-[#EF4444] flex-shrink-0" />
-                  <p className="text-sm text-[#EF4444]">{scannerError}</p>
-                </div>
+              <div className="p-4 rounded-xl bg-red-50 border border-red-100 flex items-start gap-3">
+                <AlertTriangle className="w-5 h-5 text-red-500 flex-shrink-0" />
+                <p className="text-xs text-red-700 leading-relaxed font-medium">{scannerError}</p>
               </div>
             )}
 
-            {/* Scanner Container */}
-            <div className="relative">
+            <div className="relative group">
               <div 
                 id="qr-reader-admin" 
-                className="w-full max-w-sm mx-auto rounded-lg overflow-hidden bg-gray-100 border border-gray-200"
+                className="w-full max-w-sm mx-auto rounded-2xl overflow-hidden bg-gray-900 border-4 border-gray-100 shadow-inner"
               ></div>
               {scanning && !scannerError && (
-                <div className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-lg backdrop-blur-sm">
+                <div className="absolute inset-0 flex items-center justify-center bg-black/40 rounded-2xl backdrop-blur-[2px]">
                   <div className="text-center">
-                    <Loader2 className="w-8 h-8 text-[#10B981] animate-spin mx-auto mb-2" />
-                    <p className="text-sm text-white font-medium">Scanning...</p>
-                    <p className="text-xs text-gray-300 mt-1">Position QR code within the frame</p>
+                    <div className="w-12 h-12 border-4 border-white/20 border-t-[#10B981] rounded-full animate-spin mx-auto mb-3" />
+                    <p className="text-sm text-white font-bold tracking-widest uppercase">Targeting...</p>
                   </div>
                 </div>
               )}
             </div>
 
-            {/* Manual Entry Fallback */}
-            <div className="space-y-3 pt-2 border-t border-gray-200">
-              <div className="text-sm text-gray-600 text-center">
-                Can't scan? Enter serial number manually:
-              </div>
+            <div className="space-y-4 pt-4 border-t border-gray-50">
+              <p className="text-[10px] text-center text-gray-400 uppercase font-bold tracking-[0.2em]">Manual Input Alternative</p>
               <div className="flex gap-2">
                 <Input
-                  placeholder="Enter serial number..."
+                  placeholder="Enter equipment serial..."
                   value={manualSerial}
                   onChange={(e) => setManualSerial(e.target.value)}
-                  className="bg-white border-gray-200 text-black text-xs h-9 focus:border-[#10B981]"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      handleManualEntry();
-                    }
-                  }}
+                  className="bg-white border-gray-200 text-gray-900 text-sm h-11 rounded-xl focus:ring-[#10B981]/20 font-mono-tech"
                 />
-                <Button
-                  onClick={handleManualEntry}
-                  disabled={!manualSerial.trim() || scanning}
-                  className="bg-[#10B981] text-white hover:bg-[#10B981]/80 font-semibold px-4 disabled:opacity-50 h-9"
-                >
-                  Find
-                </Button>
+                <Button onClick={handleManualEntry} className="bg-gray-900 text-white hover:bg-black font-bold px-6 h-11 rounded-xl shadow-lg">Recognize</Button>
               </div>
             </div>
           </div>
@@ -1130,33 +964,111 @@ export default function Services() {
 
       {/* QR Code Dialog */}
       <Dialog open={showQR} onOpenChange={setShowQR}>
-        <DialogContent className="bg-white border-gray-200 sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="text-black flex items-center gap-2">
+        <DialogContent className="bg-white border-gray-200 sm:max-w-md rounded-2xl shadow-2xl">
+          <DialogHeader className="border-b border-gray-50 pb-4">
+            <DialogTitle className="text-gray-900 flex items-center gap-2">
               <QrCode className="w-5 h-5 text-[#66B2B2]" />
-              Equipment QR Code
+              Asset Identification Label
             </DialogTitle>
           </DialogHeader>
-          <div className="flex flex-col items-center justify-center p-6 bg-white rounded-lg mt-4">
-            <QRCodeSVG value={qrSerial} size={200} level="H" includeMargin={true} />
-            <div className="mt-4 text-center">
-              <p className="text-sm font-bold text-black font-mono-tech">{qrSerial}</p>
-              <p className="text-xs text-gray-600 mt-1 uppercase font-bold">
-                {equipment.find((e) => e.serialNumber === qrSerial)?.unitId}
-              </p>
+          <div className="flex flex-col items-center justify-center p-8 bg-white rounded-xl mt-4 border border-gray-50 shadow-inner">
+            <div className="bg-white p-4 rounded-xl border-2 border-gray-900 shadow-xl">
+               <QRCodeSVG value={qrSerial} size={220} level="H" includeMargin={true} />
+            </div>
+            <div className="mt-6 text-center space-y-1">
+              <p className="text-xs text-gray-400 font-bold uppercase tracking-widest">Serial Number</p>
+              <p className="text-lg font-bold text-gray-900 font-mono-tech">{qrSerial}</p>
+              <div className="inline-flex items-center px-3 py-1 bg-[#66B2B2]/10 text-[#66B2B2] rounded-full text-[10px] font-bold mt-2">
+                 UNIT: {equipment.find((e) => e.serialNumber === qrSerial)?.unitId}
+              </div>
             </div>
           </div>
-          <div className="flex justify-center mt-4">
-            <Button
-              onClick={() => window.print()}
-              className="bg-[#66B2B2] text-white hover:bg-[#66B2B2]/80 font-bold"
-            >
-              <Printer className="w-4 h-4 mr-2" />
-              Print QR Code
+          <div className="grid grid-cols-2 gap-3 mt-6">
+            <Button variant="outline" onClick={() => setShowQR(false)} className="rounded-xl h-11 text-xs font-bold border-gray-200">Cancel</Button>
+            <Button onClick={() => window.print()} className="bg-[#66B2B2] text-white hover:bg-[#5A9E9E] font-bold rounded-xl h-11 shadow-lg shadow-[#66B2B2]/20">
+              <Printer className="w-4 h-4 mr-2" /> Print Tag
             </Button>
           </div>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+function SignatureSection({ label, value, onChange, helper }: { label: string, value: string, onChange: (v: string) => void, helper: string }) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const isDrawing = useRef(false);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.strokeStyle = "#111827";
+        ctx.lineWidth = 2.5;
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+      }
+    }
+  }, []);
+
+  const getPoint = (e: React.PointerEvent) => {
+    const rect = canvasRef.current!.getBoundingClientRect();
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  };
+
+  const start = (e: React.PointerEvent) => {
+    isDrawing.current = true;
+    const ctx = canvasRef.current!.getContext("2d")!;
+    const p = getPoint(e);
+    ctx.beginPath();
+    ctx.moveTo(p.x, p.y);
+    canvasRef.current!.setPointerCapture(e.pointerId);
+  };
+
+  const move = (e: React.PointerEvent) => {
+    if (!isDrawing.current) return;
+    const ctx = canvasRef.current!.getContext("2d")!;
+    const p = getPoint(e);
+    ctx.lineTo(p.x, p.y);
+    ctx.stroke();
+  };
+
+  const end = () => {
+    if (!isDrawing.current) return;
+    isDrawing.current = false;
+    onChange(canvasRef.current!.toDataURL());
+  };
+
+  const clear = () => {
+    const canvas = canvasRef.current!;
+    const ctx = canvas.getContext("2d")!;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    onChange("");
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="flex justify-between items-center px-1">
+        <label className="text-[10px] text-gray-500 uppercase font-bold tracking-widest">{label}</label>
+        <Button variant="ghost" size="sm" className="h-6 px-3 text-[9px] font-bold text-red-500 hover:bg-red-50" onClick={clear}>Reset Pad</Button>
+      </div>
+      <div className="relative group">
+        <canvas 
+            ref={canvasRef} 
+            width={600} 
+            height={160} 
+            onPointerDown={start} 
+            onPointerMove={move} 
+            onPointerUp={end}
+            className="w-full h-28 border border-gray-200 rounded-xl bg-white touch-none cursor-crosshair shadow-inner group-hover:border-[#66B2B2]/40 transition-all"
+        />
+        {value && <div className="absolute top-2 right-2 px-2 py-0.5 bg-green-100 text-green-700 text-[8px] font-bold rounded-full uppercase tracking-widest">Signed</div>}
+      </div>
+      <p className="text-[9px] text-gray-400 italic ml-1">{helper}</p>
     </div>
   );
 }
@@ -1175,40 +1087,45 @@ function PhotoDropzone({
   const color = label === "BEFORE" ? "#66B2B2" : "#10B981";
   return (
     <div
-      className="border-2 border-dashed rounded p-3 bg-gray-50"
+      className="border-2 border-dashed rounded-2xl p-4 bg-gray-50/50 transition-all"
       style={{ borderColor: photos.length > 0 ? `${color}40` : "#E5E7EB" }}
     >
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-[10px] font-bold tracking-wider" style={{ color }}>
-          {label} PHOTOS
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-[10px] font-bold tracking-[0.2em] uppercase" style={{ color }}>
+          {label} DOCUMENTATION
         </span>
-        <span className="text-[10px] text-gray-600 font-mono-tech">{photos.length} uploaded</span>
+        <span className="text-[9px] bg-gray-100 px-2 py-0.5 rounded-full text-gray-500 font-mono-tech">{photos.length} FILE(S)</span>
       </div>
       {photos.length === 0 ? (
-        <label className="flex flex-col items-center justify-center py-8 cursor-pointer hover:bg-gray-100 rounded transition-colors group">
-          <Camera className="w-8 h-8 text-gray-500 mb-2 group-hover:text-black transition-colors" />
-          <span className="text-[10px] text-gray-600 group-hover:text-black">Required: Tap to upload</span>
-          <input type="file" accept="image/*" multiple className="hidden" onChange={onUpload} />
+        <label className="flex flex-col items-center justify-center py-10 cursor-pointer hover:bg-white rounded-xl border border-transparent hover:border-gray-100 transition-all group shadow-sm bg-white/50">
+          <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+             <Camera className="w-6 h-6 text-gray-400 group-hover:text-black" />
+          </div>
+          <span className="text-[11px] font-bold text-gray-600 group-hover:text-black">Upload Visual Proof</span>
+          <span className="text-[9px] text-gray-400 mt-1 uppercase tracking-tighter italic">Required for Compliance</span>
+          <input type="file" accept="image/*" capture="environment" className="hidden" onChange={onUpload} />
         </label>
       ) : (
-        <div className="space-y-1.5">
-          <div className="grid grid-cols-3 gap-1.5">
+        <div className="space-y-3">
+          <div className="grid grid-cols-3 gap-2">
             {photos.map((photo, idx) => (
-              <div key={idx} className="relative group aspect-square">
-                <img src={photo} alt={`${label} ${idx}`} className="w-full h-full object-cover rounded" />
+              <div key={idx} className="relative group aspect-square rounded-lg overflow-hidden border border-gray-200 shadow-sm">
+                <img src={photo} alt={`${label} ${idx}`} className="w-full h-full object-cover" />
                 <button
                   onClick={() => onRemove(idx)}
-                  className="absolute top-1 right-1 w-5 h-5 bg-[#EF4444] rounded flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                  className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                 >
-                  <X className="w-3 h-3 text-white" />
+                  <div className="bg-red-500 p-1.5 rounded-full text-white shadow-xl scale-90 group-hover:scale-100 transition-transform">
+                     <X className="w-4 h-4" />
+                  </div>
                 </button>
               </div>
             ))}
           </div>
-          <label className="flex items-center justify-center py-2 cursor-pointer hover:bg-gray-100 rounded transition-colors">
-            <Upload className="w-3 h-3 text-gray-600 mr-1" />
-            <span className="text-[10px] text-gray-600">Add more</span>
-            <input type="file" accept="image/*" multiple className="hidden" onChange={onUpload} />
+          <label className="flex items-center justify-center py-2.5 cursor-pointer hover:bg-white rounded-xl transition-all border border-gray-100 bg-white/50 text-[10px] font-bold text-gray-600">
+            <Upload className="w-3.5 h-3.5 text-gray-400 mr-2" />
+            Add More Documentation
+            <input type="file" accept="image/*" capture="environment" className="hidden" onChange={onUpload} />
           </label>
         </div>
       )}
@@ -1220,82 +1137,77 @@ function EquipmentDetail({
   equipment,
   client,
   serviceHistory,
-  photos,
   onViewReport,
 }: {
   equipment: Equipment;
   client?: Client;
   serviceHistory: ServiceRecord[];
-  photos: Array<{ serviceRecordId: number; type: string; url: string }>;
   onViewReport: (record: ServiceRecord) => void;
 }) {
-  const [expanded, setExpanded] = useState(true);
-  const eqPhotos = photos.filter((p) => serviceHistory.some((s) => s.id === p.serviceRecordId));
-
   return (
-    <div className="data-card p-4">
-      <button
-        onClick={() => setExpanded(!expanded)}
-        className="flex items-center justify-between w-full"
-      >
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-semibold text-black">{equipment.unitId}</span>
-          <span className="text-xs text-gray-600">{equipment.type}</span>
+    <div className="data-card p-6 space-y-6 animate-in slide-in-from-top duration-400 bg-white border border-gray-100 rounded-2xl shadow-xl shadow-gray-100/50">
+      <div className="flex items-start justify-between">
+        <div>
+           <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-[#66B2B2]/10 text-[#66B2B2] text-[9px] font-black uppercase tracking-[0.1em] mb-2">
+              <Package className="w-2.5 h-2.5" /> Managed Asset
+           </div>
+           <h3 className="text-2xl font-bold text-gray-900 tracking-tight">{equipment.unitId}</h3>
+           <p className="text-sm text-gray-500 font-medium">{equipment.manufacturer} <span className="text-gray-300 mx-1">|</span> {equipment.model}</p>
         </div>
-        {expanded ? <ChevronUp className="w-4 h-4 text-gray-600" /> : <ChevronDown className="w-4 h-4 text-gray-600" />}
-      </button>
+        <div className="text-right">
+           <div className="text-[10px] text-gray-400 uppercase font-bold tracking-widest mb-1">Total Operating Time</div>
+           <div className="text-3xl font-bold text-gray-900 font-mono-tech">{equipment.currentHours}<span className="text-sm ml-1 text-gray-400">H</span></div>
+        </div>
+      </div>
 
-      {expanded && (
-        <div className="mt-4 space-y-4">
-          <div className="grid grid-cols-4 gap-4 text-xs">
-            <div>
-              <div className="text-[10px] text-gray-600 uppercase font-bold mb-0.5">Manufacturer</div>
-              <div className="text-black">{equipment.manufacturer}</div>
-            </div>
-            <div>
-              <div className="text-[10px] text-gray-600 uppercase font-bold mb-0.5">Model</div>
-              <div className="text-black">{equipment.model}</div>
-            </div>
-            <div>
-              <div className="text-[10px] text-gray-600 uppercase font-bold mb-0.5">Serial</div>
-              <div className="text-black font-mono-tech">{equipment.serialNumber}</div>
-            </div>
-            <div>
-              <div className="text-[10px] text-gray-600 uppercase font-bold mb-0.5">Status</div>
-              <span className="px-1.5 py-0.5 rounded bg-[#10B981]/20 text-[#10B981] text-[9px] font-bold uppercase">
-                {equipment.status}
-              </span>
-            </div>
-          </div>
+      <div className="grid grid-cols-3 gap-4 border-y border-gray-50 py-5">
+         <div className="space-y-1">
+            <div className="text-[9px] text-gray-400 uppercase font-black tracking-widest">Serial Number</div>
+            <div className="text-xs font-mono-tech font-bold text-gray-900">{equipment.serialNumber}</div>
+         </div>
+         <div className="space-y-1">
+            <div className="text-[9px] text-gray-400 uppercase font-black tracking-widest">Global Positioning</div>
+            <div className="text-xs font-bold text-gray-900">{equipment.location}</div>
+         </div>
+         <div className="space-y-1">
+            <div className="text-[9px] text-gray-400 uppercase font-black tracking-widest">Client Assignment</div>
+            <div className="text-xs font-bold text-gray-900 truncate">{client?.companyName}</div>
+         </div>
+      </div>
 
-          <div>
-            <div className="text-[10px] text-gray-600 uppercase font-bold mb-2">Service History ({serviceHistory.length})</div>
-            <div className="space-y-1.5">
-              {serviceHistory.map((record) => (
-                <div
-                  key={record.id}
-                  className="flex items-center justify-between p-2.5 rounded bg-gray-50 hover:bg-gray-100 cursor-pointer transition-colors border border-gray-200"
-                  onClick={() => onViewReport(record)}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded bg-[#66B2B2]/10 flex items-center justify-center">
-                      <Wrench className="w-4 h-4 text-[#66B2B2]" />
-                    </div>
-                    <div>
-                      <div className="text-xs text-black font-bold capitalize">{record.serviceType}</div>
-                      <div className="text-[10px] text-gray-600">{record.technician} • {record.completedDate ? new Date(record.completedDate).toLocaleDateString() : "—"}</div>
-                    </div>
+      <div className="space-y-4">
+        <div className="text-[10px] text-gray-400 uppercase font-black tracking-[0.2em] flex items-center gap-2">
+           <History className="w-3.5 h-3.5" /> Maintenance History Timeline
+        </div>
+        <div className="space-y-2.5">
+          {serviceHistory.filter(r => r.status === 'completed').length > 0 ? (
+            serviceHistory.filter(r => r.status === 'completed').slice(0, 5).map((record) => (
+              <div
+                key={record.id}
+                className="flex items-center justify-between p-4 rounded-xl border border-gray-50 bg-gray-50/30 hover:border-[#66B2B2]/30 hover:bg-white transition-all cursor-pointer group"
+                onClick={() => onViewReport(record)}
+              >
+                <div className="flex items-center gap-4">
+                  <div className="w-10 h-10 rounded-full bg-white border border-gray-100 flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform">
+                    <Check className="w-5 h-5 text-green-500" />
                   </div>
-                  <div className="text-right">
-                    <div className="text-[10px] text-[#66B2B2] font-mono-tech font-bold">₱{record.cost.toFixed(2)}</div>
-                    <span className="text-[9px] text-[#10B981] font-bold uppercase tracking-wider">Completed</span>
+                  <div>
+                    <div className="text-sm font-bold text-gray-900 group-hover:text-[#66B2B2] transition-colors">{record.serviceCategory}</div>
+                    <div className="text-[10px] text-gray-400 font-medium uppercase mt-0.5">{new Date(record.completedDate!).toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'})} <span className="mx-1">•</span> Tech: {record.technician}</div>
                   </div>
                 </div>
-              ))}
+                <div className="w-8 h-8 rounded-full flex items-center justify-center bg-white border border-gray-100 text-gray-300 group-hover:text-[#66B2B2] transition-all">
+                    <ChevronRight className="w-4 h-4" />
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="text-center py-10 bg-gray-50/50 rounded-xl border border-dashed border-gray-200">
+               <div className="text-[10px] text-gray-400 font-bold uppercase tracking-[0.1em]">Initial State: No prior history</div>
             </div>
-          </div>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 }
@@ -1305,127 +1217,163 @@ function ServiceReportView({
   equipment,
   client,
   photos,
-  onPrint,
 }: {
   record: ServiceRecord;
   equipment?: Equipment;
   client?: Client;
   photos: Array<{ type: string; url: string; caption: string }>;
-  onPrint: () => void;
 }) {
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between border-b border-gray-200 pb-4">
+    <div className="p-2 animate-in fade-in zoom-in-95 duration-300">
+      <div className="flex items-center justify-between border-b-2 border-gray-900 pb-6 mb-8">
         <div>
-          <h2 className="text-xl font-bold text-black">Digital Service Report</h2>
-          <p className="text-xs text-gray-600 mt-1">Generated by NexTOS</p>
+          <div className="inline-flex items-center gap-2 px-3 py-1 bg-black text-white rounded-full text-[9px] font-black uppercase tracking-[0.2em] mb-3">
+             <div className="w-2 h-2 rounded-full bg-[#66B2B2] animate-pulse" /> Official Document
+          </div>
+          <h2 className="text-3xl font-black text-gray-900 tracking-tighter">TECHNICAL SERVICE REPORT</h2>
+          <p className="text-xs text-gray-400 font-bold tracking-widest mt-1 font-mono-tech">NEXVISION OPS SYSTEM RECORD <span className="text-gray-900 font-black">#SR-{record.id}</span></p>
         </div>
-        <Button
-          onClick={onPrint}
-          className="bg-white hover:bg-gray-50 text-gray-700 h-9 px-4 border border-gray-200"
-        >
-          <Printer className="w-4 h-4 mr-2" />
-          Print Report
+        <Button onClick={() => window.print()} className="bg-gray-100 hover:bg-gray-200 text-gray-900 h-12 px-6 border border-gray-200 text-xs font-black rounded-xl transition-all active:scale-95 shadow-sm">
+          <Printer className="w-5 h-5 mr-3" />
+          EXPORT SYSTEM COPY
         </Button>
       </div>
 
-      <div className="grid grid-cols-2 gap-8">
-        <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-12 mb-10">
+        <div className="space-y-8">
           <section>
-            <h4 className="text-[10px] font-bold text-[#66B2B2] uppercase tracking-widest mb-2">Customer & Asset</h4>
-            <div className="data-card p-4 space-y-3">
-              <div className="flex justify-between">
-                <span className="text-[11px] text-gray-600">Client:</span>
-                <span className="text-[11px] text-black font-bold">{client?.companyName}</span>
+            <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-[0.25em] mb-4 flex items-center gap-2">
+               <div className="w-1.5 h-4 bg-[#66B2B2]" /> ASSET SPECIFICATIONS
+            </h4>
+            <div className="space-y-3 px-3">
+              <div className="flex justify-between border-b border-gray-100 pb-2">
+                <span className="text-[11px] text-gray-400 font-bold uppercase">Identification ID:</span>
+                <span className="text-[11px] text-gray-900 font-black font-mono-tech tracking-wider">{equipment?.unitId}</span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-[11px] text-gray-600">Equipment:</span>
-                <span className="text-[11px] text-black">{equipment?.unitId} ({equipment?.type})</span>
+              <div className="flex justify-between border-b border-gray-100 pb-2">
+                <span className="text-[11px] text-gray-400 font-bold uppercase">Manufacturer:</span>
+                <span className="text-[11px] text-gray-900 font-bold">{equipment?.manufacturer}</span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-[11px] text-gray-600">Serial:</span>
-                <span className="text-[11px] text-black font-mono-tech">{equipment?.serialNumber}</span>
+              <div className="flex justify-between border-b border-gray-100 pb-2">
+                <span className="text-[11px] text-gray-400 font-bold uppercase">Model Descriptor:</span>
+                <span className="text-[11px] text-gray-900 font-bold">{equipment?.model}</span>
+              </div>
+              <div className="flex justify-between border-b border-gray-100 pb-2">
+                <span className="text-[11px] text-gray-400 font-bold uppercase">Runtime Meter:</span>
+                <span className="text-sm text-[#66B2B2] font-black font-mono-tech">{record.hoursAtService} HOURS</span>
               </div>
             </div>
           </section>
 
           <section>
-            <h4 className="text-[10px] font-bold text-[#66B2B2] uppercase tracking-widest mb-2">Service Details</h4>
-            <div className="data-card p-4 space-y-3">
-              <div className="flex justify-between">
-                <span className="text-[11px] text-gray-600">Type:</span>
-                <span className="text-[11px] text-black font-bold uppercase">{record.serviceType}</span>
+             <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-[0.25em] mb-4 flex items-center gap-2">
+               <div className="w-1.5 h-4 bg-[#66B2B2]" /> LOGISTICAL CONTEXT
+            </h4>
+            <div className="space-y-3 px-3">
+              <div className="flex justify-between border-b border-gray-100 pb-2">
+                <span className="text-[11px] text-gray-400 font-bold uppercase">Service Category:</span>
+                <span className="text-[11px] text-gray-900 font-black uppercase tracking-tighter">{record.serviceCategory}</span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-[11px] text-gray-600">Technician:</span>
-                <span className="text-[11px] text-black">{record.technician}</span>
+              <div className="flex justify-between border-b border-gray-100 pb-2">
+                <span className="text-[11px] text-gray-400 font-bold uppercase">Primary Technician:</span>
+                <span className="text-[11px] text-gray-900 font-bold">{record.technician}</span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-[11px] text-gray-600">Date:</span>
-                <span className="text-[11px] text-black">{record.completedDate ? new Date(record.completedDate).toLocaleDateString() : "—"}</span>
+              <div className="flex justify-between border-b border-gray-100 pb-2">
+                <span className="text-[11px] text-gray-400 font-bold uppercase">Completion Date:</span>
+                <span className="text-[11px] text-gray-900 font-bold">{record.completedDate ? new Date(record.completedDate).toLocaleDateString('en-PH', {year:'numeric', month:'long', day:'numeric'}) : "PENDING"}</span>
               </div>
             </div>
           </section>
         </div>
 
-        <div className="space-y-4">
-          <section>
-            <h4 className="text-[10px] font-bold text-[#66B2B2] uppercase tracking-widest mb-2">Technical Summary</h4>
-            <div className="data-card p-4 space-y-4">
+        <div className="space-y-8">
+          <section className="h-full">
+             <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-[0.25em] mb-4 flex items-center gap-2">
+               <div className="w-1.5 h-4 bg-[#66B2B2]" /> EXECUTIVE SUMMARY
+            </h4>
+            <div className="p-6 rounded-2xl bg-gray-50 border border-gray-100 space-y-6 shadow-inner h-[calc(100%-2.5rem)]">
               <div>
-                <span className="text-[10px] text-gray-600 uppercase font-bold mb-1 block">Findings:</span>
-                <p className="text-xs text-black leading-relaxed">{record.findings || "No findings recorded."}</p>
+                <span className="text-[10px] text-[#66B2B2] font-black uppercase tracking-widest mb-2 block">Fault Diagnosis / Findings:</span>
+                <p className="text-[12px] text-gray-900 font-medium leading-relaxed bg-white p-3 rounded-lg border border-gray-100">{record.findings || "Operational state nominal. No significant faults detected during primary inspection."}</p>
               </div>
               <div>
-                <span className="text-[10px] text-gray-600 uppercase font-bold mb-1 block">Work Performed:</span>
-                <p className="text-xs text-black leading-relaxed">{record.workDone || record.description}</p>
+                <span className="text-[10px] text-[#66B2B2] font-black uppercase tracking-widest mb-2 block">Technical Work Documentation:</span>
+                <p className="text-[12px] text-gray-900 font-medium leading-relaxed bg-white p-3 rounded-lg border border-gray-100">{record.workDone}</p>
               </div>
               <div>
-                <span className="text-[10px] text-gray-600 uppercase font-bold mb-1 block">Recommendation:</span>
-                <p className="text-xs text-black leading-relaxed italic">{record.recommendation || "Maintain regular schedule."}</p>
+                <span className="text-[10px] text-[#66B2B2] font-black uppercase tracking-widest mb-2 block">Strategic Recommendations:</span>
+                <p className="text-[12px] text-gray-900 font-bold leading-relaxed italic bg-[#66B2B2]/5 p-3 rounded-lg border border-[#66B2B2]/10">{record.recommendation || "No immediate action required. Maintain standard PMS intervals."}</p>
               </div>
             </div>
           </section>
         </div>
       </div>
 
-      <section>
-        <h4 className="text-[10px] font-bold text-[#66B2B2] uppercase tracking-widest mb-3">Documentation Photos</h4>
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <span className="text-[9px] font-bold text-[#66B2B2] tracking-widest">BEFORE PHOTOS</span>
-            <div className="grid grid-cols-2 gap-2">
-              {photos.filter(p => p.type === 'before').map((p, i) => (
-                <img key={i} src={p.url} className="w-full h-32 object-cover rounded border border-gray-200" alt="Before" />
+      <section className="mb-10">
+        <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-[0.25em] mb-6 flex items-center gap-2">
+            <div className="w-1.5 h-4 bg-[#66B2B2]" /> FIELD DOCUMENTATION
+        </h4>
+        <div className="grid grid-cols-2 gap-10">
+          <div className="space-y-3">
+            <div className="flex items-center justify-between px-2">
+                <span className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Initial State Proof</span>
+                <span className="text-[8px] font-bold text-[#66B2B2] uppercase">Before Service</span>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              {photos.filter((p: any) => p.type === 'before').map((p: any, i: number) => (
+                <div key={i} className="aspect-video rounded-xl overflow-hidden border-2 border-gray-100 shadow-md">
+                   <img src={p.url} className="w-full h-full object-cover" alt="Before" />
+                </div>
               ))}
+              {photos.filter((p: any) => p.type === 'before').length === 0 && <div className="col-span-2 py-8 text-center bg-gray-50 rounded-xl border border-dashed text-[10px] text-gray-400 font-bold uppercase tracking-widest">No Before Documentation</div>}
             </div>
           </div>
-          <div className="space-y-2">
-            <span className="text-[9px] font-bold text-[#10B981] tracking-widest">AFTER PHOTOS</span>
-            <div className="grid grid-cols-2 gap-2">
-              {photos.filter(p => p.type === 'after').map((p, i) => (
-                <img key={i} src={p.url} className="w-full h-32 object-cover rounded border border-gray-200" alt="After" />
+          <div className="space-y-3">
+            <div className="flex items-center justify-between px-2">
+                <span className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Completion Proof</span>
+                <span className="text-[8px] font-bold text-green-500 uppercase">After Service</span>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              {photos.filter((p: any) => p.type === 'after').map((p: any, i: number) => (
+                <div key={i} className="aspect-video rounded-xl overflow-hidden border-2 border-gray-100 shadow-md">
+                   <img src={p.url} className="w-full h-full object-cover" alt="After" />
+                </div>
               ))}
+              {photos.filter((p: any) => p.type === 'after').length === 0 && <div className="col-span-2 py-8 text-center bg-gray-50 rounded-xl border border-dashed text-[10px] text-gray-400 font-bold uppercase tracking-widest">No After Documentation</div>}
             </div>
           </div>
         </div>
       </section>
 
-      <div className="grid grid-cols-2 gap-8 border-t border-gray-200 pt-6">
-        <div className="space-y-2">
-          <span className="text-[10px] text-gray-600 uppercase font-bold block">Technician E-Signature</span>
-          <div className="p-4 bg-gray-50 rounded border border-gray-200">
-            <div className="text-xl font-mono-tech italic text-black tracking-wide">{record.techSignature}</div>
-            <div className="text-[9px] text-gray-600 mt-2 border-t border-gray-200 pt-1 uppercase">Digitally Verified Technician</div>
+      <div className="grid grid-cols-2 gap-12 border-t-2 border-gray-100 pt-10 mb-6">
+        <div className="space-y-4">
+          <span className="text-[10px] text-gray-400 font-black uppercase tracking-[0.3em] block ml-1">Technician Certification</span>
+          <div className="p-8 bg-gray-50/50 rounded-3xl border border-gray-100 flex items-center justify-center shadow-inner relative overflow-hidden">
+            {record.techSignature ? (
+               <img src={record.techSignature} className="h-24 object-contain contrast-125 mix-blend-multiply transition-all hover:scale-105 duration-500" alt="Tech Sig" />
+            ) : <div className="h-24 flex items-center justify-center text-gray-300 italic text-[11px] font-bold uppercase tracking-widest">Digital Stamp Missing</div>}
+            <div className="absolute bottom-4 left-0 right-0 text-center">
+                <div className="h-[1px] w-2/3 mx-auto bg-gray-200 mb-2" />
+                <span className="text-[9px] text-gray-500 font-black uppercase tracking-tighter">{record.technician} <span className="text-gray-300 mx-1">•</span> SENIOR TECHNICIAN</span>
+            </div>
           </div>
         </div>
-        <div className="space-y-2">
-          <span className="text-[10px] text-gray-600 uppercase font-bold block">Client Approval Signature</span>
-          <div className="p-4 bg-gray-50 rounded border border-gray-200">
-            <div className="text-xl font-mono-tech italic text-black tracking-wide">{record.clientSignature}</div>
-            <div className="text-[9px] text-gray-600 mt-2 border-t border-gray-200 pt-1 uppercase">Confirmed by Client Representative</div>
+        <div className="space-y-4">
+          <span className="text-[10px] text-gray-400 font-black uppercase tracking-[0.3em] block ml-1">Client Acknowledgment</span>
+          <div className="p-8 bg-gray-50/50 rounded-3xl border border-gray-100 flex items-center justify-center shadow-inner relative overflow-hidden">
+            {record.clientSignature ? (
+               <img src={record.clientSignature} className="h-24 object-contain contrast-125 mix-blend-multiply transition-all hover:scale-105 duration-500" alt="Client Sig" />
+            ) : <div className="h-24 flex items-center justify-center text-gray-300 italic text-[11px] font-bold uppercase tracking-widest">Acknowledgment Missing</div>}
+            <div className="absolute bottom-4 left-0 right-0 text-center">
+                <div className="h-[1px] w-2/3 mx-auto bg-gray-200 mb-2" />
+                <span className="text-[9px] text-gray-500 font-black uppercase tracking-tighter">{client?.companyName} <span className="text-gray-300 mx-1">•</span> AUTHORIZED REP</span>
+            </div>
           </div>
         </div>
+      </div>
+
+      <div className="text-center pt-8 opacity-20 hover:opacity-100 transition-opacity font-mono-tech uppercase tracking-[0.5em] text-[8px]">
+         Security Verified System Record • NexVision Operations OS • Built by NexTOS
       </div>
     </div>
   );
