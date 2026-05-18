@@ -5,6 +5,7 @@ import { useOperationsStore } from "@/stores/useOperationsStore";
 import { useBillingStore } from "@/stores/useBillingStore";
 import type { Deal, DealStage, Task, Client, Contact, Equipment, ServiceRecord, Booking, Package, Invoice, Lead } from "@/types";
 import { QRCodeSVG } from "qrcode.react";
+import CRMDashboard from "@/components/CRMDashboard";
 import {
   Search,
   Filter,
@@ -31,6 +32,7 @@ import {
   MoreVertical,
   Trash2,
   PenTool,
+  LayoutDashboard,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -43,7 +45,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-type TabType = "clients" | "pipeline" | "tasks" | "leads" | "performance";
+type TabType = "dashboard" | "clients" | "pipeline" | "tasks" | "leads" | "performance";
 
 export default function CRM() {
   const { user } = useAuthStore();
@@ -61,7 +63,7 @@ export default function CRM() {
   const { equipment, serviceRecords, bookings } = useOperationsStore();
   const { packages, invoices } = useBillingStore();
 
-  const [activeTab, setActiveTab] = useState<TabType>("pipeline");
+  const [activeTab, setActiveTab] = useState<TabType>("dashboard");
   const [searchQuery, setSearchQuery] = useState("");
   const [clientFilter, setClientFilter] = useState("all");
   const [draggingDeal, setDraggingDeal] = useState<number | null>(null);
@@ -290,6 +292,7 @@ export default function CRM() {
           <div className="flex gap-1 border-b border-gray-200 pb-0">
             {(
               [
+                { id: "dashboard" as TabType, label: "Dashboard", icon: LayoutDashboard },
                 { id: "pipeline" as TabType, label: "Pipeline", icon: TrendingUp },
                 { id: "clients" as TabType, label: "Clients", icon: Building2 },
                 { id: "leads" as TabType, label: "Leads", icon: ArrowRightLeft },
@@ -321,6 +324,11 @@ export default function CRM() {
               Performance
             </button>
           </div>
+
+          {/* Dashboard Tab */}
+          {activeTab === "dashboard" && (
+            <CRMDashboard />
+          )}
 
           {/* Performance Tab */}
           {activeTab === "performance" && (
