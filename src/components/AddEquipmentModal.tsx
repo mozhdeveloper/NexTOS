@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -17,6 +18,7 @@ export type ServiceIntervalUnit = "Hours" | "KM" | "Weeks" | "Months" | "Years";
 export interface EquipmentPMSConfiguration {
   serviceIntervalHours: number;
   serviceIntervalUnit: ServiceIntervalUnit;
+  serviceType?: string;
 }
 
 export interface Equipment {
@@ -41,6 +43,7 @@ interface AddEquipmentModalProps {
   onSubmitEquipment: (equipment: Equipment) => void | Promise<void>;
   initialEquipment?: Equipment | null;
   equipmentTypeOptions?: Array<{ value: string; label: string }>;
+  serviceTypeOptions?: Array<{ value: string; label: string }>;
 }
 
 const EQUIPMENT_TYPES = [
@@ -54,6 +57,7 @@ const EQUIPMENT_TYPES = [
 ];
 
 const SERVICE_INTERVAL_UNITS: ServiceIntervalUnit[] = ["Hours", "KM", "Weeks", "Months", "Years"];
+const DEFAULT_SERVICE_TYPE = "PMS (Preventative Maintenance)";
 
 const HARD_CODED_HOURS_PRESETS = [
   { today: "4h 20m", total: "3890h 40m" },
@@ -70,14 +74,16 @@ export function AddEquipmentModal({
   onSubmitEquipment,
   initialEquipment,
   equipmentTypeOptions,
+  serviceTypeOptions,
 }: AddEquipmentModalProps) {
-  type RequiredFieldKey = "equipmentName" | "equipmentType" | "selectedClient" | "serialNumber";
+  type RequiredFieldKey = "equipmentName" | "equipmentType" | "selectedClient" | "serialNumber" | "serviceType";
   const [equipmentName, setEquipmentName] = useState("");
   const [equipmentType, setEquipmentType] = useState("");
   const [selectedClient, setSelectedClient] = useState("");
   const [serialNumber, setSerialNumber] = useState("");
   const [notes, setNotes] = useState("");
   const [image, setImage] = useState<string>("");
+  const [serviceType, setServiceType] = useState(DEFAULT_SERVICE_TYPE);
   const [serviceIntervalValue, setServiceIntervalValue] = useState("");
   const [serviceIntervalUnit, setServiceIntervalUnit] = useState<ServiceIntervalUnit>("Hours");
   const [missingFields, setMissingFields] = useState<RequiredFieldKey[]>([]);
@@ -94,6 +100,7 @@ export function AddEquipmentModal({
       setSerialNumber(initialEquipment.serialNumber);
       setNotes(initialEquipment.notes);
       setImage(initialEquipment.image ?? "");
+      setServiceType(initialEquipment.pmsConfiguration?.serviceType ?? DEFAULT_SERVICE_TYPE);
       setServiceIntervalValue(
         initialEquipment.pmsConfiguration?.serviceIntervalHours !== undefined
           ? String(initialEquipment.pmsConfiguration.serviceIntervalHours)
@@ -110,6 +117,7 @@ export function AddEquipmentModal({
     setSerialNumber("");
     setNotes("");
     setImage("");
+    setServiceType(DEFAULT_SERVICE_TYPE);
     setServiceIntervalValue("");
     setServiceIntervalUnit("Hours");
     setMissingFields([]);
@@ -121,6 +129,7 @@ export function AddEquipmentModal({
       { key: "equipmentType", value: equipmentType },
       { key: "selectedClient", value: selectedClient },
       { key: "serialNumber", value: serialNumber.trim() },
+      { key: "serviceType", value: serviceType.trim() },
     ];
 
     return requiredChecks.filter((field) => !field.value).map((field) => field.key);
@@ -133,12 +142,18 @@ export function AddEquipmentModal({
     equipmentType: "Equipment Type",
     selectedClient: "Client",
     serialNumber: "Serial Number",
+    serviceType: "Type of Service",
   };
 
   const availableEquipmentTypes =
     equipmentTypeOptions && equipmentTypeOptions.length > 0
       ? equipmentTypeOptions
       : EQUIPMENT_TYPES;
+
+  const availableServiceTypes =
+    serviceTypeOptions && serviceTypeOptions.length > 0
+      ? serviceTypeOptions
+      : [{ value: DEFAULT_SERVICE_TYPE, label: DEFAULT_SERVICE_TYPE }];
 
   const handleSubmit = async () => {
     const missing = getMissingRequiredFields();
@@ -152,11 +167,13 @@ export function AddEquipmentModal({
     const hoursPreset = HARD_CODED_HOURS_PRESETS[randomSuffix % HARD_CODED_HOURS_PRESETS.length];
     const trimmedInterval = serviceIntervalValue.trim();
     const numericInterval = trimmedInterval.length > 0 ? Number(trimmedInterval) : Number.NaN;
+    const selectedServiceType = serviceType.trim() || DEFAULT_SERVICE_TYPE;
     const pmsConfiguration =
       trimmedInterval.length > 0 && Number.isFinite(numericInterval)
         ? {
             serviceIntervalHours: numericInterval,
             serviceIntervalUnit,
+            ...(selectedServiceType ? { serviceType: selectedServiceType } : {}),
           }
         : undefined;
 
@@ -177,6 +194,7 @@ export function AddEquipmentModal({
       await onSubmitEquipment(equipmentToSave);
     } catch (error) {
       console.error("Failed to save equipment", error);
+      toast.error(error instanceof Error ? error.message : "Failed to save equipment. Please try again.");
       return;
     }
 
@@ -187,6 +205,7 @@ export function AddEquipmentModal({
     setSerialNumber("");
     setNotes("");
     setImage("");
+    setServiceType(DEFAULT_SERVICE_TYPE);
     setServiceIntervalValue("");
     setServiceIntervalUnit("Hours");
     setMissingFields([]);
@@ -202,8 +221,9 @@ export function AddEquipmentModal({
       setSerialNumber("");
       setNotes("");
       setImage("");
-        setServiceIntervalValue("");
-        setServiceIntervalUnit("Hours");
+      setServiceType(DEFAULT_SERVICE_TYPE);
+      setServiceIntervalValue("");
+      setServiceIntervalUnit("Hours");
       setMissingFields([]);
     }
     onOpenChange(newOpen);
@@ -211,7 +231,7 @@ export function AddEquipmentModal({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="bg-white border border-gray-200 max-w-4xl">
+      <DialogContent className="bg-white border border-gray-200 w-[min(98vw,88rem)] max-w-7xl">
         <DialogHeader>
           <DialogTitle className="text-black">{initialEquipment ? "Edit Equipment" : "Add Equipment"}</DialogTitle>
         </DialogHeader>
@@ -222,7 +242,7 @@ export function AddEquipmentModal({
               Missing required fields: {missingFields.map((field) => missingFieldLabels[field]).join(", ")}
             </div>
           )}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.25fr)] gap-6 xl:grid-cols-[minmax(0,0.85fr)_minmax(0,1.3fr)]">
             <div className="space-y-4">
               {/* Equipment Name */}
               <div className="space-y-2">
@@ -368,6 +388,36 @@ export function AddEquipmentModal({
               {/* PMS Configuration */}
               <div className="space-y-2 pt-0">
                 <Label className="text-sm text-black">PMS Configuration</Label>
+                <div className="space-y-2">
+                  <Label className="text-sm text-black">Type of Service</Label>
+                  <Select
+                    value={serviceType}
+                    onValueChange={(value) => {
+                      setServiceType(value);
+                      if (missingFields.length > 0) {
+                        setMissingFields((prev) => prev.filter((field) => field !== "serviceType"));
+                      }
+                    }}
+                  >
+                    <SelectTrigger
+                      className={`w-full bg-white text-black ${
+                        isFieldMissing("serviceType") ? "border-[#EF4444]" : "border-gray-200"
+                      }`}
+                    >
+                      <SelectValue placeholder={DEFAULT_SERVICE_TYPE} />
+                    </SelectTrigger>
+                    <SelectContent className="bg-white border-gray-200">
+                      {availableServiceTypes.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {isFieldMissing("serviceType") && (
+                    <p className="text-xs text-[#EF4444]">Type of Service is required.</p>
+                  )}
+                </div>
                 <div className="grid grid-cols-[1.6fr_120px] gap-2">
                   <Input
                     type="number"

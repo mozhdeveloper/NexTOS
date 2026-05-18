@@ -236,6 +236,7 @@ export interface Invoice {
   packageId: number | null;
   serviceRecordId: number | null;
   invoiceNumber: string;
+  service?: string;
   amount: number;
   tax: number;
   total: number;

@@ -10,6 +10,7 @@ type SeedEquipmentEntry = {
   clientId: string;
   equipmentType: string;
   serialNumber?: string;
+  notes?: string;
   image?: string;
   lat?: number;
   lng?: number;
@@ -18,6 +19,7 @@ type SeedEquipmentEntry = {
   pmsConfiguration?: {
     serviceIntervalHours: number;
     serviceIntervalUnit: "Hours" | "KM" | "Weeks" | "Months" | "Years";
+    serviceType?: string;
   };
 };
 
@@ -69,11 +71,13 @@ export const appRouter = createRouter({
           equipmentType: z.string().min(1),
           clientId: z.string().regex(/^CL-\d{3}$/),
           serialNumber: z.string().optional(),
+          notes: z.string().optional(),
           image: z.string().optional(),
           pmsConfiguration: z
             .object({
               serviceIntervalHours: z.number().min(0),
               serviceIntervalUnit: z.enum(["Hours", "KM", "Weeks", "Months", "Years"]),
+              serviceType: z.string().min(1).optional(),
             })
             .optional(),
         })
@@ -97,6 +101,9 @@ export const appRouter = createRouter({
           ...(input.serialNumber && input.serialNumber.trim().length > 0
             ? { serialNumber: input.serialNumber.trim() }
             : {}),
+          ...(input.notes && input.notes.trim().length > 0
+            ? { notes: input.notes.trim() }
+            : {}),
           ...(input.image && input.image.trim().length > 0
             ? { image: input.image.trim() }
             : {}),
@@ -116,11 +123,13 @@ export const appRouter = createRouter({
           equipmentType: z.string().min(1),
           clientId: z.string().regex(/^CL-\d{3}$/),
           serialNumber: z.string().optional(),
+          notes: z.string().optional(),
           image: z.string().optional(),
           pmsConfiguration: z
             .object({
               serviceIntervalHours: z.number().min(0),
               serviceIntervalUnit: z.enum(["Hours", "KM", "Weeks", "Months", "Years"]),
+              serviceType: z.string().min(1).optional(),
             })
             .optional(),
         })
@@ -145,6 +154,9 @@ export const appRouter = createRouter({
           ...(input.serialNumber && input.serialNumber.trim().length > 0
             ? { serialNumber: input.serialNumber.trim() }
             : {}),
+          ...(input.notes && input.notes.trim().length > 0
+            ? { notes: input.notes.trim() }
+            : {}),
           ...(input.image && input.image.trim().length > 0
             ? { image: input.image.trim() }
             : {}),
@@ -153,6 +165,10 @@ export const appRouter = createRouter({
 
         if (!input.serialNumber || input.serialNumber.trim().length === 0) {
           delete updatedEntry.serialNumber;
+        }
+
+        if (!input.notes || input.notes.trim().length === 0) {
+          delete updatedEntry.notes;
         }
 
         if (!input.image || input.image.trim().length === 0) {

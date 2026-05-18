@@ -8,6 +8,7 @@ import { useAuthStore } from "@/stores/useAuthStore";
 import { trpc } from "@/providers/trpc";
 import seedData from "@/data/seed-data.json";
 import {
+  fetchAllTimeWorkingDays,
   fetchAllTimeWorkingMs,
   fetchAllTimeMileageKm,
   fetchDailyHistorySummary,
@@ -123,11 +124,26 @@ const GPS001_HOURS_TODAY_CACHE_KEY = "nextos-gps001-hours-today-ms";
 const GPS001_HOURS_TODAY_TIMESTAMP_KEY = "nextos-gps001-hours-today-timestamps";
 const GPS001_KM_TODAY_CACHE_KEY = "nextos-gps001-km-today";
 const GPS001_TOTAL_KM_CACHE_KEY = "nextos-gps001-total-km";
+const GPS001_WORKING_DAYS_BY_DAY_CACHE_KEY = "fleet:gps001WorkingDaysByDay:v2";
 const ADDED_EQUIPMENT_STORAGE_KEY = "nextos-fleet-added-equipment";
 const HISTORY_DOT_STATUS_CACHE_KEY = "nextos-fleet-history-dot-statuses";
 const HISTORY_TABLE_DATA_CACHE_KEY = "nextos-fleet-history-table-data";
 const HISTORY_TABLE_TODAY_TIMESTAMP_KEY = "nextos-fleet-history-table-today-timestamps";
 const PROTECTED_EQUIPMENT_NAME = "Excavator CAT 320";
+const DEFAULT_SERVICE_TYPE = "PMS (Preventative Maintenance)";
+const SERVICE_INTERVAL_TOAST_MILESTONES_KEY = "nextos-fleet-service-interval-toast-milestones";
+
+const STATIC_HOURS_BY_UNIT: Record<string, { today: string; total: string }> = {
+  "GPS-003": { today: "4h 20m", total: "3890h 40m" },
+  "GPS-004": { today: "6h 15m", total: "2100h 40m" },
+  "GPS-010": { today: "3h 50m", total: "3450h 40m" },
+  "GPS-007": { today: "7h 10m", total: "2100h 40m" },
+  "EXC-CAT-20": { today: "5h 05m", total: "2780h 30m" },
+  "LAB-STS-01": { today: "2h 40m", total: "1120h 20m" },
+  "TST-BEAM-02": { today: "3h 25m", total: "1655h 15m" },
+};
+
+const FALLBACK_STATIC_HOURS = { today: "4h 20m", total: "3890h 40m" };
 
 function readCachedGps001TotalHoursMs(): number {
   if (typeof window === "undefined") return 0;
@@ -198,6 +214,21 @@ function writeCachedGps001TotalKm(totalKm: number): void {
   if (typeof window === "undefined") return;
   if (!Number.isFinite(totalKm) || totalKm <= 0) return;
   window.localStorage.setItem(GPS001_TOTAL_KM_CACHE_KEY, String(totalKm));
+}
+
+function readCachedGps001WorkingDaysByDay(): Record<string, number> {
+  if (typeof window === "undefined") return {};
+  try {
+    const rawValue = window.localStorage.getItem(GPS001_WORKING_DAYS_BY_DAY_CACHE_KEY);
+    return rawValue ? (JSON.parse(rawValue) as Record<string, number>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeCachedGps001WorkingDaysByDay(data: Record<string, number>): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(GPS001_WORKING_DAYS_BY_DAY_CACHE_KEY, JSON.stringify(data));
 }
 
 function readCachedAddedEquipment(): ModalEquipment[] {
@@ -403,6 +434,74 @@ function parseSeedKm(value: unknown): number | null {
   return null;
 }
 
+function parseSeedDays(value: unknown): number | null {
+  if (typeof value === "number") {
+    return Number.isFinite(value) && value >= 0 ? Math.floor(value) : null;
+  }
+
+  if (typeof value === "string") {
+    const normalized = value.replace(/[^\d.]/g, "");
+    const parsed = Number.parseFloat(normalized);
+    return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : null;
+  }
+
+  return null;
+}
+
+function parseHoursTextToHours(value: string | undefined): number | null {
+  if (!value) return null;
+  const match = value.match(/(\d+)\s*h\s*(\d+)\s*m/i);
+  if (!match) return null;
+  const hours = Number(match[1] ?? 0);
+  const minutes = Number(match[2] ?? 0);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes) || hours < 0 || minutes < 0) {
+    return null;
+  }
+  return hours + minutes / 60;
+}
+
+type MilestoneEntry = { count: number; hoursText: string; sessionId?: string };
+
+function readServiceIntervalToastMilestones(): Record<string, MilestoneEntry | number> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(SERVICE_INTERVAL_TOAST_MILESTONES_KEY);
+    return raw ? (JSON.parse(raw) as Record<string, MilestoneEntry | number>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeServiceIntervalToastMilestones(data: Record<string, MilestoneEntry | number>): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(SERVICE_INTERVAL_TOAST_MILESTONES_KEY, JSON.stringify(data));
+}
+
+function convertDaysToPeriods(days: number): { weeks: number; months: number; years: number } {
+  const safeDays = Number.isFinite(days) && days >= 0 ? days : 0;
+  return {
+    weeks: safeDays / 7,
+    months: safeDays / 30.44,
+    years: safeDays / 365.25,
+  };
+}
+
+function formatDaysForSidebar(days: number | null): string {
+  if (days === null || !Number.isFinite(days) || days < 0) {
+    return "—";
+  }
+  const wholeDays = Math.floor(days);
+  return `${wholeDays} day${wholeDays === 1 ? "" : "s"}`;
+}
+
+function formatDayPeriodsForSidebar(days: number | null): string {
+  if (days === null || !Number.isFinite(days) || days < 0) {
+    return "";
+  }
+  const { weeks, months, years } = convertDaysToPeriods(days);
+  return `${weeks.toFixed(1)}w / ${months.toFixed(1)}mo / ${years.toFixed(2)}yr`;
+}
+
 function toDisplayStatus(status: string): UnitDisplayStatus {
   if (status === "driving" || status === "idle" || status === "parking" || status === "offline") {
     return status;
@@ -572,7 +671,12 @@ export default function Fleet() {
   const [gps001KmToday, setGps001KmToday] = useState(0);
   const [gps001HoursTotalMs, setGps001HoursTotalMs] = useState(() => readCachedGps001TotalHoursMs());
   const [gps001KmTotal, setGps001KmTotal] = useState(() => readCachedGps001TotalKm());
-  
+  const [gps001WorkingDays, setGps001WorkingDays] = useState(0);
+
+  // Unique ID for this page load — resets on every full reload, preventing stale localStorage milestones
+  // from blocking the toast when the same threshold is crossed again after editing seed data.
+  const [pmsToastSessionId] = useState<string>(() => Math.random().toString(36).slice(2));
+
   // Modal states
   const [addEquipmentOpen, setAddEquipmentOpen] = useState(false);
   
@@ -601,6 +705,22 @@ export default function Fleet() {
         .map((type) => ({ value: type, label: type })),
     []
   );
+  const seedServiceTypeOptions = useMemo(() => {
+    const rawOptions = Array.isArray((seedData as any).serviceTypes) ? (seedData as any).serviceTypes : [];
+    const mapped = rawOptions
+      .map((entry: any) => ({
+        value: typeof entry?.label === "string" ? entry.label : "",
+        label: typeof entry?.label === "string" ? entry.label : "",
+      }))
+      .filter((entry: { value: string; label: string }) => entry.value.trim().length > 0);
+
+    if (mapped.length === 0) {
+      return [{ value: DEFAULT_SERVICE_TYPE, label: DEFAULT_SERVICE_TYPE }];
+    }
+
+    const hasDefault = mapped.some((entry: { value: string; label: string }) => entry.value === DEFAULT_SERVICE_TYPE);
+    return hasDefault ? mapped : [{ value: DEFAULT_SERVICE_TYPE, label: DEFAULT_SERVICE_TYPE }, ...mapped];
+  }, []);
   const seedClientsForModal: Client[] = useMemo(() =>
     seedData.clients.map((c, idx) => ({
       id: Number(String(c.id).replace(/\D/g, "")) || idx + 1,
@@ -687,6 +807,41 @@ export default function Fleet() {
     });
   }, [units, equipment]);
   const selectedSeedEquipmentId = unitIdToSeedEquipmentId[selectedUnitLabel.trim().toUpperCase()];
+  const selectedSeedEntry = useMemo(
+    () => (selectedSeedEquipmentId
+      ? seedData.equipment.find((entry) => entry.id === selectedSeedEquipmentId) ?? null
+      : null),
+    [selectedSeedEquipmentId, seedData.equipment]
+  );
+  const selectedSeedHoursTotalText = (selectedSeedEntry as any)?.hoursTotal;
+  const selectedSeedServiceIntervalHours = (selectedSeedEntry as any)?.pmsConfiguration?.serviceIntervalHours;
+  const selectedSeedServiceIntervalUnit = (selectedSeedEntry as any)?.pmsConfiguration?.serviceIntervalUnit;
+
+  // For PMS toast when an added-equipment sidebar item is selected (not a GPS unit)
+  const selectedAddedEquipmentBackingSeedId = selectedAddedEquipmentId?.startsWith("seed-")
+    ? selectedAddedEquipmentId.slice(5)
+    : null;
+  const selectedAddedEquipmentEntry = useMemo(
+    () => addedEquipment.find((e) => e.id === selectedAddedEquipmentId) ?? null,
+    [addedEquipment, selectedAddedEquipmentId]
+  );
+  const selectedAddedEquipmentSeedEntry = useMemo(
+    () =>
+      selectedAddedEquipmentBackingSeedId
+        ? (seedData.equipment.find((e) => e.id === selectedAddedEquipmentBackingSeedId) ?? null)
+        : null,
+    [selectedAddedEquipmentBackingSeedId, seedData.equipment]
+  );
+  const selectedAddedEquipmentHoursTotalText =
+    (selectedAddedEquipmentSeedEntry as any)?.hoursTotal
+    ?? selectedAddedEquipmentEntry?.hoursTotal;
+  const selectedAddedEquipmentIntervalHours =
+    (selectedAddedEquipmentSeedEntry as any)?.pmsConfiguration?.serviceIntervalHours
+    ?? selectedAddedEquipmentEntry?.pmsConfiguration?.serviceIntervalHours;
+  const selectedAddedEquipmentIntervalUnit =
+    (selectedAddedEquipmentSeedEntry as any)?.pmsConfiguration?.serviceIntervalUnit
+    ?? selectedAddedEquipmentEntry?.pmsConfiguration?.serviceIntervalUnit;
+
   const isGps51UnitSelected =
     selectedSeedEquipmentId === "EQ-001" ||
     selectedUnit?.id === 1 ||
@@ -768,8 +923,26 @@ export default function Fleet() {
 
   useEffect(() => {
     setAddedEquipment((prev) => {
-      const sanitized = prev.filter((entry) => !isLiveMappedSeedEquipmentEntry(entry));
-      return sanitized.length === prev.length ? prev : sanitized;
+      // Normalize legacy "eq-{timestamp}" IDs to "seed-EQ-XXX" by matching on name.
+      // Entries added before the seed-prefix fix had no "seed-" prefix, which caused
+      // handleSubmitEquipment to skip updateSeedEquipmentMutation silently.
+      let changed = false;
+      const next = prev.map((entry) => {
+        if (entry.id.startsWith("seed-") || entry.id.startsWith("unit-")) return entry;
+        const sn = entry.serialNumber?.trim();
+        const matchingSeed = seedData.equipment.find((s) =>
+          s.name === entry.name ||
+          (sn && (s as any).serialNumber?.trim() === sn)
+        );
+        if (matchingSeed) {
+          changed = true;
+          return { ...entry, id: `seed-${matchingSeed.id}` };
+        }
+        return entry;
+      });
+      const sanitized = next.filter((entry) => !isLiveMappedSeedEquipmentEntry(entry));
+      if (!changed && sanitized.length === prev.length) return prev;
+      return sanitized;
     });
   }, []);
 
@@ -875,6 +1048,104 @@ export default function Fleet() {
   }, [selectedHistoryDay]);
 
   useEffect(() => {
+    // Fire for either a GPS unit or an added-equipment sidebar item
+    if (!selectedUnit && !selectedAddedEquipmentId) return;
+
+    let pmsConfig: { serviceIntervalHours?: unknown; serviceIntervalUnit?: unknown } | undefined;
+    let hoursTotalForCalc: number;
+    let currentHoursText: string | undefined;
+    let milestoneEntityId: string;
+
+    if (selectedUnit) {
+      // GPS unit path
+      const selectedUnitKey = selectedUnitLabel.toUpperCase();
+      pmsConfig = (selectedSeedEntry as any)?.pmsConfiguration;
+      const seedHoursText = (selectedSeedEntry as any)?.hoursTotal as string | undefined;
+      currentHoursText = seedHoursText
+        ?? STATIC_HOURS_BY_UNIT[selectedUnitKey]?.total
+        ?? FALLBACK_STATIC_HOURS.total;
+      hoursTotalForCalc = isGps51UnitSelected
+        ? gps001HoursTotalMs / (1000 * 60 * 60)
+        : (parseHoursTextToHours(currentHoursText) ?? 0);
+      milestoneEntityId = selectedSeedEntry?.id ?? `unit-${selectedUnit.id}`;
+    } else {
+      // Added-equipment path
+      pmsConfig =
+        (selectedAddedEquipmentSeedEntry as any)?.pmsConfiguration
+        ?? (selectedAddedEquipmentEntry as any)?.pmsConfiguration;
+      currentHoursText = selectedAddedEquipmentHoursTotalText ?? undefined;
+      hoursTotalForCalc = parseHoursTextToHours(currentHoursText) ?? 0;
+      milestoneEntityId = selectedAddedEquipmentId!;
+    }
+
+    const intervalHours = Number(pmsConfig?.serviceIntervalHours);
+    const intervalUnit = typeof pmsConfig?.serviceIntervalUnit === "string"
+      ? pmsConfig.serviceIntervalUnit
+      : "Hours";
+
+    if (!Number.isFinite(intervalHours) || intervalHours <= 0) return;
+    if (intervalUnit.toLowerCase() !== "hours") return;
+    if (!Number.isFinite(hoursTotalForCalc) || hoursTotalForCalc <= 0) return;
+
+    const achievedMilestone = Math.floor(hoursTotalForCalc / intervalHours);
+    const milestoneStore = readServiceIntervalToastMilestones();
+    const milestoneKey = `${milestoneEntityId}:${intervalHours}`;
+    const stored = milestoneStore[milestoneKey];
+
+    // Parse the stored entry — support both old numeric format and new {count, hoursText} format.
+    // If hoursText is missing (old format) or differs from current, treat as a fresh start (previousMilestone = 0)
+    // so the toast re-fires whenever hours cross the threshold again.
+    const storedCount = typeof stored === "number" ? stored : (stored?.count ?? 0);
+    const storedHoursText = typeof stored === "object" && stored !== null ? stored.hoursText : undefined;
+    const storedSessionId = typeof stored === "object" && stored !== null ? stored.sessionId : undefined;
+    // previousMilestone = 0 unless: same page-load session AND same hoursText as when we last fired.
+    // A new sessionId (page reload) always resets to 0, so the toast re-fires even for the same hours value.
+    const previousMilestone =
+      storedSessionId === pmsToastSessionId && storedHoursText === currentHoursText
+        ? storedCount
+        : 0;
+
+    if (achievedMilestone <= 0) {
+      writeServiceIntervalToastMilestones({
+        ...milestoneStore,
+        [milestoneKey]: { count: 0, hoursText: currentHoursText ?? "", sessionId: pmsToastSessionId },
+      });
+      return;
+    }
+
+    // Only fire toast when crossing upward to a new milestone
+    if (achievedMilestone <= previousMilestone) return;
+
+    toast(
+      achievedMilestone > 1
+        ? `PMS interval of ${intervalHours} Hours has been achieved (${achievedMilestone}x)`
+        : `PMS interval of ${intervalHours} Hours has been achieved`
+    );
+
+    writeServiceIntervalToastMilestones({
+      ...milestoneStore,
+      [milestoneKey]: { count: achievedMilestone, hoursText: currentHoursText ?? "", sessionId: pmsToastSessionId },
+    });
+  }, [
+    selectedUnit,
+    selectedUnitLabel,
+    selectedSeedEquipmentId,
+    selectedSeedEntry,
+    selectedSeedHoursTotalText,
+    selectedSeedServiceIntervalHours,
+    selectedSeedServiceIntervalUnit,
+    isGps51UnitSelected,
+    gps001HoursTotalMs,
+    selectedAddedEquipmentId,
+    selectedAddedEquipmentEntry,
+    selectedAddedEquipmentSeedEntry,
+    selectedAddedEquipmentHoursTotalText,
+    selectedAddedEquipmentIntervalHours,
+    selectedAddedEquipmentIntervalUnit,
+    pmsToastSessionId,
+  ]);
+
+  useEffect(() => {
     let ignore = false;
     let refreshInterval: ReturnType<typeof setInterval> | null = null;
 
@@ -923,6 +1194,86 @@ export default function Fleet() {
       }
     };
   }, []);
+
+  useEffect(() => {
+    let ignore = false;
+
+    const loadGps001WorkingDays = async () => {
+      const todayYmd = toYmd(new Date());
+      const targetDay = selectedHistoryDay > todayYmd ? todayYmd : selectedHistoryDay;
+      const targetDate = new Date(`${targetDay}T00:00:00`);
+      const monthStart = Number.isNaN(targetDate.getTime())
+        ? targetDay
+        : toYmd(new Date(targetDate.getFullYear(), targetDate.getMonth(), 1));
+      const cachedByDay = readCachedGps001WorkingDaysByDay();
+      const cachedDays = cachedByDay[targetDay];
+
+      console.log("[Fleet] Excavator days fetch start:", {
+        selectedHistoryDay,
+        targetDay,
+        monthStart,
+        hasCredentials: Boolean(GPS51_USERNAME && GPS51_PASSWORD),
+        hasCachedDays: Number.isFinite(cachedDays),
+      });
+
+      if (Number.isFinite(cachedDays) && !ignore) {
+        setGps001WorkingDays(Number(cachedDays));
+        console.log("[Fleet] Excavator days cache hit:", {
+          targetDay,
+          totalDays: Number(cachedDays),
+        });
+      }
+
+      if (!GPS51_USERNAME || !GPS51_PASSWORD) {
+        console.warn("[Fleet] Excavator days fetch skipped: missing GPS51 credentials");
+        if (!ignore && !Number.isFinite(cachedDays)) {
+          setGps001WorkingDays(0);
+        }
+        return;
+      }
+
+      // Past-day counts are immutable, so no need to re-fetch if already cached.
+      if (Number.isFinite(cachedDays) && targetDay !== todayYmd) {
+        console.log("[Fleet] Excavator days fetch skipped: cached immutable past day", {
+          targetDay,
+          totalDays: Number(cachedDays),
+        });
+        return;
+      }
+
+      try {
+        const totalDays = await fetchAllTimeWorkingDays(
+          GPS51_USERNAME,
+          GPS51_PASSWORD,
+          monthStart,
+          targetDay
+        );
+
+        if (!ignore) {
+          setGps001WorkingDays(totalDays);
+          writeCachedGps001WorkingDaysByDay({
+            ...cachedByDay,
+            [targetDay]: totalDays,
+          });
+          console.log("[Fleet] Excavator CAT 320 days fetched:", {
+            targetDay,
+            totalDays,
+          });
+        }
+      } catch {
+        console.error("[Fleet] Excavator days fetch failed", { targetDay });
+        if (!ignore && !Number.isFinite(cachedDays)) {
+          setGps001WorkingDays(0);
+        }
+      }
+    };
+
+    void loadGps001WorkingDays();
+
+    return () => {
+      ignore = true;
+    };
+  }, [selectedHistoryDay]);
 
   useEffect(() => {
     if (viewMode !== "history" || !selectedUnitId) return;
@@ -1206,6 +1557,9 @@ export default function Fleet() {
       ? {
           serviceIntervalHours: equipment.pmsConfiguration.serviceIntervalHours,
           serviceIntervalUnit: equipment.pmsConfiguration.serviceIntervalUnit,
+          ...(equipment.pmsConfiguration.serviceType
+            ? { serviceType: equipment.pmsConfiguration.serviceType }
+            : {}),
         }
       : undefined;
 
@@ -1224,6 +1578,7 @@ export default function Fleet() {
         equipmentType: equipment.type,
         clientId: seedClient.id,
         serialNumber: equipment.serialNumber?.trim() || undefined,
+        notes: equipment.notes?.trim() || undefined,
         image: equipment.image,
         ...(pmsConfiguration ? { pmsConfiguration } : {}),
       });
@@ -1260,6 +1615,7 @@ export default function Fleet() {
         equipmentType: equipment.type,
         clientId: seedClient.id,
         serialNumber: equipment.serialNumber?.trim() || undefined,
+        notes: equipment.notes?.trim() || undefined,
         image: equipment.image,
         ...(pmsConfiguration ? { pmsConfiguration } : {}),
       });
@@ -1777,18 +2133,6 @@ export default function Fleet() {
                   unitLabel === "GPS-006";
                 const displayHeader = useSeedAsTitle && seedDisplay?.equipmentName ? seedDisplay.equipmentName : (mappedGps || eq?.unitId || unit.unitName);
 
-                const staticHoursByUnit: Record<string, { today: string; total: string }> = {
-                  "GPS-003": { today: "4h 20m", total: "3890h 40m" },
-                  "GPS-004": { today: "6h 15m", total: "2100h 40m" },
-                  "GPS-010": { today: "3h 50m", total: "3450h 40m" },
-                  "GPS-007": { today: "7h 10m", total: "5200h 40m" },
-                  "EXC-CAT-20": { today: "5h 05m", total: "2780h 30m" },
-                  "LAB-STS-01": { today: "2h 40m", total: "1120h 20m" },
-                  "TST-BEAM-02": { today: "3h 25m", total: "1655h 15m" },
-                };
-
-                const fallbackStaticHours = { today: "4h 20m", total: "3890h 40m" };
-
                 const isDemoZero = (demoStages[unit.id] ?? 0) === 1;
                 const selectedHistoryWorkingText =
                   viewMode === "history" &&
@@ -1806,13 +2150,13 @@ export default function Fleet() {
                   ? selectedHistoryWorkingText
                   : isGps001
                   ? formatHoursFromMsForSidebar(gps001HoursTodayMs)
-                  : (staticHoursByUnit[unitLabel]?.today ?? fallbackStaticHours.today);
+                  : ((seedEntry as any)?.hoursToday ?? STATIC_HOURS_BY_UNIT[unitLabel]?.today ?? FALLBACK_STATIC_HOURS.today);
 
                 const hoursTotalText = isDemoZero
                   ? "0h 0m"
                   : isGps001
                   ? formatHoursFromMsForSidebar(gps001HoursTotalMs)
-                  : (staticHoursByUnit[unitLabel]?.total ?? fallbackStaticHours.total);
+                  : ((seedEntry as any)?.hoursTotal ?? STATIC_HOURS_BY_UNIT[unitLabel]?.total ?? FALLBACK_STATIC_HOURS.total);
 
                 const historyRowKmToday =
                   viewMode === "history" &&
@@ -1826,6 +2170,10 @@ export default function Fleet() {
 
                 const seedKmTodayValue = parseSeedKm((seedEntry as any)?.kmToday);
                 const seedKmTotalValue = parseSeedKm((seedEntry as any)?.kmTotal);
+                const seedDaysValue = parseSeedDays((seedEntry as any)?.days);
+                const resolvedDays = isGps001 ? gps001WorkingDays : seedDaysValue;
+                const daysText = formatDaysForSidebar(resolvedDays);
+                const dayPeriodsText = formatDayPeriodsForSidebar(resolvedDays);
 
                 const kmTodayText = isGps001
                   ? formatHistoryKm(historyRowKmToday ?? gps001KmToday)
@@ -1921,7 +2269,7 @@ export default function Fleet() {
                                     clientId: clientNum || (client?.id ?? 0),
                                     serialNumber: (seedEntry as any)?.serialNumber || "",
                                     image: (seedEntry as any)?.image,
-                                    notes: "",
+                                    notes: (seedEntry as any)?.notes ?? "",
                                     hoursToday: "",
                                     hoursTotal: "",
                                     pmsConfiguration: (seedEntry as any)?.pmsConfiguration,
@@ -1977,6 +2325,8 @@ export default function Fleet() {
                           <div className="space-y-0.5 pt-0.5">
                             <div>Today: {hoursTodayText} / {kmTodayText}</div>
                             <div>Total: {hoursTotalText} / {kmTotalText}</div>
+                            <div>Days: {daysText}</div>
+                            {dayPeriodsText && <div>Approx: {dayPeriodsText}</div>}
                           </div>
                           {unit.serviceDue && (
                             <div className="flex items-center gap-1 text-[#EF4444]">
@@ -2103,6 +2453,7 @@ export default function Fleet() {
         onSubmitEquipment={handleSubmitEquipment}
         initialEquipment={editingEquipment}
         equipmentTypeOptions={seedEquipmentTypeOptions}
+        serviceTypeOptions={seedServiceTypeOptions}
       />
 
       <AlertDialog

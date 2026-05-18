@@ -31,22 +31,72 @@ const lastWeek = new Date(Date.now() - 7 * 86400000).toISOString();
 const tomorrow = new Date(Date.now() + 86400000).toISOString();
 const threeDaysAgo = new Date(Date.now() - 3 * 86400000).toISOString();
 
-const mockClients: Client[] = seedData.clients.map((c, index) => ({
-  id: index + 1,
-  companyName: c.companyName,
-  industry: c.industry,
-  contactName: c.mainContact || "TBD",
-  email: `info@${c.companyName.toLowerCase().replace(/\s+/g, "")}.com`,
-  phone: "+63-2-888-0000",
-  status: "active",
-  address: c.location || "Metro Manila",
-  city: c.location || "Manila",
-  country: "Philippines",
-  contractValue: 0,
-  lastContact: yesterday,
-  notes: `Seeded from seed-data.json. ID: ${c.id}`,
-  createdAt: lastWeek,
-}));
+const mockClients: Client[] = [
+  { 
+    id: 1, 
+    companyName: "MetroBuild Construction Corp.", 
+    industry: "Construction", 
+    contactName: "Engr. Michael Santos", 
+    email: "michael.santos@metrobuild.ph", 
+    phone: "+63-2-8888-0001", 
+    status: "active", 
+    address: "Quezon City", 
+    city: "Quezon City", 
+    country: "Philippines", 
+    contractValue: 1250000, 
+    lastContact: yesterday, 
+    notes: "Engineering, Procurement, Operations", 
+    createdAt: lastWeek 
+  },
+  { 
+    id: 2, 
+    companyName: "Prime Infra Solutions", 
+    industry: "Infrastructure", 
+    contactName: "Anna Reyes", 
+    email: "anna.reyes@primeinfra.ph", 
+    phone: "+63-2-8888-0002", 
+    status: "active", 
+    address: "Makati", 
+    city: "Makati", 
+    country: "Philippines", 
+    contractValue: 850000, 
+    lastContact: now, 
+    notes: "Infrastructure and utility specialist", 
+    createdAt: lastWeek 
+  },
+  { 
+    id: 3, 
+    companyName: "Delta Testing Laboratories", 
+    industry: "Materials Testing", 
+    contactName: "TBD", 
+    email: "ops@deltatesting.ph", 
+    phone: "+63-2-8888-0003", 
+    status: "active", 
+    address: "Pasig", 
+    city: "Pasig", 
+    country: "Philippines", 
+    contractValue: 450000, 
+    lastContact: threeDaysAgo, 
+    notes: "High-value laboratory client", 
+    createdAt: lastWeek 
+  },
+  { 
+    id: 4, 
+    companyName: "GreenBuild Developers", 
+    industry: "Real Estate Development", 
+    contactName: "TBD", 
+    email: "info@greenbuild.ph", 
+    phone: "+63-2-8888-0004", 
+    status: "prospect", 
+    address: "TBD", 
+    city: "TBD", 
+    country: "Philippines", 
+    contractValue: 0, 
+    lastContact: yesterday, 
+    notes: "Real Estate Development prospect", 
+    createdAt: lastWeek 
+  },
+];
 
 const mockContacts: Contact[] = [
   { id: 1, clientId: 1, name: "Robert Hale", role: "Security Director", department: "Operations", email: "robert@acme.com", phone: "+1-555-0101", isPrimary: true },
@@ -254,8 +304,7 @@ export const useCRMStore = create<CRMState>()(
       },
     }),
     {
-      name: "nextos-crm",
-      version: 1,
+      name: "nextos-crm-v2",
     }
   )
 );

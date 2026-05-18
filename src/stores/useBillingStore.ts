@@ -91,29 +91,53 @@ const mockPackages: Package[] = [
   },
 ];
 
-const clientIdMap: Record<string, number> = {};
-seedData.clients.forEach((c, index) => {
-  clientIdMap[c.id] = index + 1;
-});
-
-const mockInvoices: Invoice[] = seedData.invoices.map((inv, index) => {
-  const amount = inv.total / 1.12;
-  const tax = inv.total - amount;
-  return {
-    id: index + 1,
-    clientId: clientIdMap[inv.clientId] || 1,
-    packageId: null,
-    serviceRecordId: null,
-    invoiceNumber: inv.invoiceNumber,
-    amount: amount,
-    tax: tax,
-    total: inv.total,
-    status: inv.status.toLowerCase() as any,
-    dueDate: new Date(new Date(inv.createdAt).getTime() + 30 * 86400000).toISOString(),
-    paidDate: inv.status.toLowerCase() === "paid" ? inv.createdAt : null,
-    createdAt: inv.createdAt,
-  };
-});
+const mockInvoices: Invoice[] = [
+  { 
+    id: 1, 
+    clientId: 1, 
+    packageId: null, 
+    serviceRecordId: 1, 
+    invoiceNumber: "INV-2026-0001", 
+    service: "Excavator CAT 320 PMS",
+    amount: 11363.64, 
+    tax: 1136.36, 
+    total: 12500.00, 
+    status: "paid", 
+    dueDate: "2026-02-14T10:00:00.000Z", 
+    paidDate: "2026-01-20T10:00:00.000Z", 
+    createdAt: "2026-01-15T10:00:00.000Z" 
+  },
+  { 
+    id: 2, 
+    clientId: 2, 
+    packageId: null, 
+    serviceRecordId: 2, 
+    invoiceNumber: "INV-2026-0002", 
+    service: "Soil Machine Calibration",
+    amount: 7727.27, 
+    tax: 772.73, 
+    total: 8500.00, 
+    status: "overdue", 
+    dueDate: "2026-03-03T10:00:00.000Z", 
+    paidDate: null, 
+    createdAt: "2026-02-01T10:00:00.000Z" 
+  },
+  { 
+    id: 3, 
+    clientId: 3, 
+    packageId: null, 
+    serviceRecordId: 3, 
+    invoiceNumber: "INV-2026-0003", 
+    service: "Concrete Strength Test Package",
+    amount: 59090.91, 
+    tax: 5909.09, 
+    total: 65000.00, 
+    status: "paid", 
+    dueDate: "2026-02-19T10:00:00.000Z", 
+    paidDate: "2026-01-25T10:00:00.000Z", 
+    createdAt: "2026-01-20T10:00:00.000Z" 
+  },
+];
 
 export const useBillingStore = create<BillingState>()(
   persist(
@@ -184,8 +208,7 @@ export const useBillingStore = create<BillingState>()(
       },
     }),
     {
-      name: "nextos-billing",
-      version: 1,
+      name: "nextos-billing-v2",
     }
   )
 );
