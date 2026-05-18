@@ -53,6 +53,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
+import { useInventoryStore } from "@/stores/useInventoryStore";
+import { ServiceReportView } from "@/components/ServiceReportView";
+
 type TabType = "tasks" | "equipment" | "reports" | "new";
 
 export default function Services() {
@@ -751,6 +754,7 @@ function ExecutionModal({ task, onClose, onFinish }: { task: ServiceRecord | nul
         updateServiceRecord,
         addServicePhoto
     } = useOperationsStore();
+    const { logPartUsage } = useInventoryStore();
     const { packages } = useBillingStore();
     const { clients } = useCRMStore();
     
@@ -836,17 +840,29 @@ function ExecutionModal({ task, onClose, onFinish }: { task: ServiceRecord | nul
             return;
         }
 
+        // Log Part Usage and Deduct Stock
+        if (draft.selectedParts && draft.selectedParts.length > 0) {
+            draft.selectedParts.forEach(part => {
+                logPartUsage({
+                    serviceRecordId: task.id,
+                    inventoryItemId: part.inventoryItemId,
+                    quantityUsed: part.quantity
+                });
+            });
+        }
+
         updateServiceRecord(task.id, {
             status: "completed",
             findings: draft.findings,
             workDone: draft.workDone,
             recommendation: draft.recommendations,
-            partsUsed: draft.partsUsed,
+            partsUsed: draft.selectedParts?.map(p => `${p.name} (x${p.quantity})`).join(", ") || "None",
             techSignature: draft.techSignature,
             clientSignature: draft.clientSignature,
+            safetyChecklist: draft.safetyChecklist,
             completedDate: new Date().toISOString(),
             equipmentId: draft.equipmentId || task.equipmentId,
-            hoursAtService: equipment.find(e => e.id === (draft.equipmentId || task.equipmentId))?.currentHours || 0
+            hoursAtService: draft.hoursAtService || equipment.find(e => e.id === (draft.equipmentId || task.equipmentId))?.currentHours || 0
         });
 
         if (draft.beforePhoto) {
@@ -889,7 +905,7 @@ function ExecutionModal({ task, onClose, onFinish }: { task: ServiceRecord | nul
 
                         <div className="px-10 py-6 border-b border-gray-50">
                             <div className="flex items-center justify-between relative">
-                                {[1, 2, 3, 4, 5].map((step, i) => (
+                                {[1, 2, 3, 4, 5, 6].map((step, i) => (
                                     <div key={step} className="flex items-center flex-1 last:flex-none">
                                         <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold z-10 transition-all ${
                                             currentStep === step ? 'bg-[#66B2B2] text-white ring-4 ring-[#66B2B2]/10 scale-110' :
@@ -897,14 +913,14 @@ function ExecutionModal({ task, onClose, onFinish }: { task: ServiceRecord | nul
                                         }`}>
                                             {currentStep > step ? <Check className="w-4 h-4" /> : step}
                                         </div>
-                                        {i < 4 && (
+                                        {i < 5 && (
                                             <div className={`h-1 flex-1 mx-2 rounded-full ${currentStep > step ? 'bg-green-500' : 'bg-gray-100'}`} />
                                         )}
                                     </div>
                                 ))}
                             </div>
                             <div className="flex justify-between mt-3 px-1">
-                                {["Selection", "Before Photo", "Findings", "After Photo", "Signatures"].map((label, i) => (
+                                {["Scan", "Safety", "Before", "Findings", "After", "Sign"].map((label, i) => (
                                     <span key={label} className={`text-[9px] font-bold uppercase tracking-wider ${currentStep === i + 1 ? 'text-[#66B2B2]' : 'text-gray-400'}`}>
                                         {label}
                                     </span>
@@ -1019,8 +1035,17 @@ function ExecutionModal({ task, onClose, onFinish }: { task: ServiceRecord | nul
                                 </div>
                             )}
 
-                            {/* STEP 2: BEFORE PHOTO */}
+                            {/* STEP 2: SAFETY PROTOCOL */}
                             {currentStep === 2 && (
+                                <SafetyProtocol 
+                                    checklist={draft.safetyChecklist || { ppeChecked: false, engineOff: false, areaSecured: false, lotoApplied: false }}
+                                    onSave={(checklist) => handleNext({ safetyChecklist: checklist })}
+                                    onBack={handleBack}
+                                />
+                            )}
+
+                            {/* STEP 3: BEFORE PHOTO */}
+                            {currentStep === 3 && (
                                 <div className="space-y-6 animate-in fade-in duration-300">
                                     <div className="text-center">
                                         <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-3">
@@ -1039,7 +1064,7 @@ function ExecutionModal({ task, onClose, onFinish }: { task: ServiceRecord | nul
                                 </div>
                             )}
 
-                            {currentStep === 3 && (
+                            {currentStep === 4 && (
                                 <TechnicalWorkForm 
                                     draft={draft}
                                     equipment={currentEq}
@@ -1050,7 +1075,7 @@ function ExecutionModal({ task, onClose, onFinish }: { task: ServiceRecord | nul
                                 />
                             )}
 
-                            {currentStep === 4 && (
+                            {currentStep === 5 && (
                                 <div className="space-y-6 animate-in fade-in duration-300">
                                     <div className="text-center">
                                         <div className="w-16 h-16 rounded-full bg-green-50 flex items-center justify-center mx-auto mb-3">
@@ -1069,7 +1094,7 @@ function ExecutionModal({ task, onClose, onFinish }: { task: ServiceRecord | nul
                                 </div>
                             )}
 
-                            {currentStep === 5 && (
+                            {currentStep === 6 && (
                                 <div className="space-y-8 animate-in fade-in duration-300">
                                     <SignaturePad 
                                         label="Technician Verification"
@@ -1096,6 +1121,75 @@ function ExecutionModal({ task, onClose, onFinish }: { task: ServiceRecord | nul
                 )}
             </DialogContent>
         </Dialog>
+    );
+}
+
+function SafetyProtocol({ checklist, onSave, onBack }: { checklist: any, onSave: (c: any) => void, onBack: () => void }) {
+    const [localChecklist, setLocalChecklist] = useState(checklist);
+
+    const items = [
+        { id: 'ppeChecked', label: 'PPE Verified', desc: 'Helmet, Gloves, and High-Vis vest are worn.', icon: UserCheck },
+        { id: 'engineOff', label: 'Engine Isolated', desc: 'Engine is OFF and key is removed from ignition.', icon: Clock },
+        { id: 'areaSecured', label: 'Work Area Secured', desc: 'Area is cordoned off and bystanders are clear.', icon: AlertTriangle },
+        { id: 'lotoApplied', label: 'LOTO Applied', desc: 'Lockout/Tagout procedures are physically applied.', icon: Settings },
+    ];
+
+    const allChecked = Object.values(localChecklist).every(v => v === true);
+
+    return (
+        <div className="space-y-6 animate-in fade-in duration-300">
+            <div className="text-center">
+                <div className="w-16 h-16 rounded-full bg-amber-50 flex items-center justify-center mx-auto mb-3">
+                    <AlertTriangle className="w-8 h-8 text-amber-600" />
+                </div>
+                <h4 className="text-lg font-bold text-gray-900">Safety First Protocol</h4>
+                <p className="text-sm text-gray-500 px-10">Perform these mandatory checks before touching the machine.</p>
+            </div>
+
+            <div className="space-y-3">
+                {items.map((item) => (
+                    <button
+                        key={item.id}
+                        onClick={() => setLocalChecklist({ ...localChecklist, [item.id]: !localChecklist[item.id] })}
+                        className={`w-full flex items-center gap-4 p-4 rounded-2xl border-2 transition-all text-left ${
+                            localChecklist[item.id] 
+                                ? 'bg-green-50 border-green-500 shadow-sm' 
+                                : 'bg-white border-gray-100 hover:border-gray-200'
+                        }`}
+                    >
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${
+                            localChecklist[item.id] ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-400'
+                        }`}>
+                            <item.icon className="w-5 h-5" />
+                        </div>
+                        <div className="flex-1">
+                            <div className={`text-sm font-bold ${localChecklist[item.id] ? 'text-green-700' : 'text-gray-900'}`}>{item.label}</div>
+                            <div className="text-[10px] text-gray-400 font-medium uppercase tracking-tighter">{item.desc}</div>
+                        </div>
+                        <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${
+                            localChecklist[item.id] ? 'bg-green-500 border-green-500' : 'bg-white border-gray-200'
+                        }`}>
+                            {localChecklist[item.id] && <Check className="w-4 h-4 text-white" />}
+                        </div>
+                    </button>
+                ))}
+            </div>
+
+            <div className="flex gap-3 pt-2">
+                <Button variant="ghost" className="flex-1 h-12 rounded-xl text-gray-400 font-bold" onClick={onBack}>Previous</Button>
+                <Button 
+                    className={`flex-[2] h-12 font-bold rounded-xl transition-all ${
+                        allChecked 
+                            ? 'bg-[#66B2B2] text-white hover:bg-[#5A9E9E] shadow-lg shadow-[#66B2B2]/20' 
+                            : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                    }`}
+                    disabled={!allChecked}
+                    onClick={() => onSave(localChecklist)}
+                >
+                    {allChecked ? 'Proceed to Documentation' : 'Complete Checklist to Unlock'}
+                </Button>
+            </div>
+        </div>
     );
 }
 
@@ -1155,12 +1249,50 @@ function VisualEvidence({ label, photo, notes, onSave, onBack }: { label: string
 }
 
 function TechnicalWorkForm({ draft, equipment, client, packages, onSave, onBack }: { draft: DraftExecution, equipment?: Equipment, client?: Client, packages: any[], onSave: (d: Partial<DraftExecution>) => void, onBack: () => void }) {
+    const { items: inventory } = useInventoryStore();
     const [fields, setFields] = useState({
         findings: draft.findings || "",
         workDone: draft.workDone || "",
-        partsUsed: draft.partsUsed || "Pending",
-        recommendations: draft.recommendations || ""
+        selectedParts: draft.selectedParts || [],
+        recommendations: draft.recommendations || "",
+        hoursAtService: draft.hoursAtService || equipment?.currentHours || 0
     });
+
+    const [selectedPartId, setSelectedPartId] = useState<string>("");
+    const [partQty, setPartQty] = useState<number>(1);
+
+    const addPart = () => {
+        const item = inventory.find(i => i.id === parseInt(selectedPartId));
+        if (!item) return;
+
+        const existing = fields.selectedParts.find(p => p.inventoryItemId === item.id);
+        if (existing) {
+            setFields({
+                ...fields,
+                selectedParts: fields.selectedParts.map(p => 
+                    p.inventoryItemId === item.id ? { ...p, quantity: p.quantity + partQty } : p
+                )
+            });
+        } else {
+            setFields({
+                ...fields,
+                selectedParts: [...fields.selectedParts, { 
+                    inventoryItemId: item.id, 
+                    quantity: partQty, 
+                    name: item.name 
+                }]
+            });
+        }
+        setSelectedPartId("");
+        setPartQty(1);
+    };
+
+    const removePart = (itemId: number) => {
+        setFields({
+            ...fields,
+            selectedParts: fields.selectedParts.filter(p => p.inventoryItemId !== itemId)
+        });
+    };
 
     const activePackage = packages.find(p => p.id === equipment?.packageId);
 
@@ -1170,7 +1302,7 @@ function TechnicalWorkForm({ draft, equipment, client, packages, onSave, onBack 
                 <div className="p-4 rounded-xl bg-gray-50 border border-gray-100">
                   <div className="text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-1">Equipment Unit</div>
                   <div className="text-sm font-bold text-gray-900">{equipment?.unitId}</div>
-                  <div className="text-xs text-[#66B2B2] font-bold mt-1">Runtime: {equipment?.currentHours}h</div>
+                  <div className="text-xs text-[#66B2B2] font-bold mt-1">Last Logged: {equipment?.currentHours}h</div>
                 </div>
                 <div className="p-4 rounded-xl bg-gray-50 border border-gray-100">
                   <div className="text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-1">Service Context</div>
@@ -1180,44 +1312,107 @@ function TechnicalWorkForm({ draft, equipment, client, packages, onSave, onBack 
             </div>
 
             <div className="grid gap-4">
+                <div className="p-5 rounded-2xl bg-amber-50 border border-amber-100 space-y-3">
+                    <div className="flex items-center gap-2">
+                        <Clock className="w-4 h-4 text-amber-600" />
+                        <span className="text-[10px] font-black text-amber-800 uppercase tracking-widest">Meter Reading (Mandatory)</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                        <Input 
+                            type="number"
+                            className="h-12 bg-white border-amber-200 text-lg font-black font-mono-tech focus:ring-amber-500/20"
+                            value={fields.hoursAtService}
+                            onChange={(e) => setFields({...fields, hoursAtService: parseInt(e.target.value) || 0})}
+                        />
+                        <div className="text-xs font-bold text-amber-600 uppercase tracking-tighter">Current Hours<br/>on Machine</div>
+                    </div>
+                </div>
+
                 <div className="space-y-1.5">
                     <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider ml-1">Initial Findings / Faults</label>
                     <textarea 
                         className="w-full p-4 rounded-xl border border-gray-200 text-sm focus:border-[#66B2B2] focus:ring-2 focus:ring-[#66B2B2]/10 outline-none resize-none"
-                        rows={3}
+                        rows={2}
                         value={fields.findings}
                         onChange={(e) => setFields({...fields, findings: e.target.value})}
                         placeholder="Detail any damage or leaks..."
                     />
                 </div>
+                
+                <div className="space-y-3">
+                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider ml-1">Spare Parts & Consumables</label>
+                    <div className="flex gap-2">
+                        <div className="flex-[3]">
+                            <Select value={selectedPartId} onValueChange={setSelectedPartId}>
+                                <SelectTrigger className="h-10 bg-white border-gray-200 text-xs">
+                                    <SelectValue placeholder="Select part from inventory..." />
+                                </SelectTrigger>
+                                <SelectContent className="bg-white border-gray-200 z-[100]">
+                                    {inventory.map(item => (
+                                        <SelectItem key={item.id} value={item.id.toString()} disabled={item.stockLevel <= 0}>
+                                            <div className="flex flex-col">
+                                                <span className="font-bold">{item.name}</span>
+                                                <span className="text-[10px] text-gray-400">Stock: {item.stockLevel} {item.unit} • {item.partNumber}</span>
+                                            </div>
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="flex-1">
+                            <Input 
+                                type="number" 
+                                min={1} 
+                                value={partQty} 
+                                onChange={(e) => setPartQty(parseInt(e.target.value) || 1)}
+                                className="h-10 text-center font-bold"
+                            />
+                        </div>
+                        <Button 
+                            onClick={addPart}
+                            disabled={!selectedPartId}
+                            className="h-10 bg-gray-900 text-white font-bold px-4 hover:bg-black"
+                        >
+                            Add
+                        </Button>
+                    </div>
+
+                    {fields.selectedParts.length > 0 && (
+                        <div className="p-3 rounded-xl border border-gray-100 bg-gray-50/50 space-y-2">
+                            {fields.selectedParts.map((p, i) => (
+                                <div key={i} className="flex items-center justify-between bg-white p-2 rounded-lg border border-gray-100 shadow-sm">
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-6 h-6 rounded bg-[#66B2B2]/10 text-[#66B2B2] flex items-center justify-center text-[10px] font-black">{p.quantity}</div>
+                                        <span className="text-[11px] font-bold text-gray-900">{p.name}</span>
+                                    </div>
+                                    <button onClick={() => removePart(p.inventoryItemId)} className="text-gray-400 hover:text-red-500 transition-colors">
+                                        <X className="w-3.5 h-3.5" />
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+
                 <div className="space-y-1.5">
                     <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider ml-1">Technical Work Performed</label>
                     <textarea 
                         className="w-full p-4 rounded-xl border border-gray-200 text-sm focus:border-[#66B2B2] focus:ring-2 focus:ring-[#66B2B2]/10 outline-none resize-none"
-                        rows={3}
+                        rows={2}
                         value={fields.workDone}
                         onChange={(e) => setFields({...fields, workDone: e.target.value})}
                         placeholder="Describe services completed..."
                     />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                        <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider ml-1">Parts/Consumables Used</label>
-                        <Input 
-                            className="h-11 rounded-xl"
-                            value={fields.partsUsed}
-                            onChange={(e) => setFields({...fields, partsUsed: e.target.value})}
-                        />
-                    </div>
-                    <div className="space-y-1.5">
-                        <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider ml-1">Recommendations</label>
-                        <Input 
-                            className="h-11 rounded-xl"
-                            placeholder="e.g. Belt change in 500h"
-                            value={fields.recommendations}
-                            onChange={(e) => setFields({...fields, recommendations: e.target.value})}
-                        />
-                    </div>
+                
+                <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider ml-1">Strategic Recommendations</label>
+                    <Input 
+                        className="h-10 rounded-xl text-xs"
+                        placeholder="e.g. Belt change in 500h"
+                        value={fields.recommendations}
+                        onChange={(e) => setFields({...fields, recommendations: e.target.value})}
+                    />
                 </div>
             </div>
             <div className="flex gap-3 pt-2">
@@ -1303,163 +1498,6 @@ function SignaturePad({ label, value, onChange, caption }: { label: string, valu
             <p className="text-[10px] text-gray-400 italic ml-1">{caption}</p>
         </div>
     );
-}
-
-function ServiceReportView({ record, equipment, client, photos }: any) {
-  return (
-    <div className="p-2 animate-in fade-in zoom-in-95 duration-300">
-      <div className="flex items-center justify-between border-b-2 border-gray-900 pb-6 mb-8">
-        <div>
-          <div className="inline-flex items-center gap-2 px-3 py-1 bg-black text-white rounded-full text-[9px] font-black uppercase tracking-[0.2em] mb-3">
-             <div className="w-2 h-2 rounded-full bg-[#66B2B2] animate-pulse" /> Official Document
-          </div>
-          <h2 className="text-3xl font-black text-gray-900 tracking-tighter">TECHNICAL SERVICE REPORT</h2>
-          <p className="text-xs text-gray-400 font-bold tracking-widest mt-1 font-mono-tech">NEXVISION OPS SYSTEM RECORD <span className="text-gray-900 font-black">#SR-{record.id}</span></p>
-        </div>
-        <Button onClick={() => window.print()} className="bg-gray-100 hover:bg-gray-200 text-gray-900 h-12 px-6 border border-gray-200 text-xs font-black rounded-xl transition-all active:scale-95 shadow-sm">
-          <Printer className="w-5 h-5 mr-3" />
-          EXPORT SYSTEM COPY
-        </Button>
-      </div>
-
-      <div className="grid grid-cols-2 gap-12 mb-10">
-        <div className="space-y-8">
-          <section>
-            <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-[0.25em] mb-4 flex items-center gap-2">
-               <div className="w-1.5 h-4 bg-[#66B2B2]" /> ASSET SPECIFICATIONS
-            </h4>
-            <div className="space-y-3 px-3">
-              <div className="flex justify-between border-b border-gray-100 pb-2">
-                <span className="text-[11px] text-gray-400 font-bold uppercase">Identification ID:</span>
-                <span className="text-[11px] text-gray-900 font-black font-mono-tech tracking-wider">{equipment?.unitId}</span>
-              </div>
-              <div className="flex justify-between border-b border-gray-100 pb-2">
-                <span className="text-[11px] text-gray-400 font-bold uppercase">Manufacturer:</span>
-                <span className="text-[11px] text-gray-900 font-bold">{equipment?.manufacturer}</span>
-              </div>
-              <div className="flex justify-between border-b border-gray-100 pb-2">
-                <span className="text-[11px] text-gray-400 font-bold uppercase">Model Descriptor:</span>
-                <span className="text-[11px] text-gray-900 font-bold">{equipment?.model}</span>
-              </div>
-              <div className="flex justify-between border-b border-gray-100 pb-2">
-                <span className="text-[11px] text-gray-400 font-bold uppercase">Runtime Meter:</span>
-                <span className="text-sm text-[#66B2B2] font-black font-mono-tech">{record.hoursAtService} HOURS</span>
-              </div>
-            </div>
-          </section>
-
-          <section>
-             <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-[0.25em] mb-4 flex items-center gap-2">
-               <div className="w-1.5 h-4 bg-[#66B2B2]" /> LOGISTICAL CONTEXT
-            </h4>
-            <div className="space-y-3 px-3">
-              <div className="flex justify-between border-b border-gray-100 pb-2">
-                <span className="text-[11px] text-gray-400 font-bold uppercase">Service Category:</span>
-                <span className="text-[11px] text-gray-900 font-black uppercase tracking-tighter">{record.serviceCategory}</span>
-              </div>
-              <div className="flex justify-between border-b border-gray-100 pb-2">
-                <span className="text-[11px] text-gray-400 font-bold uppercase">Primary Technician:</span>
-                <span className="text-[11px] text-gray-900 font-bold">{record.technician}</span>
-              </div>
-              <div className="flex justify-between border-b border-gray-100 pb-2">
-                <span className="text-[11px] text-gray-400 font-bold uppercase">Completion Date:</span>
-                <span className="text-[11px] text-gray-900 font-bold">{record.completedDate ? new Date(record.completedDate).toLocaleDateString('en-PH', {year:'numeric', month:'long', day:'numeric'}) : "PENDING"}</span>
-              </div>
-            </div>
-          </section>
-        </div>
-
-        <div className="space-y-8">
-          <section className="h-full">
-             <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-[0.25em] mb-4 flex items-center gap-2">
-               <div className="w-1.5 h-4 bg-[#66B2B2]" /> EXECUTIVE SUMMARY
-            </h4>
-            <div className="p-6 rounded-2xl bg-gray-50 border border-gray-100 space-y-6 shadow-inner h-[calc(100%-2.5rem)]">
-              <div>
-                <span className="text-[10px] text-[#66B2B2] font-black uppercase tracking-widest mb-2 block">Fault Diagnosis / Findings:</span>
-                <p className="text-[12px] text-gray-900 font-medium leading-relaxed bg-white p-3 rounded-lg border border-gray-100">{record.findings || "Operational state nominal. No significant faults detected during primary inspection."}</p>
-              </div>
-              <div>
-                <span className="text-[10px] text-[#66B2B2] font-black uppercase tracking-widest mb-2 block">Technical Work Documentation:</span>
-                <p className="text-[12px] text-gray-900 font-medium leading-relaxed bg-white p-3 rounded-lg border border-gray-100">{record.workDone}</p>
-              </div>
-              <div>
-                <span className="text-[10px] text-[#66B2B2] font-black uppercase tracking-widest mb-2 block">Strategic Recommendations:</span>
-                <p className="text-[12px] text-gray-900 font-bold leading-relaxed italic bg-[#66B2B2]/5 p-3 rounded-lg border border-[#66B2B2]/10">{record.recommendation || "No immediate action required. Maintain standard PMS intervals."}</p>
-              </div>
-            </div>
-          </section>
-        </div>
-      </div>
-
-      <section className="mb-10">
-        <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-[0.25em] mb-6 flex items-center gap-2">
-            <div className="w-1.5 h-4 bg-[#66B2B2]" /> FIELD DOCUMENTATION
-        </h4>
-        <div className="grid grid-cols-2 gap-10">
-          <div className="space-y-3">
-            <div className="flex items-center justify-between px-2">
-                <span className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Initial State Proof</span>
-                <span className="text-[8px] font-bold text-[#66B2B2] uppercase">Before Service</span>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              {photos.filter((p: any) => p.type === 'before').map((p: any, i: number) => (
-                <div key={i} className="aspect-video rounded-xl overflow-hidden border-2 border-gray-100 shadow-md">
-                   <img src={p.url} className="w-full h-full object-cover" alt="Before" />
-                </div>
-              ))}
-              {photos.filter((p: any) => p.type === 'before').length === 0 && <div className="col-span-2 py-8 text-center bg-gray-50 rounded-xl border border-dashed text-[10px] text-gray-400 font-bold uppercase tracking-widest">No Before Documentation</div>}
-            </div>
-          </div>
-          <div className="space-y-3">
-            <div className="flex items-center justify-between px-2">
-                <span className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Completion Proof</span>
-                <span className="text-[8px] font-bold text-green-500 uppercase">After Service</span>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              {photos.filter((p: any) => p.type === 'after').map((p: any, i: number) => (
-                <div key={i} className="aspect-video rounded-xl overflow-hidden border-2 border-gray-100 shadow-md">
-                   <img src={p.url} className="w-full h-full object-cover" alt="After" />
-                </div>
-              ))}
-              {photos.filter((p: any) => p.type === 'after').length === 0 && <div className="col-span-2 py-8 text-center bg-gray-50 rounded-xl border border-dashed text-[10px] text-gray-400 font-bold uppercase tracking-widest">No After Documentation</div>}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <div className="grid grid-cols-2 gap-12 border-t-2 border-gray-100 pt-10 mb-6">
-        <div className="space-y-4">
-          <span className="text-[10px] text-gray-400 font-black uppercase tracking-[0.3em] block ml-1">Technician Certification</span>
-          <div className="p-8 bg-gray-50/50 rounded-3xl border border-gray-100 flex items-center justify-center shadow-inner relative overflow-hidden">
-            {record.techSignature ? (
-               <img src={record.techSignature} className="h-24 object-contain contrast-125 mix-blend-multiply transition-all hover:scale-105 duration-500" alt="Tech Sig" />
-            ) : <div className="h-24 flex items-center justify-center text-gray-300 italic text-[11px] font-bold uppercase tracking-widest">Digital Stamp Missing</div>}
-            <div className="absolute bottom-4 left-0 right-0 text-center">
-                <div className="h-[1px] w-2/3 mx-auto bg-gray-200 mb-2" />
-                <span className="text-[9px] text-gray-500 font-black uppercase tracking-tighter">{record.technician} <span className="text-gray-300 mx-1">•</span> SENIOR TECHNICIAN</span>
-            </div>
-          </div>
-        </div>
-        <div className="space-y-4">
-          <span className="text-[10px] text-gray-400 font-black uppercase tracking-[0.3em] block ml-1">Client Acknowledgment</span>
-          <div className="p-8 bg-gray-50/50 rounded-3xl border border-gray-100 flex items-center justify-center shadow-inner relative overflow-hidden">
-            {record.clientSignature ? (
-               <img src={record.clientSignature} className="h-24 object-contain contrast-125 mix-blend-multiply transition-all hover:scale-105 duration-500" alt="Client Sig" />
-            ) : <div className="h-24 flex items-center justify-center text-gray-300 italic text-[11px] font-bold uppercase tracking-widest">Acknowledgment Missing</div>}
-            <div className="absolute bottom-4 left-0 right-0 text-center">
-                <div className="h-[1px] w-2/3 mx-auto bg-gray-200 mb-2" />
-                <span className="text-[9px] text-gray-500 font-black uppercase tracking-tighter">{client?.companyName} <span className="text-gray-300 mx-1">•</span> AUTHORIZED REP</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="text-center pt-8 opacity-20 hover:opacity-100 transition-opacity font-mono-tech uppercase tracking-[0.5em] text-[8px]">
-         Security Verified System Record • NexVision Operations OS • Built by NexTOS
-      </div>
-    </div>
-  );
 }
 
 function EquipmentDetail({

@@ -7,13 +7,25 @@ import { toast } from "sonner";
 export interface DraftExecution {
   currentStep: number;
   equipmentId?: number;
+  hoursAtService?: number;
+  safetyChecklist?: {
+    ppeChecked: boolean;
+    engineOff: boolean;
+    areaSecured: boolean;
+    lotoApplied: boolean;
+  };
   beforePhoto?: string;
   beforeNotes?: string;
   afterPhoto?: string;
   afterNotes?: string;
   findings?: string;
   workDone?: string;
-  partsUsed: string;
+  partsUsed: string; // Legacy
+  selectedParts?: {
+    inventoryItemId: number;
+    quantity: number;
+    name: string;
+  }[];
   recommendations?: string;
   techSignature?: string;
   clientSignature?: string;
@@ -177,6 +189,11 @@ export const useOperationsStore = create<OperationsState>()(
               const updates: Partial<Equipment> = {
                 status: "active"
               };
+
+              // Update the current meter on the equipment itself
+              if (record.hoursAtService !== undefined) {
+                updates.currentHours = record.hoursAtService;
+              }
               
               if (record.serviceCategory === "Heavy Equipment PMS") {
                 updates.lastPMSHours = record.hoursAtService || eq.currentHours;

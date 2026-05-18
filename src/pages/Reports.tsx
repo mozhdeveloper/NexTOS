@@ -80,6 +80,39 @@ export default function Reports() {
   const totalRevenue = invoices.reduce((sum, i) => sum + i.total, 0);
   const totalActivePackages = packages.filter(p => p.status === "active").length;
 
+  // Safety Compliance Analytics
+  const completedServices = serviceRecords.filter(s => s.status === "completed");
+  const servicesWithSafety = completedServices.filter(s => s.safetyChecklist);
+  
+  const safetyStats = useMemo(() => {
+    if (servicesWithSafety.length === 0) return [];
+    
+    const totals = {
+      ppe: 0,
+      engine: 0,
+      area: 0,
+      loto: 0
+    };
+
+    servicesWithSafety.forEach(s => {
+      if (s.safetyChecklist?.ppeChecked) totals.ppe++;
+      if (s.safetyChecklist?.engineOff) totals.engine++;
+      if (s.safetyChecklist?.areaSecured) totals.area++;
+      if (s.safetyChecklist?.lotoApplied) totals.loto++;
+    });
+
+    return [
+      { name: 'PPE', value: (totals.ppe / servicesWithSafety.length) * 100 },
+      { name: 'Engine ISO', value: (totals.engine / servicesWithSafety.length) * 100 },
+      { name: 'Area Safe', value: (totals.area / servicesWithSafety.length) * 100 },
+      { name: 'LOTO', value: (totals.loto / servicesWithSafety.length) * 100 },
+    ];
+  }, [servicesWithSafety]);
+
+  const overallSafetyRate = servicesWithSafety.length > 0 
+    ? (safetyStats.reduce((acc, curr) => acc + curr.value, 0) / (safetyStats.length * 100)) * 100 
+    : 100;
+
   // Charts Data
   const serviceStatusData = [
     { name: "Completed", value: totalServices, color: "#10B981" },
@@ -152,10 +185,10 @@ export default function Reports() {
 
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         <MetricCard label="Total Services" value={`${totalServices}`} hint="Completed to date" icon={CheckCircle2} accent="text-[#10B981]" />
+        <MetricCard label="Safety Compliance" value={`${overallSafetyRate.toFixed(0)}%`} hint="Audit pass rate" icon={UserCheck} accent="text-amber-500" />
         <MetricCard label="Global Due" value={`${totalDue}`} hint="Scheduled soon" icon={Wrench} accent="text-[#66B2B2]" />
         <MetricCard label="Global Overdue" value={`${totalOverdue}`} hint="Critical service risk" icon={AlertTriangle} accent="text-[#EF4444]" />
         <MetricCard label="Total Revenue" value={`₱${(totalRevenue / 1000).toFixed(1)}k`} hint="Lifetime value" icon={DollarSign} accent="text-gray-900" />
-        <MetricCard label="Active Packages" value={`${totalActivePackages}`} hint="Managed subscriptions" icon={Package} accent="text-[#66B2B2]" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
@@ -177,34 +210,39 @@ export default function Reports() {
         </div>
 
         <div className="data-card p-4">
-          <h3 className="text-base font-semibold text-gray-900 mb-1">Service Status Mix</h3>
-          <p className="text-xs text-gray-500 mb-3">Overall fleet health (all clients)</p>
-          <ResponsiveContainer width="100%" height={220}>
-            <PieChart>
-              <Pie
-                data={serviceStatusData}
-                innerRadius={60}
-                outerRadius={80}
-                paddingAngle={5}
-                dataKey="value"
-              >
-                {serviceStatusData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={entry.color} />
-                ))}
-              </Pie>
-              <Tooltip
-                 contentStyle={{ background: "#FFFFFF", border: "1px solid #E5E7EB", borderRadius: 6, fontSize: 12 }}
-              />
-            </PieChart>
-          </ResponsiveContainer>
-          <div className="flex justify-center gap-4 mt-2">
-            {serviceStatusData.map((s) => (
-              <div key={s.name} className="flex items-center gap-1.5">
-                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: s.color }} />
-                <span className="text-[10px] text-gray-500">{s.name}</span>
+           <div className="flex items-center justify-between mb-1">
+              <h3 className="text-base font-semibold text-gray-900">Safety Protocol Verification</h3>
+              <span className="text-[10px] font-black text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full uppercase tracking-tighter">Live Audit</span>
+           </div>
+           <p className="text-xs text-gray-500 mb-4">Verification rate per protocol item</p>
+           <ResponsiveContainer width="100%" height={180}>
+             <BarChart data={safetyStats} layout="vertical">
+               <CartesianGrid strokeDasharray="3 2" stroke="#F3F4F6" horizontal={false} />
+               <XAxis type="number" hide domain={[0, 100]} />
+               <YAxis dataKey="name" type="category" stroke="#9CA3AF" fontSize={10} width={70} tickLine={false} axisLine={false} />
+               <Tooltip 
+                  cursor={{fill: '#F9FAFB'}}
+                  contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', fontSize: '11px'}}
+                  formatter={(v: number) => [`${v.toFixed(1)}%`, 'Verified']}
+               />
+               <Bar dataKey="value" fill="#F59E0B" radius={[0, 4, 4, 0]} barSize={12} />
+             </BarChart>
+           </ResponsiveContainer>
+           <div className="mt-4 pt-4 border-t border-gray-50 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                 <div className="w-8 h-8 rounded-lg bg-green-50 flex items-center justify-center">
+                    <CheckCircle2 className="w-4 h-4 text-green-600" />
+                 </div>
+                 <div>
+                    <div className="text-[10px] text-gray-400 font-bold uppercase tracking-tighter">Audit Status</div>
+                    <div className="text-xs font-black text-gray-900 uppercase">Compliant</div>
+                 </div>
               </div>
-            ))}
-          </div>
+              <div className="text-right">
+                 <div className="text-[10px] text-gray-400 font-bold uppercase tracking-tighter">Compliance Score</div>
+                 <div className="text-sm font-black text-amber-600">{overallSafetyRate.toFixed(1)}%</div>
+              </div>
+           </div>
         </div>
       </div>
 

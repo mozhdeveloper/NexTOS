@@ -1,8 +1,9 @@
-
 import { useCRMStore } from "@/stores/useCRMStore";
 import { useBillingStore } from "@/stores/useBillingStore";
 import { useFleetStore } from "@/stores/useFleetStore";
 import { useAuthStore } from "@/stores/useAuthStore";
+import { useOperationsStore } from "@/stores/useOperationsStore";
+import { useInventoryStore } from "@/stores/useInventoryStore";
 import {
   BarChart,
   Bar,
@@ -26,29 +27,45 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   Activity,
+  UserCheck,
+  ShieldCheck,
+  Wrench,
+  Clock,
+  CheckCircle2,
+  Box,
+  ArrowRight
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 export default function Dashboard() {
   const { user } = useAuthStore();
   const { deals, tasks, leads, getOverdueTasks } = useCRMStore();
   const { getTotalRevenue, getOutstandingRevenue } = useBillingStore();
   const { units } = useFleetStore();
+  const { serviceRecords, equipment } = useOperationsStore();
+  const { getLowStockItems } = useInventoryStore();
+
+  const lowStockItems = getLowStockItems();
+
   // KPI Calculations
   const totalLeads = leads.length;
   const dealsClosed = deals.filter((d) => d.stage === "closed_won").length;
   const conversionRate = totalLeads > 0 ? Math.round((dealsClosed / totalLeads) * 100) : 0;
-  const overdueFollowups = getOverdueTasks().length;
+  
+  // Safety Compliance Calculation
+  const completedServices = serviceRecords.filter(s => s.status === "completed");
+  const servicesWithSafety = completedServices.filter(s => s.safetyChecklist);
+  
+  const safetyRate = servicesWithSafety.length > 0 
+    ? Math.round((servicesWithSafety.length / completedServices.length) * 100)
+    : 100;
+
   const totalRevenue = getTotalRevenue();
   const outstandingRevenue = getOutstandingRevenue();
 
+  const totalOverdueEquipment = equipment.filter(e => e.status === 'service_due').length;
 
   // Chart Data
-  const salesByPerson = [
-    { name: "Sarah", deals: 8, target: 10 },
-    { name: "Marcus", deals: 3, target: 5 },
-    { name: "James", deals: 4, target: 6 },
-  ];
-
   const funnelData = [
     { name: "Inquiry", value: leads.filter((l) => l.status === "new").length + deals.filter((d) => d.stage === "inquiry").length },
     { name: "Proposal", value: deals.filter((d) => d.stage === "proposal").length },
@@ -68,12 +85,8 @@ export default function Dashboard() {
   const pieData = [
     { name: "On-Time", value: tasks.filter((t) => t.status === "pending" || t.status === "in_progress").length, color: "#10B981" },
     { name: "Completed", value: tasks.filter((t) => t.status === "completed").length, color: "#66B2B2" },
-    { name: "Overdue", value: overdueFollowups, color: "#EF4444" },
+    { name: "Overdue", value: getOverdueTasks().length, color: "#EF4444" },
   ];
-
-  const recentDeals = deals
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-    .slice(0, 5);
 
   return (
     <div className="space-y-5 ">
@@ -96,19 +109,20 @@ export default function Dashboard() {
       {/* KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <KPICard
-          label="Total Leads"
-          value={totalLeads.toString()}
-          delta="+3 this week"
-          deltaUp={true}
-          icon={Users}
+          label="Fleet Health"
+          value={`${Math.round(((equipment.length - totalOverdueEquipment) / equipment.length) * 100)}%`}
+          delta={`${totalOverdueEquipment} units due`}
+          deltaUp={totalOverdueEquipment === 0}
+          icon={ShieldCheck}
           laser
+          alert={totalOverdueEquipment > 0}
         />
         <KPICard
-          label="Deals Closed"
-          value={dealsClosed.toString()}
-          delta={`${conversionRate}% conversion`}
-          deltaUp={true}
-          icon={TrendingUp}
+          label="Safety Compliance"
+          value={`${safetyRate}%`}
+          delta="Audit pass rate"
+          deltaUp={safetyRate > 90}
+          icon={UserCheck}
         />
         <KPICard
           label="Total Revenue"
@@ -118,12 +132,12 @@ export default function Dashboard() {
           icon={DollarSign}
         />
         <KPICard
-          label="Overdue Tasks"
-          value={overdueFollowups.toString()}
-          delta="Action required"
-          deltaUp={false}
-          icon={AlertTriangle}
-          alert={overdueFollowups > 0}
+          label="Maintenance Alerts"
+          value={totalOverdueEquipment.toString()}
+          delta="Critical service risk"
+          deltaUp={totalOverdueEquipment === 0}
+          icon={Wrench}
+          alert={totalOverdueEquipment > 0}
         />
       </div>
 
@@ -131,10 +145,15 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
         {/* Bar Chart */}
         <div className="data-card p-4">
-          <h3 className="text-base font-semibold text-gray-900 mb-1">Sales Performance</h3>
-          <p className="text-xs text-gray-500 mb-3">Deals closed vs target by person</p>
+          <div className="flex items-center justify-between mb-3">
+             <div>
+                <h3 className="text-base font-semibold text-gray-900 mb-1">Fleet Utilization</h3>
+                <p className="text-xs text-gray-500">Operating hours vs target by unit</p>
+             </div>
+             <Activity className="w-4 h-4 text-[#66B2B2]" />
+          </div>
           <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={salesByPerson} barGap={4}>
+            <BarChart data={units.slice(0, 5).map(u => ({ name: u.unitName.split('-')[1] || u.unitName, hours: Math.floor(u.telemetry.hours), target: 160 }))} barGap={4}>
               <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
               <XAxis dataKey="name" stroke="#6B7280" fontSize={11} />
               <YAxis stroke="#6B7280" fontSize={11} />
@@ -146,15 +165,15 @@ export default function Dashboard() {
                   fontSize: 12,
                 }}
               />
-              <Bar dataKey="deals" fill="#66B2B2" radius={[2, 2, 0, 0]} />
+              <Bar dataKey="hours" fill="#66B2B2" radius={[2, 2, 0, 0]} />
               <Bar dataKey="target" fill="#E5E7EB" radius={[2, 2, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
 
-        {/* Funnel Chart */}
+        {/* Funnel Chart - Pipeline */}
         <div className="data-card p-4">
-          <h3 className="text-base font-semibold text-gray-900 mb-1">Pipeline Funnel</h3>
+          <h3 className="text-base font-semibold text-gray-900 mb-1">Sales Funnel</h3>
           <p className="text-xs text-gray-500 mb-3">Lead to close progression</p>
           <ResponsiveContainer width="100%" height={200}>
             <BarChart data={funnelData} layout="vertical" barGap={2}>
@@ -174,47 +193,43 @@ export default function Dashboard() {
           </ResponsiveContainer>
         </div>
 
-        {/* Pie Chart */}
+        {/* Maintenance Activity Feed */}
         <div className="data-card p-4">
-          <h3 className="text-base font-semibold text-gray-900 mb-1">Task Status</h3>
-          <p className="text-xs text-gray-500 mb-3">Current task distribution</p>
-          <ResponsiveContainer width="100%" height={160}>
-            <PieChart>
-              <Pie
-                data={pieData}
-                cx="50%"
-                cy="50%"
-                innerRadius={40}
-                outerRadius={65}
-                paddingAngle={3}
-                dataKey="value"
-              >
-                {pieData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={entry.color} />
-                ))}
-              </Pie>
-              <Tooltip
-                contentStyle={{
-                  background: "#FFFFFF",
-                  border: "1px solid #E5E7EB",
-                  borderRadius: 6,
-                  fontSize: 12,
-                }}
-              />
-            </PieChart>
-          </ResponsiveContainer>
-          <div className="flex justify-center gap-4 mt-1">
-            {pieData.map((d) => (
-              <div key={d.name} className="flex items-center gap-1.5">
-                <div className="w-2 h-2 rounded-full" style={{ background: d.color }} />
-                <span className="text-[10px] text-gray-500">{d.name}</span>
+          <div className="flex items-center justify-between mb-3">
+             <h3 className="text-base font-semibold text-gray-900">Maintenance Feed</h3>
+             <span className="text-[10px] font-black text-[#66B2B2] bg-[#66B2B2]/5 px-2 py-0.5 rounded-full uppercase tracking-tighter">Live Updates</span>
+          </div>
+          <div className="space-y-4 max-h-[220px] overflow-auto scrollbar-hide">
+            {serviceRecords.slice().reverse().slice(0, 5).map((record, i) => (
+              <div key={record.id} className="flex gap-3 relative">
+                {i < 4 && <div className="absolute left-[13px] top-7 bottom-0 w-[1px] bg-gray-100" />}
+                <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 z-10 ${
+                  record.status === 'completed' ? 'bg-green-50 border border-green-100' : 'bg-amber-50 border border-amber-100'
+                }`}>
+                  {record.status === 'completed' ? <CheckCircle2 className="w-3.5 h-3.5 text-green-500" /> : <Clock className="w-3.5 h-3.5 text-amber-500" />}
+                </div>
+                <div>
+                   <div className="text-[11px] font-bold text-gray-900">
+                      {record.technician} {record.status === 'completed' ? 'finalized' : 'started'} {record.serviceCategory}
+                   </div>
+                   <div className="text-[10px] text-gray-400 mt-0.5">
+                      {equipment.find(e => e.id === record.equipmentId)?.unitId || 'Unknown Asset'} • {new Date(record.completedDate || record.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                   </div>
+                </div>
               </div>
             ))}
+          </div>
+          <div className="mt-4 pt-4 border-t border-gray-50 flex items-center justify-between">
+             <div className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Global Status</div>
+             <div className="flex items-center gap-1.5">
+                <span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
+                <span className="text-[10px] font-black text-green-600 uppercase">Operational</span>
+             </div>
           </div>
         </div>
       </div>
 
-      {/* Trend Line + Recent Deals */}
+      {/* Trend Line + Maintenance Priority */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         <div className="data-card p-4">
           <h3 className="text-base font-semibold text-gray-900 mb-1">Revenue Trend</h3>
@@ -238,70 +253,133 @@ export default function Dashboard() {
           </ResponsiveContainer>
         </div>
 
-        {/* Recent Deals Table */}
+        {/* Maintenance Priority Table */}
         <div className="data-card p-4">
-          <h3 className="text-base font-semibold text-gray-900 mb-1">Recent Deals</h3>
-          <p className="text-xs text-gray-500 mb-3">Latest pipeline activity</p>
+          <div className="flex items-center justify-between mb-1">
+             <h3 className="text-base font-semibold text-gray-900">Maintenance Priority</h3>
+             <span className="text-[10px] font-black text-red-600 bg-red-50 px-2 py-0.5 rounded-full uppercase tracking-tighter">High Risk</span>
+          </div>
+          <p className="text-xs text-gray-500 mb-3">Units requiring immediate attention</p>
           <div className="overflow-auto">
             <table className="w-full text-xs">
               <thead>
-                <tr className="border-b border-gray-200">
-                  <th className="text-left py-2 text-gray-500 font-medium">Deal</th>
-                  <th className="text-left py-2 text-gray-500 font-medium">Value</th>
-                  <th className="text-left py-2 text-gray-500 font-medium">Stage</th>
-                  <th className="text-left py-2 text-gray-500 font-medium">Status</th>
+                <tr className="border-b border-gray-200 text-gray-400 font-medium uppercase tracking-wider text-[9px]">
+                  <th className="text-left py-2">Asset ID</th>
+                  <th className="text-left py-2">Current</th>
+                  <th className="text-left py-2">Threshold</th>
+                  <th className="text-left py-2">Status</th>
                 </tr>
               </thead>
               <tbody>
-                {recentDeals.map((deal) => (
-                  <tr key={deal.id} className="border-b border-gray-100 hover:bg-gray-50">
-                    <td className="py-2 text-gray-900">{deal.title}</td>
-                    <td className="py-2 text-[#66B2B2] font-mono-tech">
-                      ${deal.value.toLocaleString()}
-                    </td>
-                    <td className="py-2 text-gray-500 capitalize">{deal.stage.replace("_", " ")}</td>
+                {equipment.filter(e => e.status === 'service_due' || e.currentHours > e.nextPMSHours - 100).sort((a,b) => (b.currentHours - (b.nextPMSHours || 0)) - (a.currentHours - (a.nextPMSHours || 0))).slice(0, 5).map((eq) => (
+                  <tr key={eq.id} className="border-b border-gray-100 hover:bg-gray-50 group">
                     <td className="py-2">
-                      <StageBadge stage={deal.stage} />
+                       <div className="font-bold text-gray-900">{eq.unitId}</div>
+                       <div className="text-[10px] text-gray-400">{eq.manufacturer} {eq.model}</div>
+                    </td>
+                    <td className="py-2 font-mono-tech font-bold text-gray-700">{eq.currentHours}h</td>
+                    <td className="py-2 font-mono-tech text-gray-400">{eq.nextPMSHours}h</td>
+                    <td className="py-2">
+                      <span className={`px-1.5 py-0.5 rounded-[4px] text-[9px] font-black uppercase tracking-tighter ${
+                        eq.status === 'service_due' ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-amber-50 text-amber-600 border border-amber-100'
+                      }`}>
+                        {eq.status === 'service_due' ? 'Overdue' : 'Due Soon'}
+                      </span>
                     </td>
                   </tr>
                 ))}
+                {equipment.filter(e => e.status === 'service_due').length === 0 && (
+                   <tr>
+                      <td colSpan={4} className="py-10 text-center text-gray-400 italic">All fleet assets operational.</td>
+                   </tr>
+                )}
               </tbody>
             </table>
           </div>
         </div>
       </div>
 
+      {/* Logistics & Alerts Row */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+         {/* Low Stock Alerts */}
+         <div className="data-card p-4 lg:col-span-1 border-amber-100 bg-amber-50/20">
+            <div className="flex items-center justify-between mb-3">
+               <div className="flex items-center gap-2">
+                  <Box className="w-4 h-4 text-amber-600" />
+                  <h3 className="text-base font-semibold text-gray-900">Inventory Health</h3>
+               </div>
+               {lowStockItems.length > 0 && (
+                  <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[9px] font-black uppercase">Low Stock: {lowStockItems.length}</span>
+               )}
+            </div>
+            <div className="space-y-3">
+               {lowStockItems.length > 0 ? lowStockItems.slice(0, 3).map(item => (
+                  <div key={item.id} className="p-3 rounded-xl bg-white border border-amber-100 shadow-sm flex items-center justify-between">
+                     <div>
+                        <div className="text-[11px] font-bold text-gray-900">{item.name}</div>
+                        <div className="text-[9px] text-gray-400 font-mono-tech">{item.partNumber}</div>
+                     </div>
+                     <div className="text-right">
+                        <div className="text-xs font-black text-amber-600">{item.stockLevel} {item.unit}</div>
+                        <div className="text-[8px] text-gray-400 uppercase font-bold">Target: {item.minThreshold}</div>
+                     </div>
+                  </div>
+               )) : (
+                  <div className="py-8 text-center text-gray-400 italic text-xs">
+                     All stock levels within nominal range.
+                  </div>
+               )}
+               <Button variant="ghost" className="w-full mt-2 h-8 text-[10px] font-bold text-amber-700 hover:bg-amber-100/50 rounded-lg">
+                  Manage Inventory <ArrowRight className="w-3 h-3 ml-1.5" />
+               </Button>
+            </div>
+         </div>
+
+         {/* Sales Pipeline Funnel (Moved here to balance) */}
+         <div className="data-card p-4 lg:col-span-2">
+            <div className="flex items-center justify-between mb-3">
+               <h3 className="text-base font-semibold text-gray-900">Sales Pipeline</h3>
+               <TrendingUp className="w-4 h-4 text-[#66B2B2]" />
+            </div>
+            <ResponsiveContainer width="100%" height={160}>
+               <BarChart data={funnelData} layout="vertical">
+                  <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" horizontal={false} />
+                  <XAxis type="number" hide />
+                  <YAxis dataKey="name" type="category" stroke="#6B7280" fontSize={11} width={80} axisLine={false} tickLine={false} />
+                  <Tooltip contentStyle={{ borderRadius: 8, border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                  <Bar dataKey="value" fill="#66B2B2" radius={[0, 4, 4, 0]} barSize={20} />
+               </BarChart>
+            </ResponsiveContainer>
+         </div>
+      </div>
+
       {/* Fleet Status Row */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-3">
-        {units.slice(0, 5).map((unit) => (
-          <div key={unit.id} className="data-card p-3">
-            <div className="flex items-center gap-2 mb-2">
-              <Radio
-                className={`w-3.5 h-3.5 ${
-                  unit.telemetry.status === "online"
-                    ? "text-[#10B981]"
-                    : unit.telemetry.status === "idle"
-                    ? "text-[#66B2B2]"
-                    : "text-[#EF4444]"
-                }`}
-              />
-              <span className="text-xs text-gray-900 font-medium truncate">{unit.unitName}</span>
-            </div>
-            <div className="font-mono-tech text-[10px] text-gray-500 space-y-0.5">
-              <div>Lat: {unit.telemetry.lat.toFixed(4)}</div>
-              <div>Lng: {unit.telemetry.lng.toFixed(4)}</div>
-              <div>Hours: {Math.floor(unit.telemetry.hours)}</div>
-              <div className="flex items-center gap-1">
-                Speed: {unit.telemetry.speed} mph
-                {unit.serviceDue && (
-                  <span className="ml-1 px-1 py-0.5 rounded text-[9px] bg-[#EF4444]/10 text-[#EF4444]">
-                    SERVICE DUE
-                  </span>
-                )}
+        {units.slice(0, 5).map((unit) => {
+          const eq = equipment.find(e => e.id === unit.equipmentId);
+          return (
+            <div key={unit.id} className="data-card p-3 relative overflow-hidden group">
+              {unit.serviceDue && <div className="absolute top-0 right-0 w-8 h-8 bg-red-500/10 rounded-bl-full flex items-center justify-center"><AlertTriangle className="w-3 h-3 text-red-500" /></div>}
+              <div className="flex items-center gap-2 mb-2">
+                <div className={`w-1.5 h-1.5 rounded-full ${
+                  unit.telemetry.status === "online" ? "bg-[#10B981] animate-pulse" : unit.telemetry.status === "idle" ? "bg-[#66B2B2]" : "bg-[#EF4444]"
+                }`} />
+                <span className="text-xs text-gray-900 font-black truncate uppercase tracking-tight">{unit.unitName}</span>
+              </div>
+              <div className="font-mono-tech text-[10px] text-gray-500 space-y-0.5">
+                <div className="flex justify-between"><span>LAT:</span> <span className="text-gray-900">{unit.telemetry.lat.toFixed(3)}</span></div>
+                <div className="flex justify-between"><span>LNG:</span> <span className="text-gray-900">{unit.telemetry.lng.toFixed(3)}</span></div>
+                <div className="flex justify-between"><span>HRS:</span> <span className={`${unit.serviceDue ? 'text-red-500 font-bold' : 'text-[#66B2B2]'}`}>{Math.floor(unit.telemetry.hours)}</span></div>
+                <div className="flex items-center justify-between pt-1 mt-1 border-t border-gray-50">
+                  <span className="uppercase text-[8px] font-black text-gray-300">Telemetry</span>
+                  <div className="flex items-center gap-1 text-gray-900 font-bold">
+                    {unit.telemetry.speed} <span className="text-[8px] text-gray-400">MPH</span>
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

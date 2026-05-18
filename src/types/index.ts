@@ -170,6 +170,12 @@ export interface ServiceRecord {
   invoiceId: number | null;
   clientSignature?: string;
   techSignature?: string;
+  safetyChecklist?: {
+    ppeChecked: boolean;
+    engineOff: boolean;
+    areaSecured: boolean;
+    lotoApplied: boolean;
+  };
   createdAt: string;
 }
 
@@ -262,6 +268,29 @@ export interface FleetUnit {
   unitName: string;
   telemetry: GPSTelemetry;
   serviceDue: boolean;
+}
+
+export interface InventoryItem {
+  id: number;
+  partNumber: string;
+  name: string;
+  category: "Filter" | "Oil" | "Belt" | "Hardware" | "Electrical" | "Other";
+  unit: "Pcs" | "Liters" | "Kits" | "Meters";
+  stockLevel: number;
+  minThreshold: number;
+  pricePerUnit: number;
+  compatibility: string[]; // List of Equipment Models or Types
+  lastRestocked: string;
+  createdAt: string;
+}
+
+export interface PartUsage {
+  id: number;
+  serviceRecordId: number;
+  inventoryItemId: number;
+  quantityUsed: number;
+  unitPriceAtTime: number;
+  createdAt: string;
 }
 
 export type CampaignStatus = "draft" | "scheduled" | "sending" | "completed";
