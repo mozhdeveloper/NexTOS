@@ -4,11 +4,27 @@ import type { Equipment, ServiceRecord, ServicePhoto, Booking, ServiceCategory, 
 import { useBillingStore } from "./useBillingStore";
 import { toast } from "sonner";
 
+export interface DraftExecution {
+  currentStep: number;
+  equipmentId?: number;
+  beforePhoto?: string;
+  beforeNotes?: string;
+  afterPhoto?: string;
+  afterNotes?: string;
+  findings?: string;
+  workDone?: string;
+  partsUsed: string;
+  recommendations?: string;
+  techSignature?: string;
+  clientSignature?: string;
+}
+
 interface OperationsState {
   equipment: Equipment[];
   serviceRecords: ServiceRecord[];
   servicePhotos: ServicePhoto[];
   bookings: Booking[];
+  draftExecutions: Record<number, DraftExecution>;
   
   // Actions
   addEquipment: (eq: Omit<Equipment, "id" | "createdAt">) => void;
@@ -19,11 +35,15 @@ interface OperationsState {
   addBooking: (booking: Omit<Booking, "id" | "createdAt">) => void;
   updateBooking: (id: number, data: Partial<Booking>) => void;
   
+  // Draft Persistence
+  updateDraftExecution: (id: number, data: Partial<DraftExecution>) => void;
+  clearDraftExecution: (id: number) => void;
+  
   // Package & Task Flow Logic
   registerEquipmentToPackage: (equipmentId: number, pkg: Package) => void;
   checkServiceThresholds: () => void;
   
-  // Simulation Actions (Non-persistent labeling)
+  // Simulation Actions
   injectSimulationTask: () => void;
   clearSimulationData: () => void;
 
@@ -117,6 +137,7 @@ export const useOperationsStore = create<OperationsState>()(
       serviceRecords: mockServiceRecords,
       servicePhotos: [],
       bookings: mockBookings,
+      draftExecutions: {},
 
       addEquipment: (eq) => {
         const newEq = { ...eq, id: Date.now(), createdAt: new Date().toISOString() };
@@ -211,6 +232,33 @@ export const useOperationsStore = create<OperationsState>()(
         set((state) => ({
           bookings: state.bookings.map((b) => (b.id === id ? { ...b, ...data } : b)),
         }));
+      },
+
+      updateDraftExecution: (id, data) => {
+        set((state) => {
+          const currentDraft = state.draftExecutions[id] || { currentStep: 0, partsUsed: "Pending" };
+          return {
+            draftExecutions: {
+              ...state.draftExecutions,
+              [id]: { ...currentDraft, ...data }
+            }
+          };
+        });
+        
+        // If moving past step 0, ensure record is in_progress
+        if (data.currentStep && data.currentStep > 0) {
+            const record = get().serviceRecords.find(r => r.id === id);
+            if (record && record.status === "scheduled") {
+                get().updateServiceRecord(id, { status: "in_progress" });
+            }
+        }
+      },
+
+      clearDraftExecution: (id) => {
+        set((state) => {
+          const { [id]: removed, ...rest } = state.draftExecutions;
+          return { draftExecutions: rest };
+        });
       },
 
       // Simulation Logic
