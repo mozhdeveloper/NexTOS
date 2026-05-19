@@ -262,31 +262,34 @@ export default function CRM() {
           />
 
           {/* Search Bar */}
-          <div className="flex items-center gap-3">
-            <div className="relative flex-1 max-w-xs">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-600" />
-              <Input
-                placeholder={`Search ${activeTab === 'pipeline' ? 'deals' : activeTab}...`}
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-8 h-8 bg-white border-gray-200 text-black text-xs placeholder:text-gray-400"
-              />
+          {/* Search Bar & Filters */}
+          {activeTab !== "dashboard" && activeTab !== "performance" && (
+            <div className="flex items-center gap-3">
+              <div className="relative flex-1 max-w-xs">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-600" />
+                <Input
+                  placeholder={`Search ${activeTab === 'pipeline' ? 'deals' : activeTab}...`}
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-8 h-8 bg-white border-gray-200 text-black text-xs placeholder:text-gray-400"
+                />
+              </div>
+              {activeTab === "clients" && (
+                <Select value={clientFilter} onValueChange={setClientFilter}>
+                  <SelectTrigger className="h-8 w-36 bg-white border-gray-200 text-black text-xs">
+                    <Filter className="w-3 h-3 mr-1" />
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-white border-gray-200">
+                    <SelectItem value="all" className="text-xs text-black">All Status</SelectItem>
+                    <SelectItem value="active" className="text-xs text-black">Active</SelectItem>
+                    <SelectItem value="prospect" className="text-xs text-black">Prospect</SelectItem>
+                    <SelectItem value="inactive" className="text-xs text-black">Inactive</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
             </div>
-            {activeTab === "clients" && (
-              <Select value={clientFilter} onValueChange={setClientFilter}>
-                <SelectTrigger className="h-8 w-36 bg-white border-gray-200 text-black text-xs">
-                  <Filter className="w-3 h-3 mr-1" />
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="bg-white border-gray-200">
-                  <SelectItem value="all" className="text-xs text-black">All Status</SelectItem>
-                  <SelectItem value="active" className="text-xs text-black">Active</SelectItem>
-                  <SelectItem value="prospect" className="text-xs text-black">Prospect</SelectItem>
-                  <SelectItem value="inactive" className="text-xs text-black">Inactive</SelectItem>
-                </SelectContent>
-              </Select>
-            )}
-          </div>
+          )}
 
           {/* Tabs */}
           <div className="flex gap-1 border-b border-gray-200 pb-0">
