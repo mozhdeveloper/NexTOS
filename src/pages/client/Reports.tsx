@@ -47,7 +47,8 @@ export default function ClientReports() {
   const clientId = user?.clientId || 1;
 
   const clientEquipment = equipment.filter((e) => e.clientId === clientId);
-  const clientServices = serviceRecords.filter((r) => r.clientId === clientId);
+  const clientEquipmentIds = new Set(clientEquipment.map(e => e.id));
+  const clientServices = serviceRecords.filter((r) => clientEquipmentIds.has(r.equipmentId));
   const clientBookings = bookings.filter((b) => b.clientId === clientId);
   const clientInvoices = invoices.filter((i) => i.clientId === clientId);
   const clientPackages = packages.filter((p) => p.clientId === clientId);

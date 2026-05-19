@@ -51,6 +51,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
 } from "@/components/ui/dialog";
 
 import { useInventoryStore } from "@/stores/useInventoryStore";
@@ -72,13 +73,26 @@ export default function Services() {
     updateDraftExecution,
     clearDraftExecution,
     injectSimulationTask,
-    clearSimulationData
+    clearSimulationData: storeClearSimulationData
   } = useOperationsStore();
+
   const { packages } = useBillingStore();
   
   const [activeTab, setActiveTab] = useState<TabType>("tasks");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedEquipment, setSelectedEquipment] = useState<number | null>(null);
+
+  const clearSimulationData = useCallback(() => {
+    storeClearSimulationData();
+    // Reset selected equipment if it was a simulation unit
+    if (selectedEquipment) {
+      const eq = equipment.find(e => e.id === selectedEquipment);
+      if (eq && (eq.notes?.includes("TEST DATA") || eq.unitId?.startsWith("SIM-"))) {
+        setSelectedEquipment(null);
+      }
+    }
+  }, [storeClearSimulationData, selectedEquipment, equipment]);
+
   const [qrSerial, setQrSerial] = useState("");
   const [showQR, setShowQR] = useState(false);
 
@@ -453,7 +467,7 @@ export default function Services() {
               </table>
             </div>
 
-            {selectedEquipment && (
+            {selectedEquipment && equipment.find((eqItem) => eqItem.id === selectedEquipment) && (
               <EquipmentDetail
                 equipment={equipment.find((eqItem) => eqItem.id === selectedEquipment)!}
                 client={clients.find((c) => c.id === equipment.find((eqItem) => eqItem.id === selectedEquipment)?.clientId)}
@@ -652,6 +666,10 @@ export default function Services() {
       {/* Service Report View Modal */}
       <Dialog open={!!showReport} onOpenChange={() => setShowReport(null)}>
         <DialogContent className="bg-white border-gray-200 max-w-4xl max-h-[95vh] overflow-auto scrollbar-hide rounded-2xl">
+          <DialogHeader className="sr-only">
+            <DialogTitle>Service Report Detail</DialogTitle>
+            <DialogDescription>Detailed documentation of the maintenance service performed.</DialogDescription>
+          </DialogHeader>
           {showReport && (
             <ServiceReportView
               record={showReport}
@@ -671,6 +689,9 @@ export default function Services() {
               <Camera className="w-5 h-5 text-[#10B981]" />
               Field Asset Recognition
             </DialogTitle>
+            <DialogDescription className="text-xs text-gray-500">
+              Scan equipment QR code to identify and manage the asset in the field.
+            </DialogDescription>
           </DialogHeader>
           
           <div className="space-y-6 pt-2">
@@ -720,6 +741,9 @@ export default function Services() {
               <QrCode className="w-5 h-5 text-[#66B2B2]" />
               Asset Identification Label
             </DialogTitle>
+            <DialogDescription className="text-xs text-gray-500">
+              Unique QR code for physical asset tracking and field identification.
+            </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col items-center justify-center p-8 bg-white rounded-xl mt-4 border border-gray-50 shadow-inner">
             <div className="bg-white p-4 rounded-xl border-2 border-gray-900 shadow-xl">
@@ -901,6 +925,9 @@ function ExecutionModal({ task, onClose, onFinish }: { task: ServiceRecord | nul
                                 </div>
                                 Service Execution: <span className="font-mono-tech">{currentEq?.unitId || `SIM-UNIT-${task.id}`}</span>
                             </DialogTitle>
+                            <DialogDescription className="text-xs text-gray-500 mt-1">
+                                Complete the following steps to document and finalize the service execution for this asset.
+                            </DialogDescription>
                         </DialogHeader>
 
                         <div className="px-10 py-6 border-b border-gray-50">

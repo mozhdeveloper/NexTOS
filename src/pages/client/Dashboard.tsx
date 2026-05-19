@@ -231,7 +231,8 @@ export default function ClientDashboard() {
   const [showReport, setShowReport] = useState<ServiceRecord | null>(null);
 
   const clientEquipment = useMemo(() => equipment.filter((entry) => entry.clientId === clientId), [equipment, clientId]);
-  const clientServices = useMemo(() => serviceRecords.filter((entry) => entry.clientId === clientId), [serviceRecords, clientId]);
+  const clientEquipmentIds = useMemo(() => new Set(clientEquipment.map(e => e.id)), [clientEquipment]);
+  const clientServices = useMemo(() => serviceRecords.filter((entry) => clientEquipmentIds.has(entry.equipmentId)), [serviceRecords, clientEquipmentIds]);
   const clientBookings = useMemo(() => bookings.filter((entry) => entry.clientId === clientId), [bookings, clientId]);
   const clientInvoices = useMemo(() => invoices.filter((entry) => entry.clientId === clientId), [invoices, clientId]);
 
