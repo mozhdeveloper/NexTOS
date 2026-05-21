@@ -1,10 +1,11 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { useLocation } from "react-router";
 import { useOperationsStore } from "@/stores/useOperationsStore";
 import { useCRMStore } from "@/stores/useCRMStore";
 import { useAuthStore } from "@/stores/useAuthStore";
 import seedData from "@/data/seed-data.json";
 import type { ServiceType, Equipment, ServiceRecord, Client } from "@/types";
+import { trpc } from "@/providers/trpc";
 import { QRCodeSVG } from "qrcode.react";
 import {
   Search,
@@ -22,9 +23,14 @@ import {
   ChevronUp,
   PenTool,
   Loader2,
+  Plus,
+  CalendarClock,
+  Pencil,
+  Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Html5Qrcode } from "html5-qrcode";
 import { toast } from "sonner";
 import {
@@ -42,7 +48,34 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 
-type TabType = "equipment" | "reports" | "new";
+type TabType = "equipment" | "reports" | "new" | "scheduled-maintenance";
+
+type ScheduledMaintenanceEntry = {
+  id: string;
+  equipmentId: string;
+  scheduleIndex?: number; // undefined = primary pmsConfiguration; number = pmsSchedules[index]
+  equipmentName: string;
+  clientId: string;
+  clientName: string;
+  serialNumber: string;
+  serviceType: string;
+  serviceInterval: number;
+  serviceIntervalUnit: string;
+  estimatedCost: number;
+  status: "OK" | "Near Service" | "Overdue" | "—";
+};
+
+const SCHEDULED_MAINTENANCE_KEY = "nextos-user-scheduled-maintenance";
+const PM_INTERVAL_UNITS = ["Hours", "KM", "Weeks", "Months", "Years"] as const;
+
+function readUserScheduledMaintenance(): ScheduledMaintenanceEntry[] {
+  try {
+    const raw = typeof window !== "undefined" ? window.localStorage.getItem(SCHEDULED_MAINTENANCE_KEY) : null;
+    return raw ? (JSON.parse(raw) as ScheduledMaintenanceEntry[]) : [];
+  } catch {
+    return [];
+  }
+}
 
 type ServiceTypeOption = {
   value: string;
@@ -133,7 +166,14 @@ export default function Services() {
     addServiceRecord,
     getServiceHistory,
   } = useOperationsStore();
-  const [activeTab, setActiveTab] = useState<TabType>("equipment");
+  const [activeTab, setActiveTabRaw] = useState<TabType>(() => {
+    try { return (sessionStorage.getItem("nextos-services-tab") as TabType) ?? "equipment"; }
+    catch { return "equipment"; }
+  });
+  const setActiveTab = (tab: TabType) => {
+    try { sessionStorage.setItem("nextos-services-tab", tab); } catch {}
+    setActiveTabRaw(tab);
+  };
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedEquipment, setSelectedEquipment] = useState<number | null>(null);
   const [qrSerial, setQrSerial] = useState("");
@@ -167,6 +207,46 @@ export default function Services() {
   const [afterPhotos, setAfterPhotos] = useState<string[]>([]);
   const [showReport, setShowReport] = useState<ServiceRecord | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Scheduled maintenance state
+  const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
+  const [scheduleEquipmentId, setScheduleEquipmentId] = useState("");
+  const [scheduleServiceType, setScheduleServiceType] = useState("");
+  const [scheduleInterval, setScheduleInterval] = useState("");
+  const [scheduleIntervalUnit, setScheduleIntervalUnit] = useState("Hours");
+  const [scheduleEstimatedCost, setScheduleEstimatedCost] = useState("");
+  const [scheduleMissingFields, setScheduleMissingFields] = useState<string[]>([]);
+  const [userScheduledMaintenance, setUserScheduledMaintenance] = useState<ScheduledMaintenanceEntry[]>(readUserScheduledMaintenance);
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editingEntry, setEditingEntry] = useState<ScheduledMaintenanceEntry | null>(null);
+  const [editEquipmentId, setEditEquipmentId] = useState("");
+  const [editServiceType, setEditServiceType] = useState("");
+  const [editInterval, setEditInterval] = useState("");
+  const [editIntervalUnit, setEditIntervalUnit] = useState("Hours");
+  const [editEstimatedCost, setEditEstimatedCost] = useState("");
+  const [editMissingFields, setEditMissingFields] = useState<string[]>([]);
+  const updateSeedEquipmentMutation = trpc.seedEquipment.update.useMutation();
+  const addPmsConfigurationMutation = trpc.seedEquipment.addPmsConfiguration.useMutation();
+  const updatePmsConfigurationMutation = trpc.seedEquipment.updatePmsConfiguration.useMutation();
+  const deletePmsConfigurationMutation = trpc.seedEquipment.deletePmsConfiguration.useMutation();
+
+  // Reactive GPS cache for Excavator CAT 320 status — mirrors what Fleet.tsx writes
+  const [gps001CacheMs, setGps001CacheMs] = useState<number>(() => {
+    try { return Number(window.localStorage.getItem("nextos-gps001-total-hours-ms") ?? "0") || 0; }
+    catch { return 0; }
+  });
+  useEffect(() => {
+    const refresh = () => {
+      try {
+        const ms = Number(window.localStorage.getItem("nextos-gps001-total-hours-ms") ?? "0") || 0;
+        setGps001CacheMs((prev) => (prev !== ms ? ms : prev));
+      } catch {}
+    };
+    const id = setInterval(refresh, 30_000);
+    window.addEventListener("storage", refresh);
+    return () => { clearInterval(id); window.removeEventListener("storage", refresh); };
+  }, []);
+
   const techSignatureCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const isDrawingTechSignatureRef = useRef(false);
   const hasTechSignatureRef = useRef(false);
@@ -584,6 +664,302 @@ export default function Services() {
     retired: "bg-gray-100 text-gray-600",
   };
 
+  // Compute the status for a single pmsConfiguration entry given an equipment's usage metrics.
+  const computeEntryStatus = (
+    pms: any,
+    eq: any
+  ): ScheduledMaintenanceEntry["status"] => {
+    const interval = Number(pms?.serviceInterval ?? 0);
+    if (!Number.isFinite(interval) || interval <= 0) return "—";
+
+    const unit = String(pms?.serviceIntervalUnit ?? "Hours").toLowerCase();
+    let usage: number | null = null;
+
+    if (unit === "hours") {
+      if (eq.id === "EQ-001" && gps001CacheMs > 0) {
+        usage = gps001CacheMs / (1000 * 60 * 60);
+      } else {
+        const match = String(eq.hoursTotal ?? "").match(/(\d+)\s*h\s*(\d+)\s*m/i);
+        if (match) usage = Number(match[1]) + Number(match[2]) / 60;
+      }
+    } else if (unit === "km") {
+      const raw = eq.kmTotal;
+      const parsed = typeof raw === "number" ? raw : parseFloat(String(raw ?? "").replace(/[^\d.]/g, ""));
+      usage = Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+    } else {
+      const raw = eq.days;
+      const days = typeof raw === "number" ? raw : parseFloat(String(raw ?? ""));
+      if (Number.isFinite(days) && days >= 0) {
+        if (unit === "weeks") usage = days / 7;
+        else if (unit === "months") usage = days / 30.44;
+        else if (unit === "years") usage = days / 365.25;
+      }
+    }
+
+    if (usage === null || !Number.isFinite(usage) || usage < 0) return "—";
+    const progress = (usage / interval) * 100;
+    if (progress >= 100) return "Overdue";
+    if (progress >= 80) return "Near Service";
+    return "OK";
+  };
+
+  // One row per pmsConfiguration array entry — status computed independently per entry.
+  // Reactive to gps001CacheMs so EQ-001 updates live.
+  const seedScheduledMaintenance = useMemo((): ScheduledMaintenanceEntry[] => {
+    const entries: ScheduledMaintenanceEntry[] = [];
+
+    (seedData.equipment as any[]).forEach((eq) => {
+      const configs: any[] = Array.isArray(eq.pmsConfiguration) ? eq.pmsConfiguration : [];
+      if (configs.length === 0) return;
+
+      const client = (seedData.clients as any[]).find((c) => c.id === eq.clientId);
+      const clientName = client?.companyName ?? "—";
+
+      configs.forEach((pms: any, index: number) => {
+        entries.push({
+          id: index === 0 ? `seed-pms-${eq.id}` : `seed-sched-${eq.id}-${index}`,
+          equipmentId: eq.id,
+          scheduleIndex: index,
+          equipmentName: eq.name ?? "—",
+          clientId: eq.clientId,
+          clientName,
+          serialNumber: eq.serialNumber ?? "—",
+          serviceType: pms.serviceType ?? "PMS (Preventative Maintenance)",
+          serviceInterval: Number(pms.serviceInterval ?? 0),
+          serviceIntervalUnit: pms.serviceIntervalUnit ?? "Hours",
+          estimatedCost: Number(pms.estimatedCost ?? 0),
+          status: computeEntryStatus(pms, eq),
+        });
+      });
+    });
+
+    return entries;
+  }, [gps001CacheMs]);
+
+  // Merge seed entries (overridden by user edits) with any optimistic entries not yet in seed.
+  const allScheduledMaintenance = useMemo(() => {
+    const userById = new Map(userScheduledMaintenance.map((e) => [e.id, e]));
+    const merged = seedScheduledMaintenance.map((e) => userById.get(e.id) ?? e);
+    const seedIds = new Set(seedScheduledMaintenance.map((e) => e.id));
+    const extraUserEntries = userScheduledMaintenance.filter((e) => !seedIds.has(e.id));
+    return [...merged, ...extraUserEntries];
+  }, [seedScheduledMaintenance, userScheduledMaintenance]);
+
+  // Purge stale localStorage overrides whenever seed changes — seed-data.json is ground truth.
+  useEffect(() => {
+    const seedIds = new Set(seedScheduledMaintenance.map((e) => e.id));
+    setUserScheduledMaintenance((prev) => {
+      const cleaned = prev.filter((e) => !seedIds.has(e.id));
+      if (cleaned.length !== prev.length) {
+        window.localStorage.setItem(SCHEDULED_MAINTENANCE_KEY, JSON.stringify(cleaned));
+        return cleaned;
+      }
+      return prev;
+    });
+  }, [seedScheduledMaintenance]);
+
+  const handleDeleteEntry = async (entry: ScheduledMaintenanceEntry) => {
+    const seedEq = (seedData.equipment as any[]).find((e) => e.id === entry.equipmentId);
+    if (seedEq && entry.scheduleIndex !== undefined) {
+      try {
+        await deletePmsConfigurationMutation.mutateAsync({
+          equipmentId: seedEq.id,
+          configIndex: entry.scheduleIndex,
+        });
+        toast.success(`Deleted "${entry.serviceType}" schedule for ${entry.equipmentName}.`);
+      } catch {
+        toast.error("Failed to delete schedule. Please try again.");
+        return;
+      }
+    }
+    // Also remove from localStorage optimistic state
+    setUserScheduledMaintenance((prev) => {
+      const next = prev.filter((e) => e.id !== entry.id);
+      window.localStorage.setItem(SCHEDULED_MAINTENANCE_KEY, JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const handleScheduleSubmit = async () => {
+    const missing: string[] = [];
+    if (!scheduleEquipmentId) missing.push("equipment");
+    if (!scheduleServiceType) missing.push("serviceType");
+    if (!scheduleInterval || Number(scheduleInterval) <= 0) missing.push("serviceInterval");
+    if (missing.length > 0) {
+      setScheduleMissingFields(missing);
+      return;
+    }
+
+    const seedEq = (seedData.equipment as any[]).find((e) => e.id === scheduleEquipmentId);
+    if (!seedEq) return;
+    const client = (seedData.clients as any[]).find((c) => c.id === seedEq.clientId);
+
+    const serviceTypeLabel =
+      serviceTypeOptions.find((opt) => opt.value === scheduleServiceType)?.label ?? scheduleServiceType;
+    const numericInterval = Number(scheduleInterval);
+    const intervalUnit = scheduleIntervalUnit as "Hours" | "KM" | "Weeks" | "Months" | "Years";
+    const numericCost = Number(scheduleEstimatedCost) || 0;
+
+    // Duplicate check — same equipment + same interval + unit + service type
+    const isDuplicate = allScheduledMaintenance.some(
+      (e) =>
+        e.equipmentId === scheduleEquipmentId &&
+        e.serviceInterval === numericInterval &&
+        e.serviceIntervalUnit.toLowerCase() === intervalUnit.toLowerCase() &&
+        e.serviceType.toLowerCase() === serviceTypeLabel.toLowerCase()
+    );
+    if (isDuplicate) {
+      toast.error(
+        "A schedule with the same interval, unit, and service type already exists for this equipment."
+      );
+      return;
+    }
+
+    // Always append to the pmsConfiguration array — there is no "primary vs additional" distinction
+    let optimisticConfigIndex = Array.isArray(seedEq.pmsConfiguration) ? seedEq.pmsConfiguration.length : 0;
+
+    try {
+      const result = await addPmsConfigurationMutation.mutateAsync({
+        equipmentId: seedEq.id,
+        serviceInterval: numericInterval,
+        serviceIntervalUnit: intervalUnit,
+        serviceType: serviceTypeLabel,
+        ...(numericCost > 0 ? { estimatedCost: numericCost } : {}),
+      });
+      optimisticConfigIndex = result.configIndex ?? optimisticConfigIndex;
+    } catch {
+      toast.error("Failed to write to seed data. Changes are saved locally only.");
+    }
+
+    const optimisticId =
+      optimisticConfigIndex === 0
+        ? `seed-pms-${seedEq.id}`
+        : `seed-sched-${seedEq.id}-${optimisticConfigIndex}`;
+
+    const optimisticEntry: ScheduledMaintenanceEntry = {
+      id: optimisticId,
+      equipmentId: seedEq.id,
+      scheduleIndex: optimisticConfigIndex,
+      equipmentName: seedEq.name ?? "—",
+      clientId: seedEq.clientId,
+      clientName: client?.companyName ?? "—",
+      serialNumber: seedEq.serialNumber ?? "—",
+      serviceType: serviceTypeLabel,
+      serviceInterval: numericInterval,
+      serviceIntervalUnit: scheduleIntervalUnit,
+      estimatedCost: numericCost,
+      status: (seedEq.status ?? "—") as ScheduledMaintenanceEntry["status"],
+    };
+
+    const existingIdx = userScheduledMaintenance.findIndex((e) => e.id === optimisticId);
+    const next =
+      existingIdx >= 0
+        ? userScheduledMaintenance.map((e, i) => (i === existingIdx ? optimisticEntry : e))
+        : [...userScheduledMaintenance, optimisticEntry];
+
+    setUserScheduledMaintenance(next);
+    window.localStorage.setItem(SCHEDULED_MAINTENANCE_KEY, JSON.stringify(next));
+    resetScheduleModal();
+    setScheduleModalOpen(false);
+    toast.success("Maintenance scheduled successfully");
+  };
+
+  const resetScheduleModal = () => {
+    setScheduleEquipmentId("");
+    setScheduleServiceType("");
+    setScheduleInterval("");
+    setScheduleIntervalUnit("Hours");
+    setScheduleEstimatedCost("");
+    setScheduleMissingFields([]);
+  };
+
+  const openEditModal = (entry: ScheduledMaintenanceEntry) => {
+    setEditingEntry(entry);
+    setEditEquipmentId(entry.equipmentId);
+    // entry.serviceType may be stored as a label ("Installation") or a value ("installation") —
+    // find the matching option by value first, then by label, so the Select pre-selects correctly.
+    const matchingOption = serviceTypeOptions.find(
+      (opt) => opt.value === entry.serviceType || opt.label === entry.serviceType
+    );
+    setEditServiceType(matchingOption?.value ?? entry.serviceType);
+    setEditInterval(String(entry.serviceInterval));
+    setEditIntervalUnit(entry.serviceIntervalUnit);
+    setEditEstimatedCost(entry.estimatedCost > 0 ? String(entry.estimatedCost) : "");
+    setEditMissingFields([]);
+    setEditModalOpen(true);
+  };
+
+  const resetEditModal = () => {
+    setEditingEntry(null);
+    setEditEquipmentId("");
+    setEditServiceType("");
+    setEditInterval("");
+    setEditIntervalUnit("Hours");
+    setEditEstimatedCost("");
+    setEditMissingFields([]);
+  };
+
+  const handleEditSubmit = async () => {
+    if (!editingEntry) return;
+    const missing: string[] = [];
+    if (!editEquipmentId) missing.push("equipment");
+    if (!editServiceType) missing.push("serviceType");
+    if (!editInterval || Number(editInterval) <= 0) missing.push("serviceInterval");
+    if (missing.length > 0) {
+      setEditMissingFields(missing);
+      return;
+    }
+
+    const seedEq = (seedData.equipment as any[]).find((e) => e.id === editEquipmentId);
+    if (!seedEq) return;
+    const client = (seedData.clients as any[]).find((c) => c.id === seedEq.clientId);
+
+    // Convert dropdown value ("pms") → label ("PMS (Preventative Maintenance)") for seed-data.json
+    const serviceTypeLabel =
+      serviceTypeOptions.find((opt) => opt.value === editServiceType)?.label ?? editServiceType;
+    const numericInterval = Number(editInterval);
+    const intervalUnit = editIntervalUnit as "Hours" | "KM" | "Weeks" | "Months" | "Years";
+
+    // All entries now have scheduleIndex (even index 0) — always use updatePmsConfigurationMutation
+    try {
+      await updatePmsConfigurationMutation.mutateAsync({
+        equipmentId: seedEq.id,
+        configIndex: editingEntry.scheduleIndex ?? 0,
+        serviceInterval: numericInterval,
+        serviceIntervalUnit: intervalUnit,
+        serviceType: serviceTypeLabel,
+        ...(Number(editEstimatedCost) > 0 ? { estimatedCost: Number(editEstimatedCost) } : {}),
+      });
+    } catch {
+      toast.error("Failed to write to seed data. Changes are saved locally only.");
+    }
+
+    const updatedEntry: ScheduledMaintenanceEntry = {
+      ...editingEntry,
+      equipmentId: seedEq.id,
+      equipmentName: seedEq.name ?? "—",
+      clientId: seedEq.clientId,
+      clientName: client?.companyName ?? "—",
+      serialNumber: seedEq.serialNumber ?? "—",
+      serviceType: serviceTypeLabel,
+      serviceInterval: numericInterval,
+      serviceIntervalUnit: editIntervalUnit,
+      estimatedCost: Number(editEstimatedCost) || 0,
+    };
+
+    const existingIdx = userScheduledMaintenance.findIndex((e) => e.id === editingEntry.id);
+    const next =
+      existingIdx >= 0
+        ? userScheduledMaintenance.map((e, i) => (i === existingIdx ? updatedEntry : e))
+        : [...userScheduledMaintenance, updatedEntry];
+
+    setUserScheduledMaintenance(next);
+    window.localStorage.setItem(SCHEDULED_MAINTENANCE_KEY, JSON.stringify(next));
+    resetEditModal();
+    setEditModalOpen(false);
+    toast.success("Maintenance updated successfully");
+  };
+
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -598,6 +974,7 @@ export default function Services() {
       <div className="flex gap-1 border-b border-gray-200">
         {[
           { id: "equipment" as TabType, label: "Equipment", icon: Package },
+          { id: "scheduled-maintenance" as TabType, label: "Scheduled Maintenance", icon: CalendarClock },
           { id: "reports" as TabType, label: "Service Reports", icon: FileText },
           { id: "new" as TabType, label: "New Report", icon: Wrench },
         ].map((tab) => (
@@ -780,6 +1157,298 @@ export default function Services() {
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {/* Scheduled Maintenance Tab */}
+      {activeTab === "scheduled-maintenance" && (
+        <div className="space-y-3">
+          {/* Header */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Wrench className="w-4 h-4 text-[#66B2B2]" />
+              <span className="text-sm font-bold text-black">Scheduled Maintenance (PMS)</span>
+            </div>
+            <Button
+              size="sm"
+              onClick={() => setScheduleModalOpen(true)}
+              className="h-8 bg-[#F2A900] text-black hover:bg-[#F2A900]/90 font-semibold text-xs"
+            >
+              <Plus className="w-3.5 h-3.5 mr-1.5" />
+              Schedule Service
+            </Button>
+          </div>
+
+          {/* Table */}
+          <div className="data-card overflow-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="bg-gray-50">
+                  <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Equipment</th>
+                  <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Client</th>
+                  <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Serial Number</th>
+                  <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Service Type</th>
+                  <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Interval</th>
+                  <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Unit</th>
+                  <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Est. Cost</th>
+                  <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Status</th>
+                  <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {allScheduledMaintenance.map((entry) => (
+                  <tr key={entry.id} className="border-b border-gray-200 hover:bg-gray-50">
+                    <td className="py-2.5 px-3 text-black font-medium">{entry.equipmentName}</td>
+                    <td className="py-2.5 px-3 text-gray-700">{entry.clientName}</td>
+                    <td className="py-2.5 px-3 text-gray-600 font-mono">{entry.serialNumber}</td>
+                    <td className="py-2.5 px-3 text-black">{entry.serviceType}</td>
+                    <td className="py-2.5 px-3 text-black font-mono">{entry.serviceInterval}</td>
+                    <td className="py-2.5 px-3 text-gray-600">{entry.serviceIntervalUnit}</td>
+                    <td className="py-2.5 px-3 text-black">
+                      {entry.estimatedCost > 0
+                        ? `₱${entry.estimatedCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                        : "—"}
+                    </td>
+                    <td className="py-2.5 px-3">
+                      {entry.status === "Overdue" ? (
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#EF4444]/20 text-[#EF4444] uppercase">Overdue</span>
+                      ) : entry.status === "Near Service" ? (
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#F2A900]/20 text-[#F2A900] uppercase">Near Service</span>
+                      ) : entry.status === "OK" ? (
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#10B981]/20 text-[#10B981] uppercase">OK</span>
+                      ) : (
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-gray-100 text-gray-500 uppercase">—</span>
+                      )}
+                    </td>
+                    <td className="py-2.5 px-3">
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => openEditModal(entry)}
+                          className="h-6 w-6 p-0 text-gray-500 hover:text-[#66B2B2] hover:bg-[#66B2B2]/10"
+                        >
+                          <Pencil className="w-3 h-3" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDeleteEntry(entry)}
+                          disabled={deletePmsConfigurationMutation.isPending}
+                          className="h-6 w-6 p-0 text-gray-500 hover:text-[#EF4444] hover:bg-[#EF4444]/10"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {allScheduledMaintenance.length === 0 && (
+                  <tr>
+                    <td colSpan={9} className="py-10 text-center text-gray-400">
+                      No scheduled maintenance entries. Click "+ Schedule Service" to add one.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Schedule Service Modal */}
+          <Dialog open={scheduleModalOpen} onOpenChange={(open) => { if (!open) resetScheduleModal(); setScheduleModalOpen(open); }}>
+            <DialogContent className="bg-white border border-gray-200 max-w-md">
+              <DialogHeader>
+                <DialogTitle className="text-black flex items-center gap-2">
+                  <Wrench className="w-4 h-4 text-[#66B2B2]" />
+                  Schedule Maintenance
+                </DialogTitle>
+              </DialogHeader>
+
+              <div className="space-y-4 py-2">
+                {scheduleMissingFields.length > 0 && (
+                  <div className="rounded border border-[#EF4444]/40 bg-[#EF4444]/10 px-3 py-2 text-xs text-[#EF4444]">
+                    Please fill in all required fields.
+                  </div>
+                )}
+
+                <div className="space-y-1.5">
+                  <Label className="text-sm text-black font-medium">Equipment</Label>
+                  <Select
+                    value={scheduleEquipmentId}
+                    onValueChange={(v) => {
+                      setScheduleEquipmentId(v);
+                      setScheduleMissingFields((prev) => prev.filter((f) => f !== "equipment"));
+                    }}
+                  >
+                    <SelectTrigger className={`w-full bg-white text-black ${scheduleMissingFields.includes("equipment") ? "border-[#EF4444]" : "border-gray-200"}`}>
+                      <SelectValue placeholder="Select equipment" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-white border-gray-200">
+                      {(seedData.equipment as any[]).map((eq) => (
+                        <SelectItem key={eq.id} value={eq.id}>{eq.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-sm text-black font-medium">Service Type</Label>
+                  <Select
+                    value={scheduleServiceType}
+                    onValueChange={(v) => {
+                      setScheduleServiceType(v);
+                      setScheduleMissingFields((prev) => prev.filter((f) => f !== "serviceType"));
+                    }}
+                  >
+                    <SelectTrigger className={`w-full bg-white text-black ${scheduleMissingFields.includes("serviceType") ? "border-[#EF4444]" : "border-gray-200"}`}>
+                      <SelectValue placeholder="Select service type" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-white border-gray-200">
+                      {serviceTypeOptions.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="grid grid-cols-[1fr_130px] gap-2">
+                  <div className="space-y-1.5">
+                    <Label className="text-sm text-black font-medium">Service Interval</Label>
+                    <Input
+                      type="number" min="1" step="any"
+                      value={scheduleInterval}
+                      onChange={(e) => { setScheduleInterval(e.target.value); setScheduleMissingFields((prev) => prev.filter((f) => f !== "serviceInterval")); }}
+                      placeholder="e.g. 500"
+                      className={`bg-white text-black placeholder:text-gray-400 focus-visible:border-[#66B2B2] focus-visible:ring-[#66B2B2]/30 ${scheduleMissingFields.includes("serviceInterval") ? "border-[#EF4444]" : "border-gray-200"}`}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-sm text-black font-medium">Unit</Label>
+                    <Select value={scheduleIntervalUnit} onValueChange={setScheduleIntervalUnit}>
+                      <SelectTrigger className="w-full bg-white border-gray-200 text-black"><SelectValue /></SelectTrigger>
+                      <SelectContent className="bg-white border-gray-200">
+                        {PM_INTERVAL_UNITS.map((unit) => <SelectItem key={unit} value={unit}>{unit}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-sm text-black font-medium">Estimated Cost</Label>
+                  <Input
+                    type="number" min="0" step="0.01"
+                    value={scheduleEstimatedCost}
+                    onChange={(e) => setScheduleEstimatedCost(e.target.value)}
+                    placeholder="$0.00"
+                    className="bg-white border-gray-200 text-black placeholder:text-gray-400 focus-visible:border-[#66B2B2] focus-visible:ring-[#66B2B2]/30"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <Button variant="outline" onClick={() => { resetScheduleModal(); setScheduleModalOpen(false); }} className="border-gray-200 text-gray-600 hover:bg-gray-50" disabled={updateSeedEquipmentMutation.isPending || addPmsConfigurationMutation.isPending}>Cancel</Button>
+                <Button onClick={handleScheduleSubmit} className="bg-[#F2A900] text-black hover:bg-[#F2A900]/90 font-semibold" disabled={updateSeedEquipmentMutation.isPending || addPmsConfigurationMutation.isPending}>{(updateSeedEquipmentMutation.isPending || addPmsConfigurationMutation.isPending) ? "Saving…" : "Schedule →"}</Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+
+          {/* Edit Maintenance Modal */}
+          <Dialog open={editModalOpen} onOpenChange={(open) => { if (!open) resetEditModal(); setEditModalOpen(open); }}>
+            <DialogContent className="bg-white border border-gray-200 max-w-md">
+              <DialogHeader>
+                <DialogTitle className="text-black flex items-center gap-2">
+                  <Pencil className="w-4 h-4 text-[#66B2B2]" />
+                  Edit Maintenance
+                </DialogTitle>
+              </DialogHeader>
+
+              <div className="space-y-4 py-2">
+                {editMissingFields.length > 0 && (
+                  <div className="rounded border border-[#EF4444]/40 bg-[#EF4444]/10 px-3 py-2 text-xs text-[#EF4444]">
+                    Please fill in all required fields.
+                  </div>
+                )}
+
+                <div className="space-y-1.5">
+                  <Label className="text-sm text-black font-medium">Equipment</Label>
+                  <Select
+                    value={editEquipmentId}
+                    onValueChange={(v) => {
+                      setEditEquipmentId(v);
+                      setEditMissingFields((prev) => prev.filter((f) => f !== "equipment"));
+                    }}
+                  >
+                    <SelectTrigger className={`w-full bg-white text-black ${editMissingFields.includes("equipment") ? "border-[#EF4444]" : "border-gray-200"}`}>
+                      <SelectValue placeholder="Select equipment" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-white border-gray-200">
+                      {(seedData.equipment as any[]).map((eq) => (
+                        <SelectItem key={eq.id} value={eq.id}>{eq.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-sm text-black font-medium">Service Type</Label>
+                  <Select
+                    value={editServiceType}
+                    onValueChange={(v) => {
+                      setEditServiceType(v);
+                      setEditMissingFields((prev) => prev.filter((f) => f !== "serviceType"));
+                    }}
+                  >
+                    <SelectTrigger className={`w-full bg-white text-black ${editMissingFields.includes("serviceType") ? "border-[#EF4444]" : "border-gray-200"}`}>
+                      <SelectValue placeholder="Select service type" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-white border-gray-200">
+                      {serviceTypeOptions.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="grid grid-cols-[1fr_130px] gap-2">
+                  <div className="space-y-1.5">
+                    <Label className="text-sm text-black font-medium">Service Interval</Label>
+                    <Input
+                      type="number" min="1" step="any"
+                      value={editInterval}
+                      onChange={(e) => { setEditInterval(e.target.value); setEditMissingFields((prev) => prev.filter((f) => f !== "serviceInterval")); }}
+                      placeholder="e.g. 500"
+                      className={`bg-white text-black placeholder:text-gray-400 focus-visible:border-[#66B2B2] focus-visible:ring-[#66B2B2]/30 ${editMissingFields.includes("serviceInterval") ? "border-[#EF4444]" : "border-gray-200"}`}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-sm text-black font-medium">Unit</Label>
+                    <Select value={editIntervalUnit} onValueChange={setEditIntervalUnit}>
+                      <SelectTrigger className="w-full bg-white border-gray-200 text-black"><SelectValue /></SelectTrigger>
+                      <SelectContent className="bg-white border-gray-200">
+                        {PM_INTERVAL_UNITS.map((unit) => <SelectItem key={unit} value={unit}>{unit}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-sm text-black font-medium">Estimated Cost</Label>
+                  <Input
+                    type="number" min="0" step="0.01"
+                    value={editEstimatedCost}
+                    onChange={(e) => setEditEstimatedCost(e.target.value)}
+                    placeholder="$0.00"
+                    className="bg-white border-gray-200 text-black placeholder:text-gray-400 focus-visible:border-[#66B2B2] focus-visible:ring-[#66B2B2]/30"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <Button variant="outline" onClick={() => { resetEditModal(); setEditModalOpen(false); }} className="border-gray-200 text-gray-600 hover:bg-gray-50" disabled={updateSeedEquipmentMutation.isPending || updatePmsConfigurationMutation.isPending}>Cancel</Button>
+                <Button onClick={handleEditSubmit} className="bg-[#66B2B2] text-white hover:bg-[#66B2B2]/90 font-semibold" disabled={updateSeedEquipmentMutation.isPending || updatePmsConfigurationMutation.isPending}>{(updateSeedEquipmentMutation.isPending || updatePmsConfigurationMutation.isPending) ? "Saving…" : "Save Changes"}</Button>
+              </div>
+            </DialogContent>
+          </Dialog>
         </div>
       )}
 

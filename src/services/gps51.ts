@@ -653,10 +653,22 @@ export async function fetchDailyHistorySummary(
     tripsData?.totaldistance
   ) ?? 0;
 
-  const maxSpeedMps = toFiniteNumber(tripsData?.totalmaxspeed, 0);
-  const avgSpeedMps = mileageRecord
-    ? toFiniteNumber(mileageRecord.avgspeed, toFiniteNumber(tripsData?.totalaveragespeed, 0))
-    : toFiniteNumber(tripsData?.totalaveragespeed, 0);
+  // querytrips maxspeed (both totalmaxspeed and per-trip maxspeed) returns the device's
+  // historical record speed for every day, not the day's actual max. GPS51's UI uses the
+  // max speed from individual track points (querytrackswithadditionals), computed below
+  // as maxTrackSpeed. We keep a placeholder here and assign the real value after trackPoints.
+  let maxSpeedMps = 0;
+
+  // avgspeed from reportmileagedetail returns 0 on many days even with movement.
+  // totalaveragespeed from querytrips also returns wrong non-zero values on inactive days.
+  // Most reliable: derive avg speed from mileage / ACC-on time (matches GPS51's displayed value).
+  const rawAvgSpeedMph = mileageRecord ? toFiniteNumber(mileageRecord.avgspeed, 0) : 0;
+  const totalAccMsForAvg = mileageRecord ? toFiniteNumber(mileageRecord.totalacc, 0) : 0;
+  const avgSpeedMps = rawAvgSpeedMph !== 0
+    ? rawAvgSpeedMph
+    : (mileageMeters > 0 && totalAccMsForAvg > 0
+        ? (mileageMeters / totalAccMsForAvg) * 3_600_000
+        : 0);
 
   const drivingMs = pickFirstNonNegative(
     mileageRecord?.totaltriptime,
@@ -863,26 +875,17 @@ export async function fetchDailyHistorySummary(
         0
       )
     : 0;
-  const explicitWorkingMs = pickFirstNonNegative(
-    mileageRecord?.totalacc,
-    mileageRecord?.workingduration,
-    mileageRecord?.workingtime,
-    mileageRecord?.accontime,
-    additionalDetailReport?.totalacc,
-    additionalDetailReport?.workingduration,
-    additionalDetailReport?.workingtime,
-    additionalDetailReport?.accontime,
-    tripsData?.totalacctime
-  ) ?? 0;
-  const workingMs = explicitWorkingMs > 0 ? explicitWorkingMs : drivingMs + idleMs;
+  // totalacc is the only documented field for ACC-on (working) duration.
+  // All other aliases do not exist in the API and must not be used.
+  // The drivingMs + idleMs fallback fabricates working hours — removed.
+  const workingMs = toFiniteNumber(mileageRecord?.totalacc, 0);
 
+  // Track-point max speed: matches GPS51's displayed Max Speed column.
   const maxTrackSpeed = trackPoints.reduce((max, point) => Math.max(max, point.speed), 0);
-  const avgTrackSpeed = trackPoints.length
-    ? trackPoints.reduce((sum, point) => sum + point.speed, 0) / trackPoints.length
-    : 0;
+  maxSpeedMps = maxTrackSpeed;
 
-  const resolvedMaxSpeed = maxSpeedMps !== 0 ? maxSpeedMps : maxTrackSpeed;
-  const resolvedAvgSpeed = avgSpeedMps !== 0 ? avgSpeedMps : avgTrackSpeed;
+  const resolvedMaxSpeed = maxSpeedMps;
+  const resolvedAvgSpeed = avgSpeedMps;
 
   const tripStartTime = trips.length
     ? trips.reduce(

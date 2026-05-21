@@ -4,6 +4,13 @@ import { z } from "zod";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 
+type PmsConfigEntry = {
+  serviceInterval: number;
+  serviceIntervalUnit: "Hours" | "KM" | "Km" | "Weeks" | "Months" | "Years";
+  serviceType?: string;
+  estimatedCost?: number;
+};
+
 type SeedEquipmentEntry = {
   id: string;
   name: string;
@@ -20,11 +27,7 @@ type SeedEquipmentEntry = {
   kmTotal?: number | string;
   days?: number | string;
   status?: "OK" | "Near Service" | "Overdue";
-  pmsConfiguration?: {
-    serviceInterval: number;
-    serviceIntervalUnit: "Hours" | "KM" | "Km" | "Weeks" | "Months" | "Years";
-    serviceType?: string;
-  };
+  pmsConfiguration?: PmsConfigEntry[]; // array — each entry is an independent schedule
 };
 
 type SeedDataShape = {
@@ -96,24 +99,16 @@ function convertDaysToPeriods(days: number): { weeks: number; months: number; ye
   };
 }
 
-function calculateServiceStatus(entry: SeedEquipmentEntry): "OK" | "Near Service" | "Overdue" | null {
-  if (entry.id === "EQ-001") {
-    return null;
-  }
-
-  const pms = entry.pmsConfiguration;
-  if (!pms) {
-    return null;
-  }
-
+function calculateSinglePmsStatus(
+  pms: PmsConfigEntry,
+  entry: SeedEquipmentEntry
+): "OK" | "Near Service" | "Overdue" | null {
   const interval = Number(pms.serviceInterval ?? 0);
-  if (!Number.isFinite(interval) || interval <= 0) {
-    return null;
-  }
+  if (!Number.isFinite(interval) || interval <= 0) return null;
 
   const unit = String(pms.serviceIntervalUnit ?? "Hours").toLowerCase();
-
   let usage: number | null = null;
+
   if (unit === "hours") {
     usage = parseHoursTextToHours(entry.hoursTotal);
   } else if (unit === "km") {
@@ -128,36 +123,39 @@ function calculateServiceStatus(entry: SeedEquipmentEntry): "OK" | "Near Service
     }
   }
 
-  if (usage === null || !Number.isFinite(usage) || usage < 0) {
-    return null;
-  }
-
+  if (usage === null || !Number.isFinite(usage) || usage < 0) return null;
   const progress = (usage / interval) * 100;
   if (progress >= 100) return "Overdue";
   if (progress >= 80) return "Near Service";
   return "OK";
 }
 
+// Returns the worst status across all pmsConfiguration entries (Overdue > Near Service > OK).
+function calculateServiceStatus(entry: SeedEquipmentEntry): "OK" | "Near Service" | "Overdue" | null {
+  if (entry.id === "EQ-001") return null;
+
+  const configs = Array.isArray(entry.pmsConfiguration) ? entry.pmsConfiguration : [];
+  if (configs.length === 0) return null;
+
+  const statuses = configs.map((pms) => calculateSinglePmsStatus(pms, entry));
+  if (statuses.includes("Overdue")) return "Overdue";
+  if (statuses.includes("Near Service")) return "Near Service";
+  if (statuses.includes("OK")) return "OK";
+  return null;
+}
+
 function applyComputedServiceStatuses(parsed: SeedDataShape): void {
-  if (!Array.isArray(parsed.equipment)) {
-    return;
-  }
+  if (!Array.isArray(parsed.equipment)) return;
 
   parsed.equipment = parsed.equipment.map((entry) => {
-    if (entry.id === "EQ-001") {
-      return entry;
-    }
+    if (entry.id === "EQ-001") return entry;
 
     const status = calculateServiceStatus(entry);
     if (!status) {
       const { status: _status, ...rest } = entry;
-      return rest;
+      return rest as SeedEquipmentEntry;
     }
-
-    return {
-      ...entry,
-      status,
-    };
+    return { ...entry, status };
   });
 }
 
@@ -174,13 +172,6 @@ export const appRouter = createRouter({
           serialNumber: z.string().optional(),
           notes: z.string().optional(),
           image: z.string().optional(),
-          pmsConfiguration: z
-            .object({
-              serviceInterval: z.number().min(0),
-              serviceIntervalUnit: z.enum(["Hours", "KM", "Weeks", "Months", "Years"]),
-              serviceType: z.string().min(1).optional(),
-            })
-            .optional(),
         })
       )
       .mutation(async ({ input }) => {
@@ -199,16 +190,9 @@ export const appRouter = createRouter({
           clientId: input.clientId,
           equipmentType: input.equipmentType,
           ...simulatedTelemetry,
-          ...(input.serialNumber && input.serialNumber.trim().length > 0
-            ? { serialNumber: input.serialNumber.trim() }
-            : {}),
-          ...(input.notes && input.notes.trim().length > 0
-            ? { notes: input.notes.trim() }
-            : {}),
-          ...(input.image && input.image.trim().length > 0
-            ? { image: input.image.trim() }
-            : {}),
-          ...(input.pmsConfiguration ? { pmsConfiguration: input.pmsConfiguration } : {}),
+          ...(input.serialNumber?.trim() ? { serialNumber: input.serialNumber.trim() } : {}),
+          ...(input.notes?.trim() ? { notes: input.notes.trim() } : {}),
+          ...(input.image?.trim() ? { image: input.image.trim() } : {}),
         };
 
         parsed.equipment = [...equipment, newEntry];
@@ -217,6 +201,7 @@ export const appRouter = createRouter({
 
         return { ok: true, entry: newEntry };
       }),
+
     update: publicQuery
       .input(
         z.object({
@@ -227,13 +212,6 @@ export const appRouter = createRouter({
           serialNumber: z.string().optional(),
           notes: z.string().optional(),
           image: z.string().optional(),
-          pmsConfiguration: z
-            .object({
-              serviceInterval: z.number().min(0),
-              serviceIntervalUnit: z.enum(["Hours", "KM", "Weeks", "Months", "Years"]),
-              serviceType: z.string().min(1).optional(),
-            })
-            .optional(),
         })
       )
       .mutation(async ({ input }) => {
@@ -243,9 +221,7 @@ export const appRouter = createRouter({
 
         const equipment = Array.isArray(parsed.equipment) ? parsed.equipment : [];
         const existingIndex = equipment.findIndex((item) => item.id === input.id);
-        if (existingIndex === -1) {
-          throw new Error("Seed equipment not found");
-        }
+        if (existingIndex === -1) throw new Error("Seed equipment not found");
 
         const updatedEntry: SeedEquipmentEntry = {
           ...equipment[existingIndex],
@@ -253,33 +229,16 @@ export const appRouter = createRouter({
           name: input.name,
           clientId: input.clientId,
           equipmentType: input.equipmentType,
-          ...(input.serialNumber && input.serialNumber.trim().length > 0
-            ? { serialNumber: input.serialNumber.trim() }
-            : {}),
-          ...(input.notes && input.notes.trim().length > 0
-            ? { notes: input.notes.trim() }
-            : {}),
-          ...(input.image && input.image.trim().length > 0
-            ? { image: input.image.trim() }
-            : {}),
-          ...(input.pmsConfiguration ? { pmsConfiguration: input.pmsConfiguration } : {}),
         };
 
-        if (!input.serialNumber || input.serialNumber.trim().length === 0) {
-          delete updatedEntry.serialNumber;
-        }
+        if (input.serialNumber?.trim()) updatedEntry.serialNumber = input.serialNumber.trim();
+        else delete updatedEntry.serialNumber;
 
-        if (!input.notes || input.notes.trim().length === 0) {
-          delete updatedEntry.notes;
-        }
+        if (input.notes?.trim()) updatedEntry.notes = input.notes.trim();
+        else delete updatedEntry.notes;
 
-        if (!input.image || input.image.trim().length === 0) {
-          delete updatedEntry.image;
-        }
-
-        if (!input.pmsConfiguration) {
-          delete updatedEntry.pmsConfiguration;
-        }
+        if (input.image?.trim()) updatedEntry.image = input.image.trim();
+        else delete updatedEntry.image;
 
         equipment[existingIndex] = updatedEntry;
         parsed.equipment = equipment;
@@ -288,10 +247,38 @@ export const appRouter = createRouter({
 
         return { ok: true, entry: updatedEntry };
       }),
+
     delete: publicQuery
+      .input(z.object({ id: z.string().regex(/^(EQ|LAB)-\d{3}$/) }))
+      .mutation(async ({ input }) => {
+        const seedDataPath = getSeedDataPath();
+        const raw = await fs.readFile(seedDataPath, "utf-8");
+        const parsed = JSON.parse(raw) as SeedDataShape;
+
+        const equipment = Array.isArray(parsed.equipment) ? parsed.equipment : [];
+        const existing = equipment.find((item) => item.id === input.id);
+        if (!existing) throw new Error("Seed equipment not found");
+
+        if (existing.id === "EQ-001" || existing.name.trim().toLowerCase() === "excavator cat 320") {
+          throw new Error("Excavator CAT 320 is protected and cannot be deleted");
+        }
+
+        parsed.equipment = equipment.filter((item) => item.id !== input.id);
+        applyComputedServiceStatuses(parsed);
+        await fs.writeFile(seedDataPath, `${JSON.stringify(parsed, null, 4)}\n`, "utf-8");
+
+        return { ok: true };
+      }),
+
+    // Append a new entry to an equipment's pmsConfiguration array
+    addPmsConfiguration: publicQuery
       .input(
         z.object({
-          id: z.string().regex(/^(EQ|LAB)-\d{3}$/),
+          equipmentId: z.string().regex(/^(EQ|LAB)-\d{3}$/),
+          serviceInterval: z.number().min(0),
+          serviceIntervalUnit: z.enum(["Hours", "KM", "Weeks", "Months", "Years"]),
+          serviceType: z.string().min(1).optional(),
+          estimatedCost: z.number().min(0).optional(),
         })
       )
       .mutation(async ({ input }) => {
@@ -300,19 +287,92 @@ export const appRouter = createRouter({
         const parsed = JSON.parse(raw) as SeedDataShape;
 
         const equipment = Array.isArray(parsed.equipment) ? parsed.equipment : [];
-        const existing = equipment.find((item) => item.id === input.id);
-        if (!existing) {
-          throw new Error("Seed equipment not found");
-        }
+        const idx = equipment.findIndex((item) => item.id === input.equipmentId);
+        if (idx === -1) throw new Error("Equipment not found");
 
-        const isProtectedExcavator =
-          existing.id === "EQ-001" || existing.name.trim().toLowerCase() === "excavator cat 320";
+        const entry = equipment[idx];
+        const existing: PmsConfigEntry[] = Array.isArray(entry.pmsConfiguration) ? [...entry.pmsConfiguration] : [];
 
-        if (isProtectedExcavator) {
-          throw new Error("Excavator CAT 320 is protected and cannot be deleted");
-        }
+        const newConfig: PmsConfigEntry = {
+          serviceInterval: input.serviceInterval,
+          serviceIntervalUnit: input.serviceIntervalUnit,
+          ...(input.serviceType ? { serviceType: input.serviceType } : {}),
+          ...(input.estimatedCost && input.estimatedCost > 0 ? { estimatedCost: input.estimatedCost } : {}),
+        };
 
-        parsed.equipment = equipment.filter((item) => item.id !== input.id);
+        equipment[idx] = { ...entry, pmsConfiguration: [...existing, newConfig] };
+        parsed.equipment = equipment;
+        applyComputedServiceStatuses(parsed);
+        await fs.writeFile(seedDataPath, `${JSON.stringify(parsed, null, 4)}\n`, "utf-8");
+
+        return { ok: true, configIndex: existing.length };
+      }),
+
+    // Update a specific entry (by index) in an equipment's pmsConfiguration array
+    updatePmsConfiguration: publicQuery
+      .input(
+        z.object({
+          equipmentId: z.string().regex(/^(EQ|LAB)-\d{3}$/),
+          configIndex: z.number().int().min(0),
+          serviceInterval: z.number().min(0),
+          serviceIntervalUnit: z.enum(["Hours", "KM", "Weeks", "Months", "Years"]),
+          serviceType: z.string().min(1).optional(),
+          estimatedCost: z.number().min(0).optional(),
+        })
+      )
+      .mutation(async ({ input }) => {
+        const seedDataPath = getSeedDataPath();
+        const raw = await fs.readFile(seedDataPath, "utf-8");
+        const parsed = JSON.parse(raw) as SeedDataShape;
+
+        const equipment = Array.isArray(parsed.equipment) ? parsed.equipment : [];
+        const idx = equipment.findIndex((item) => item.id === input.equipmentId);
+        if (idx === -1) throw new Error("Equipment not found");
+
+        const entry = equipment[idx];
+        const configs: PmsConfigEntry[] = Array.isArray(entry.pmsConfiguration) ? [...entry.pmsConfiguration] : [];
+        if (input.configIndex >= configs.length) throw new Error("Config index out of range");
+
+        configs[input.configIndex] = {
+          serviceInterval: input.serviceInterval,
+          serviceIntervalUnit: input.serviceIntervalUnit,
+          ...(input.serviceType ? { serviceType: input.serviceType } : {}),
+          ...(input.estimatedCost && input.estimatedCost > 0 ? { estimatedCost: input.estimatedCost } : {}),
+        };
+
+        equipment[idx] = { ...entry, pmsConfiguration: configs };
+        parsed.equipment = equipment;
+        applyComputedServiceStatuses(parsed);
+        await fs.writeFile(seedDataPath, `${JSON.stringify(parsed, null, 4)}\n`, "utf-8");
+
+        return { ok: true };
+      }),
+
+    // Delete a specific entry (by index) from an equipment's pmsConfiguration array
+    deletePmsConfiguration: publicQuery
+      .input(
+        z.object({
+          equipmentId: z.string().regex(/^(EQ|LAB)-\d{3}$/),
+          configIndex: z.number().int().min(0),
+        })
+      )
+      .mutation(async ({ input }) => {
+        const seedDataPath = getSeedDataPath();
+        const raw = await fs.readFile(seedDataPath, "utf-8");
+        const parsed = JSON.parse(raw) as SeedDataShape;
+
+        const equipment = Array.isArray(parsed.equipment) ? parsed.equipment : [];
+        const idx = equipment.findIndex((item) => item.id === input.equipmentId);
+        if (idx === -1) throw new Error("Equipment not found");
+
+        const entry = equipment[idx];
+        const configs: PmsConfigEntry[] = Array.isArray(entry.pmsConfiguration) ? [...entry.pmsConfiguration] : [];
+        if (input.configIndex >= configs.length) throw new Error("Config index out of range");
+
+        configs.splice(input.configIndex, 1);
+
+        equipment[idx] = { ...entry, pmsConfiguration: configs };
+        parsed.equipment = equipment;
         applyComputedServiceStatuses(parsed);
         await fs.writeFile(seedDataPath, `${JSON.stringify(parsed, null, 4)}\n`, "utf-8");
 

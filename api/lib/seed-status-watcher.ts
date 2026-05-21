@@ -2,6 +2,13 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { watch } from "node:fs";
 
+interface PmsConfigEntry {
+  serviceInterval: number;
+  serviceIntervalUnit: "Hours" | "KM" | "Km" | "Weeks" | "Months" | "Years";
+  serviceType?: string;
+  estimatedCost?: number;
+}
+
 interface SeedEquipmentEntry {
   id: string;
   name: string;
@@ -13,11 +20,7 @@ interface SeedEquipmentEntry {
   kmTotal?: number | string;
   days?: number | string;
   status?: "OK" | "Near Service" | "Overdue";
-  pmsConfiguration?: {
-    serviceInterval: number;
-    serviceIntervalUnit: "Hours" | "KM" | "Km" | "Weeks" | "Months" | "Years";
-    serviceType?: string;
-  };
+  pmsConfiguration?: PmsConfigEntry[]; // array — each entry is an independent schedule
 }
 
 interface SeedDataShape {
@@ -61,24 +64,16 @@ function convertDaysToPeriods(days: number): { weeks: number; months: number; ye
   };
 }
 
-function calculateServiceStatus(entry: SeedEquipmentEntry): "OK" | "Near Service" | "Overdue" | null {
-  if (entry.id === "EQ-001") {
-    return null;
-  }
-
-  const pms = entry.pmsConfiguration;
-  if (!pms) {
-    return null;
-  }
-
+function calculateSingleConfigStatus(
+  pms: PmsConfigEntry,
+  entry: SeedEquipmentEntry
+): "OK" | "Near Service" | "Overdue" | null {
   const interval = Number(pms.serviceInterval ?? 0);
-  if (!Number.isFinite(interval) || interval <= 0) {
-    return null;
-  }
+  if (!Number.isFinite(interval) || interval <= 0) return null;
 
   const unit = String(pms.serviceIntervalUnit ?? "Hours").toLowerCase();
-
   let usage: number | null = null;
+
   if (unit === "hours") {
     usage = parseHoursTextToHours(entry.hoursTotal);
   } else if (unit === "km") {
@@ -93,14 +88,25 @@ function calculateServiceStatus(entry: SeedEquipmentEntry): "OK" | "Near Service
     }
   }
 
-  if (usage === null || !Number.isFinite(usage) || usage < 0) {
-    return null;
-  }
-
+  if (usage === null || !Number.isFinite(usage) || usage < 0) return null;
   const progress = (usage / interval) * 100;
   if (progress >= 100) return "Overdue";
   if (progress >= 80) return "Near Service";
   return "OK";
+}
+
+// Returns the worst status across all pmsConfiguration entries (Overdue > Near Service > OK).
+function calculateServiceStatus(entry: SeedEquipmentEntry): "OK" | "Near Service" | "Overdue" | null {
+  if (entry.id === "EQ-001") return null;
+
+  const configs = Array.isArray(entry.pmsConfiguration) ? entry.pmsConfiguration : [];
+  if (configs.length === 0) return null;
+
+  const statuses = configs.map((pms) => calculateSingleConfigStatus(pms, entry));
+  if (statuses.includes("Overdue")) return "Overdue";
+  if (statuses.includes("Near Service")) return "Near Service";
+  if (statuses.includes("OK")) return "OK";
+  return null;
 }
 
 async function recalculateAndPersistStatuses(): Promise<void> {
