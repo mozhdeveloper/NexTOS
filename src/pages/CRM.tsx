@@ -240,7 +240,7 @@ export default function CRM() {
   return (
     <div className="space-y-4">
       {selectedClientId && selectedClient && clientData ? (
-        <ClientProfile 
+        <CliecntProfile 
           client={selectedClient} 
           data={clientData} 
           onBack={() => setSelectedClientId(null)} 

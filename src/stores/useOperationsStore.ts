@@ -213,6 +213,11 @@ export const useOperationsStore = create<OperationsState>()(
               }
             }
 
+            // BRIDGE LOGIC: Sync completion back to booking
+            if (record.bookingId) {
+              setTimeout(() => get().updateBooking(record.bookingId!, { status: "completed" }), 0);
+            }
+
             if (!record.invoiceId) {
               const invoiceNumber = `INV-${Date.now().toString().slice(-4)}`;
               useBillingStore.getState()._addInvoice({
@@ -243,12 +248,74 @@ export const useOperationsStore = create<OperationsState>()(
       addBooking: (booking) => {
         const newBooking = { ...booking, id: Date.now(), createdAt: new Date().toISOString() };
         set((state) => ({ bookings: [...state.bookings, newBooking] }));
+
+        // BRIDGE LOGIC: If booking is confirmed, create a service task
+        if (newBooking.status === "confirmed") {
+          get().addServiceRecord({
+            equipmentId: newBooking.equipmentId,
+            clientId: newBooking.clientId,
+            technician: "Unassigned",
+            serviceCategory: newBooking.serviceCategory,
+            serviceType: newBooking.serviceType,
+            description: `BOOKED VIA PORTAL: ${newBooking.notes}`,
+            status: "scheduled",
+            scheduledDate: newBooking.requestedDate,
+            completedDate: null,
+            cost: 0,
+            bookingId: newBooking.id,
+            findings: "",
+            workDone: "",
+            recommendation: "",
+            partsUsed: "Pending Inspection"
+          });
+        }
       },
 
       updateBooking: (id, data) => {
         set((state) => ({
           bookings: state.bookings.map((b) => (b.id === id ? { ...b, ...data } : b)),
         }));
+
+        // SYNC LOGIC: Keep ServiceRecords in sync with Bookings
+        const booking = get().bookings.find(b => b.id === id);
+        if (!booking) return;
+
+        const existingRecord = get().serviceRecords.find(r => r.bookingId === id);
+
+        if (booking.status === "confirmed") {
+          if (!existingRecord) {
+            get().addServiceRecord({
+              equipmentId: booking.equipmentId,
+              clientId: booking.clientId,
+              technician: "Unassigned",
+              serviceCategory: booking.serviceCategory,
+              serviceType: booking.serviceType,
+              description: `BOOKED VIA PORTAL: ${booking.notes}`,
+              status: "scheduled",
+              scheduledDate: booking.requestedDate,
+              completedDate: null,
+              cost: 0,
+              bookingId: booking.id,
+              findings: "",
+              workDone: "",
+              recommendation: "",
+              partsUsed: "Pending Inspection"
+            });
+          } else {
+            get().updateServiceRecord(existingRecord.id, {
+              equipmentId: booking.equipmentId,
+              serviceCategory: booking.serviceCategory,
+              serviceType: booking.serviceType,
+              description: `BOOKED VIA PORTAL: ${booking.notes}`,
+              scheduledDate: booking.requestedDate,
+              status: existingRecord.status === "cancelled" ? "scheduled" : existingRecord.status
+            });
+          }
+        } else if (booking.status === "cancelled") {
+          if (existingRecord && existingRecord.status !== "completed" && existingRecord.status !== "cancelled") {
+            get().updateServiceRecord(existingRecord.id, { status: "cancelled" });
+          }
+        }
       },
 
       updateDraftExecution: (id, data) => {

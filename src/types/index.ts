@@ -162,6 +162,7 @@ export interface ServiceRecord {
   labStatus?: LabTestingStatus;
   reportAttachment?: string;
   
+  bookingId?: number;
   partsUsed: string;
   status: "scheduled" | "in_progress" | "completed" | "cancelled";
   scheduledDate: string;
