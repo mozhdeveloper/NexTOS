@@ -74,9 +74,9 @@
                     "estimatedCost": 10000
                 },
                 {
-                    "serviceInterval": 3000,
+                    "serviceInterval": 1000,
                     "serviceIntervalUnit": "Hours",
-                    "serviceType": "Repair",
+                    "serviceType": "General Repair",
                     "estimatedCost": 4500
                 }
             ],
@@ -108,7 +108,8 @@
                     "estimatedCost": 12000
                 }
             ],
-            "days": 10
+            "days": 10,
+            "status": "OK"
         },
         {
             "id": "EQ-003",
@@ -129,7 +130,8 @@
                     "serviceType": "Inspection"
                 }
             ],
-            "days": 13
+            "days": 13,
+            "status": "OK"
         },
         {
             "id": "LAB-001",
@@ -150,7 +152,8 @@
                     "serviceType": "PMS (Preventative Maintenance)"
                 }
             ],
-            "days": 16
+            "days": 16,
+            "status": "Near Service"
         },
         {
             "id": "LAB-002",
@@ -171,7 +174,8 @@
                     "serviceType": "Repair"
                 }
             ],
-            "days": 19
+            "days": 19,
+            "status": "OK"
         },
         {
             "id": "LAB-003",
@@ -192,7 +196,8 @@
                     "serviceType": "Calibration"
                 }
             ],
-            "days": 22
+            "days": 22,
+            "status": "OK"
         },
         {
             "id": "EQ-004",
@@ -213,7 +218,8 @@
                     "serviceType": "PMS (Preventative Maintenance)"
                 }
             ],
-            "days": 25
+            "days": 25,
+            "status": "Near Service"
         }
     ],
     "serviceRecords": [

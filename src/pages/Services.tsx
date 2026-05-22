@@ -386,6 +386,48 @@ export default function Services() {
     return "OK";
   };
 
+  const computeNextService = (
+    pms: { serviceInterval: number; serviceIntervalUnit: string },
+    eq: any
+  ): string => {
+    const interval = Number(pms?.serviceInterval ?? 0);
+    if (!Number.isFinite(interval) || interval <= 0) return "—";
+
+    const unit = String(pms?.serviceIntervalUnit ?? "Hours").toLowerCase();
+    let usage: number | null = null;
+
+    if (unit === "hours") {
+      if (eq.id === "EQ-001" && gps001CacheMs > 0) {
+        usage = gps001CacheMs / (1000 * 60 * 60);
+      } else {
+        const match = String(eq.hoursTotal ?? "").match(/(\d+)\s*h\s*(\d+)\s*m/i);
+        if (match) usage = Number(match[1]) + Number(match[2]) / 60;
+      }
+    } else if (unit === "km") {
+      const raw = eq.kmTotal;
+      const parsed = typeof raw === "number" ? raw : parseFloat(String(raw ?? "").replace(/[^\d.]/g, ""));
+      usage = Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+    } else {
+      const raw = eq.days;
+      const days = typeof raw === "number" ? raw : parseFloat(String(raw ?? ""));
+      if (Number.isFinite(days) && days >= 0) {
+        if (unit === "weeks") usage = days / 7;
+        else if (unit === "months") usage = days / 30.44;
+        else if (unit === "years") usage = days / 365.25;
+      }
+    }
+
+    if (usage === null || !Number.isFinite(usage) || usage < 0) return "—";
+    const remaining = interval - usage;
+    if (remaining <= 0) return "Past due";
+    if (unit === "hours") return `${Math.round(remaining)}h`;
+    if (unit === "km") return `${Math.round(remaining)} km`;
+    if (unit === "weeks") return `${remaining.toFixed(1)} wk`;
+    if (unit === "months") return `${remaining.toFixed(1)} mo`;
+    if (unit === "years") return `${remaining.toFixed(2)} yr`;
+    return "—";
+  };
+
   // One row per pmsConfiguration array entry — status computed independently per entry.
   // Reactive to gps001CacheMs so EQ-001 updates live.
   const seedScheduledMaintenance = useMemo((): ScheduledMaintenanceEntry[] => {
@@ -891,11 +933,17 @@ export default function Services() {
                     <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Unit</th>
                     <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Est. Cost</th>
                     <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Status</th>
+                    <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Next Service</th>
                     <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {allScheduledMaintenance.map((entry) => (
+                  {allScheduledMaintenance.map((entry) => {
+                    const _seedEq = (seedData.equipment as any[]).find((e) => e.id === entry.equipmentId);
+                    const nextService = _seedEq
+                      ? computeNextService({ serviceInterval: entry.serviceInterval, serviceIntervalUnit: entry.serviceIntervalUnit }, _seedEq)
+                      : "—";
+                    return (
                     <tr key={entry.id} className="border-b border-gray-200 hover:bg-gray-50">
                       <td className="py-2.5 px-3 text-black font-medium">{entry.equipmentName}</td>
                       <td className="py-2.5 px-3 text-gray-700">{entry.clientName}</td>
@@ -919,6 +967,7 @@ export default function Services() {
                           <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-gray-100 text-gray-500 uppercase">—</span>
                         )}
                       </td>
+                      <td className="py-2.5 px-3 font-mono-tech text-xs text-gray-700">{nextService}</td>
                       <td className="py-2.5 px-3">
                         <div className="flex items-center gap-1">
                           <Button variant="ghost" size="sm" onClick={() => openEditModal(entry)} className="h-6 w-6 p-0 text-gray-500 hover:text-[#66B2B2] hover:bg-[#66B2B2]/10">
@@ -930,10 +979,11 @@ export default function Services() {
                         </div>
                       </td>
                     </tr>
-                  ))}
+                  );
+                  })}
                   {allScheduledMaintenance.length === 0 && (
                     <tr>
-                      <td colSpan={9} className="py-10 text-center text-gray-400">
+                      <td colSpan={10} className="py-10 text-center text-gray-400">
                         No scheduled maintenance entries. Click "+ Schedule Service" to add one.
                       </td>
                     </tr>
