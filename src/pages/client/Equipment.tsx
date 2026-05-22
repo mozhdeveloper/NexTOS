@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState } from "react";
 import { useAuthStore } from "@/stores/useAuthStore";
 import { useOperationsStore } from "@/stores/useOperationsStore";
 import { 
@@ -8,26 +8,12 @@ import {
   Wrench, 
   FileText, 
   Search, 
-  QrCode, 
-  Printer,
-  Camera,
-  X,
-  Loader2,
   CheckCircle2,
   Activity,
   Wallet 
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { QRCodeSVG } from "qrcode.react";
-import { Html5Qrcode } from "html5-qrcode";
-import { toast } from "sonner";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 
 function KPICard({ title, value, subtext, icon: Icon, colorClass, iconBgClass }: {
   title: string;
@@ -60,8 +46,6 @@ export default function ClientEquipment() {
   const clientId = user?.clientId || 1;
 
   const [searchQuery, setSearchQuery] = useState("");
-  const [qrSerial, setQrSerial] = useState("");
-  const [showQR, setShowQR] = useState(false);
   const [expanded, setExpanded] = useState<number | null>(null);
   
   // Metrics calculation
@@ -80,28 +64,6 @@ export default function ClientEquipment() {
     }).format(amount);
   };
 
-  // Scanning states
-  const [showScanner, setShowScanner] = useState(false);
-  const [scanning, setScanning] = useState(false);
-  const [manualSerial, setManualSerial] = useState("");
-  const [highlightedEquipment, setHighlightedEquipment] = useState<number | null>(null);
-  const [scannerError, setScannerError] = useState<string | null>(null);
-  
-  // Refs for equipment cards
-  const equipmentRefs = useRef<Map<number, HTMLDivElement>>(new Map());
-  const scannerRef = useRef<Html5Qrcode | null>(null);
-  const initTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  const handleMaybePromise = (val: any) => {
-    try {
-      if (val && typeof (val as any).then === "function") {
-        (val as Promise<any>).catch(() => {});
-      }
-    } catch (_) {
-      // ignore
-    }
-  };
-
   const clientEquipment = equipment.filter(
     (e) => e.clientId === clientId && 
     (searchQuery === "" || 
@@ -109,144 +71,6 @@ export default function ClientEquipment() {
      e.serialNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
      e.model.toLowerCase().includes(searchQuery.toLowerCase()))
   );
-
-  // Scanning functions
-  const checkCameraPermission = async (): Promise<boolean> => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-      stream.getTracks().forEach(track => track.stop());
-      return true;
-    } catch (error) {
-      setScannerError("Camera permission denied. Please allow camera access and try again.");
-      return false;
-    }
-  };
-
-  const startScanning = async () => {
-    setShowScanner(true);
-    setScanning(true);
-    setManualSerial("");
-    setScannerError(null);
-
-    const hasPermission = await checkCameraPermission();
-    if (!hasPermission) {
-      setScanning(false);
-      return;
-    }
-
-    initTimeoutRef.current = setTimeout(() => {
-      setScannerError("Camera failed to start. Please try again or use manual entry.");
-      setScanning(false);
-      if (scannerRef.current) {
-        handleMaybePromise(scannerRef.current.stop?.());
-        handleMaybePromise(scannerRef.current.clear?.());
-        scannerRef.current = null;
-      }
-    }, 5000);
-
-    setTimeout(async () => {
-      try {
-        const readerElement = document.getElementById('qr-reader');
-        if (!readerElement) return;
-
-        if (!scannerRef.current) {
-          scannerRef.current = new Html5Qrcode("qr-reader");
-          try {
-            await scannerRef.current.start(
-              { facingMode: "environment" },
-              {
-                fps: 10,
-                qrbox: { width: 250, height: 250 },
-                aspectRatio: 1.0,
-              },
-              (decodedText) => handleScanSuccess(decodedText),
-              () => {}
-            );
-          } catch (envCameraError) {
-            await scannerRef.current.start(
-              {},
-              {
-                fps: 10,
-                qrbox: { width: 250, height: 250 },
-                aspectRatio: 1.0,
-              },
-              (decodedText) => handleScanSuccess(decodedText),
-              () => {}
-            );
-          }
-          
-          if (initTimeoutRef.current) {
-            clearTimeout(initTimeoutRef.current);
-            initTimeoutRef.current = null;
-          }
-          setScanning(false);
-        }
-      } catch (error) {
-        setScannerError("Failed to start camera. Please check camera permissions and try again.");
-        setScanning(false);
-      }
-    }, 500);
-  };
-
-  const stopScanning = async () => {
-    if (initTimeoutRef.current) {
-      clearTimeout(initTimeoutRef.current);
-      initTimeoutRef.current = null;
-    }
-
-    if (scannerRef.current) {
-      try {
-        await scannerRef.current.stop();
-        await scannerRef.current.clear();
-      } catch (error) {}
-      scannerRef.current = null;
-    }
-    
-    setScanning(false);
-    setShowScanner(false);
-    setScannerError(null);
-  };
-
-  const handleScanSuccess = async (scannedText: string) => {
-    await stopScanning();
-    setTimeout(() => {
-      findAndHighlightEquipment(scannedText.trim());
-    }, 100);
-  };
-
-  const handleManualEntry = async () => {
-    if (manualSerial.trim()) {
-      if (scanning) await stopScanning();
-      setTimeout(() => {
-        findAndHighlightEquipment(manualSerial.trim());
-        setShowScanner(false);
-      }, 100);
-    }
-  };
-
-  const findAndHighlightEquipment = (serialNumber: string) => {
-    const foundEquipment = equipment.find(eq => eq.clientId === clientId && eq.serialNumber === serialNumber);
-    if (foundEquipment) {
-      const element = equipmentRefs.current.get(foundEquipment.id);
-      if (element) element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      setHighlightedEquipment(foundEquipment.id);
-      setExpanded(foundEquipment.id);
-      setTimeout(() => setHighlightedEquipment(null), 3000);
-      toast.success(`Found equipment: ${foundEquipment.unitId}`);
-    } else {
-      toast.error(`Equipment not found`);
-    }
-  };
-
-  useEffect(() => {
-    return () => {
-      if (initTimeoutRef.current) clearTimeout(initTimeoutRef.current);
-      if (scannerRef.current) {
-        handleMaybePromise(scannerRef.current.stop?.());
-        handleMaybePromise(scannerRef.current.clear?.());
-      }
-    };
-  }, []);
 
   const statusBadge = (status: string) => {
     switch (status) {
@@ -280,7 +104,6 @@ export default function ClientEquipment() {
           <h1 className="text-[32px] font-bold text-gray-900 tracking-[-0.02em]" >My Equipment</h1>
           <p className="text-sm text-gray-500 mt-0.5">{clientEquipment.length} units under management</p>
         </div>
-        
       </div>
 
       {/* KPI Row */}
@@ -329,17 +152,7 @@ export default function ClientEquipment() {
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-10 h-10 bg-white border-gray-200 text-gray-900 text-sm focus:border-[#10B981]/50 transition-colors"
           />
-         
-          <Button
-            onClick={startScanning}
-            className="bg-[#10B981] text-white hover:bg-[#10B981]/90 font-bold h-9"
-          >
-            <Camera className="w-4 h-4 mr-2" />
-            Scan QR
-          </Button>
-        
         </div>
-        
       </div>
 
       <div className="space-y-3">
@@ -352,18 +165,7 @@ export default function ClientEquipment() {
           return (
             <div 
               key={eq.id} 
-              ref={(el) => {
-                if (el) {
-                  equipmentRefs.current.set(eq.id, el);
-                } else {
-                  equipmentRefs.current.delete(eq.id);
-                }
-              }}
-              className={`data-card transition-all duration-300 hover:border-[#10B981]/30 ${
-                highlightedEquipment === eq.id 
-                  ? 'equipment-highlight ring-2 ring-[#10B981] shadow-lg shadow-[#10B981]/20' 
-                  : ''
-              }`}
+              className={`data-card transition-all duration-300 hover:border-[#10B981]/30`}
             >
               <button
                 onClick={() => setExpanded(isExpanded ? null : eq.id)}
@@ -383,18 +185,6 @@ export default function ClientEquipment() {
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setQrSerial(eq.serialNumber);
-                      setShowQR(true);
-                    }}
-                    className="h-8 w-8 p-0 text-gray-500 hover:text-[#66B2B2] hover:bg-[#66B2B2]/10"
-                  >
-                    <QrCode className="w-4 h-4" />
-                  </Button>
                   {serviceDue && (
                     <span className="px-1.5 py-0.5 rounded text-[10px] bg-[#EF4444]/20 text-[#EF4444] font-medium">Service Due</span>
                   )}
@@ -524,106 +314,6 @@ export default function ClientEquipment() {
           );
         })}
       </div>
-
-      {/* QR Scanner Modal */}
-      <Dialog open={showScanner} onOpenChange={(open) => {
-        if (!open) stopScanning();
-      }}>
-        <DialogContent className="bg-gray-50 border-gray-200 sm:max-w-lg void-glass">
-          <DialogHeader>
-            <DialogTitle className="text-gray-900 flex items-center gap-2">
-              <Camera className="w-5 h-5 text-[#10B981]" />
-              Scan Equipment QR Code
-            </DialogTitle>
-          </DialogHeader>
-          
-          <div className="space-y-4">
-            {/* Error Message */}
-            {scannerError && (
-              <div className="p-3 rounded-lg bg-[#EF4444]/10 border border-[#EF4444]/20">
-                <div className="flex items-center gap-2">
-                  <X className="w-4 h-4 text-[#EF4444] flex-shrink-0" />
-                  <p className="text-sm text-[#EF4444]">{scannerError}</p>
-                </div>
-              </div>
-            )}
-
-            {/* Scanner Container */}
-            <div className="relative">
-              <div 
-                id="qr-reader" 
-                className="w-full max-w-sm mx-auto rounded-lg overflow-hidden bg-gray-100 border border-gray-200"
-              ></div>
-              {scanning && !scannerError && (
-                <div className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-lg backdrop-blur-sm">
-                  <div className="text-center">
-                    <Loader2 className="w-8 h-8 text-[#10B981] animate-spin mx-auto mb-2" />
-                    <p className="text-sm text-gray-900 font-medium">Scanning...</p>
-                    <p className="text-xs text-gray-500 mt-1">Position QR code within the frame</p>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Manual Entry Fallback */}
-            <div className="space-y-3 pt-2 border-t border-gray-200">
-              <div className="text-sm text-gray-500 text-center">
-                Can't scan? Enter serial number manually:
-              </div>
-              <div className="flex gap-2">
-                <Input
-                  placeholder="Enter serial number..."
-                  value={manualSerial}
-                  onChange={(e) => setManualSerial(e.target.value)}
-                  className="bg-white border-gray-200 text-gray-900 text-sm focus:border-[#10B981]"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      handleManualEntry();
-                    }
-                  }}
-                />
-                <Button
-                  onClick={handleManualEntry}
-                  disabled={!manualSerial.trim() || scanning}
-                  className="bg-[#10B981] text-white hover:bg-[#10B981]/80 font-semibold px-4 disabled:opacity-50"
-                >
-                  Find
-                </Button>
-              </div>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* QR Code Dialog */}
-      <Dialog open={showQR} onOpenChange={setShowQR}>
-        <DialogContent className="bg-gray-50 border-gray-200 sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="text-gray-900 flex items-center gap-2">
-              <QrCode className="w-5 h-5 text-[#66B2B2]" />
-              Equipment QR Code
-            </DialogTitle>
-          </DialogHeader>
-          <div className="flex flex-col items-center justify-center p-6 bg-white rounded-lg mt-4">
-            <QRCodeSVG value={qrSerial} size={200} level="H" includeMargin={true} />
-            <div className="mt-4 text-center">
-              <p className="text-sm font-bold text-gray-900 font-mono-tech">{qrSerial}</p>
-              <p className="text-xs text-gray-500 mt-1 uppercase font-bold">
-                {equipment.find((e) => e.serialNumber === qrSerial)?.unitId}
-              </p>
-            </div>
-          </div>
-          <div className="flex justify-center mt-4">
-            <Button
-              onClick={() => window.print()}
-              className="bg-[#66B2B2] text-white hover:bg-[#66B2B2]/80 font-bold"
-            >
-              <Printer className="w-4 h-4 mr-2" />
-              Print QR Code
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

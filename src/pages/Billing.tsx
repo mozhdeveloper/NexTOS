@@ -262,12 +262,11 @@ export default function Billing() {
           <thead>
             <tr className="bg-gray-50">
               <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Invoice #</th>
-              <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Client</th>
-              <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Amount</th>
-              <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Tax</th>
+              <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Company</th>
+              <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Service</th>
               <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Total</th>
               <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Status</th>
-              <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Due Date</th>
+              <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Date</th>
               <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Actions</th>
             </tr>
           </thead>
@@ -277,9 +276,13 @@ export default function Billing() {
               return (
                 <tr key={invoice.id} className="grid-table-row border-b border-gray-200">
                   <td className="py-2.5 px-3 text-black font-mono-tech">{invoice.invoiceNumber}</td>
-                  <td className="py-2.5 px-3 text-black">{client?.companyName || "—"}</td>
-                  <td className="py-2.5 px-3 text-gray-600 font-mono-tech">₱{invoice.amount.toFixed(2)}</td>
-                  <td className="py-2.5 px-3 text-gray-600 font-mono-tech">₱{invoice.tax.toFixed(2)}</td>
+                  <td className="py-2.5 px-3">
+                    <div className="text-black font-medium">{client?.companyName || "—"}</div>
+                    <div className="text-[10px] text-gray-500 font-mono-tech">
+                      CL-{invoice.clientId.toString().padStart(3, "0")}
+                    </div>
+                  </td>
+                  <td className="py-2.5 px-3 text-gray-600">{invoice.service || "—"}</td>
                   <td className="py-2.5 px-3 text-[#66B2B2] font-mono-tech font-bold">₱{invoice.total.toFixed(2)}</td>
                   <td className="py-2.5 px-3">
                     <span
@@ -288,7 +291,7 @@ export default function Billing() {
                           ? "bg-[#10B981]/20 text-[#10B981]"
                           : invoice.status === "overdue"
                           ? "bg-[#EF4444]/20 text-[#EF4444]"
-                          : "bg-[#66B2B2]/20 text-[#66B2B2]"
+                          : "bg-[#F59E0B]/20 text-[#F59E0B]"
                       }`}
                     >
                       {invoice.status}

@@ -175,9 +175,10 @@ export default function ClientServiceHistory() {
 
   const filteredRecords = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
+    const clientEquipmentIds = new Set(clientEquipment.map(e => e.id));
 
     return serviceRecords
-      .filter((record) => record.clientId === clientId)
+      .filter((record) => clientEquipmentIds.has(record.equipmentId))
       .filter((record) => {
         const asset = equipmentById.get(record.equipmentId);
         const serviceDate = getServiceDate(record).slice(0, 10);

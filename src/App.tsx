@@ -18,6 +18,7 @@ import Reports from '@/pages/Reports'
 import ClientBookings from '@/pages/client/Bookings'
 import Landing from '@/pages/Landing'
 import Marketing from '@/pages/Marketing'
+import Inventory from '@/pages/Inventory'
 import Settings from '@/pages/Settings'
 import AssetScanner from '@/pages/AssetScanner'
 import NotFound from '@/pages/NotFound'
@@ -49,6 +50,7 @@ function AuthenticatedRoutes() {
         <Route path="/" element={<Dashboard />} />
         <Route path="/crm" element={<CRM />} />
         <Route path="/services" element={<Services />} />
+        <Route path="/inventory" element={<Inventory />} />
         <Route path="/fleet" element={<Fleet />} />
         <Route path="/portal" element={<ClientPortal />} />
         <Route path="/billing" element={<Billing />} />

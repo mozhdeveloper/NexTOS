@@ -91,8 +91,51 @@ const mockPackages: Package[] = [
 ];
 
 const mockInvoices: Invoice[] = [
-  { id: 1, clientId: 1, packageId: null, serviceRecordId: 1, invoiceNumber: "INV-2024-0001", amount: 850.00, tax: 85.00, total: 935.00, status: "paid", dueDate: nextMonth, paidDate: lastWeek, createdAt: lastWeek },
-  { id: 2, clientId: 1, packageId: null, serviceRecordId: 2, invoiceNumber: "INV-2024-0002", amount: 450.00, tax: 45.00, total: 495.00, status: "paid", dueDate: nextMonth, paidDate: lastMonth, createdAt: lastMonth },
+  { 
+    id: 1, 
+    clientId: 1, 
+    packageId: null, 
+    serviceRecordId: 1, 
+    invoiceNumber: "INV-2026-0001", 
+    service: "Excavator CAT 320 PMS",
+    amount: 11363.64, 
+    tax: 1136.36, 
+    total: 12500.00, 
+    status: "paid", 
+    dueDate: "2026-02-14T10:00:00.000Z", 
+    paidDate: "2026-01-20T10:00:00.000Z", 
+    createdAt: "2026-01-15T10:00:00.000Z" 
+  },
+  { 
+    id: 2, 
+    clientId: 2, 
+    packageId: null, 
+    serviceRecordId: 2, 
+    invoiceNumber: "INV-2026-0002", 
+    service: "Soil Machine Calibration",
+    amount: 7727.27, 
+    tax: 772.73, 
+    total: 8500.00, 
+    status: "overdue", 
+    dueDate: "2026-03-03T10:00:00.000Z", 
+    paidDate: null, 
+    createdAt: "2026-02-01T10:00:00.000Z" 
+  },
+  { 
+    id: 3, 
+    clientId: 3, 
+    packageId: null, 
+    serviceRecordId: 3, 
+    invoiceNumber: "INV-2026-0003", 
+    service: "Concrete Strength Test Package",
+    amount: 59090.91, 
+    tax: 5909.09, 
+    total: 65000.00, 
+    status: "paid", 
+    dueDate: "2026-02-19T10:00:00.000Z", 
+    paidDate: "2026-01-25T10:00:00.000Z", 
+    createdAt: "2026-01-20T10:00:00.000Z" 
+  },
 ];
 
 export const useBillingStore = create<BillingState>()(
@@ -164,7 +207,7 @@ export const useBillingStore = create<BillingState>()(
       },
     }),
     {
-      name: "nextos-billing",
+      name: "nextos-billing-v2",
     }
   )
 );

@@ -28,6 +28,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
+import { ServiceReportView } from "@/components/ServiceReportView";
+import {
+  Dialog,
+  DialogContent,
+} from "@/components/ui/dialog";
+
 type TabType = "history" | "booking" | "packages" | "billing";
 
 export default function ClientPortal() {
@@ -38,6 +44,7 @@ export default function ClientPortal() {
   const { invoices, packages, markInvoicePaid, addInvoice } = useBillingStore();
   const [activeTab, setActiveTab] = useState<TabType>("history");
   const [expandedEquipment, setExpandedEquipment] = useState<number | null>(null);
+  const [showReport, setShowReport] = useState<ServiceRecord | null>(null);
 
   // Client-filtered data (admin can pick a client). Default to first client for admins.
   const clientId =
@@ -322,24 +329,44 @@ export default function ClientPortal() {
                     {/* Service Records */}
                     {eqRecords.length > 0 && (
                       <div className="mb-3">
-                        <div className="text-[10px] text-gray-600 uppercase tracking-wider mb-1">Service Records</div>
-                        <div className="space-y-1">
-                          {eqRecords.map((record) => (
+                        <div className="text-[10px] text-gray-600 uppercase tracking-wider mb-2 flex items-center justify-between">
+                            <span>Service Records</span>
+                            <span className="flex items-center gap-1 text-[#66B2B2] font-black">
+                                <Shield className="w-2.5 h-2.5" />
+                                SECURE AUDIT TRAIL ENABLED
+                            </span>
+                        </div>
+                        <div className="space-y-2">
+                          {eqRecords.filter(r => r.status === 'completed').map((record) => (
                             <div
                               key={record.id}
-                              className="flex items-center justify-between p-2 rounded bg-gray-50"
+                              className="flex items-center justify-between p-3 rounded-xl border border-gray-100 bg-gray-50/50 hover:bg-white transition-all group"
                             >
-                              <div className="flex items-center gap-2">
-                                <Wrench className="w-3 h-3 text-[#66B2B2]" />
-                                <span className="text-xs text-black capitalize">{record.serviceType}</span>
-                                <span className="text-[10px] text-gray-600">{record.technician}</span>
+                              <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-full bg-white border border-gray-100 flex items-center justify-center">
+                                    <CheckCircle2 className="w-4 h-4 text-green-500" />
+                                </div>
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-xs font-bold text-gray-900 capitalize">{record.serviceCategory}</span>
+                                        {record.safetyChecklist && (
+                                            <span className="px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-600 text-[8px] font-black uppercase tracking-tighter border border-amber-100">
+                                                Safety Verified
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div className="text-[10px] text-gray-500 font-medium">Tech: {record.technician} <span className="mx-1">•</span> {record.completedDate ? new Date(record.completedDate).toLocaleDateString() : "—"}</div>
+                                </div>
                               </div>
-                              <div className="flex items-center gap-2">
-                                <span className="text-[10px] text-[#66B2B2] font-mono-tech">₱{record.cost.toFixed(2)}</span>
-                                <span className="text-[10px] text-gray-600">
-                                  {record.completedDate ? new Date(record.completedDate).toLocaleDateString() : "—"}
-                                </span>
-                              </div>
+                              <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                onClick={() => setShowReport(record)}
+                                className="h-8 text-[10px] font-bold text-[#66B2B2] hover:bg-[#66B2B2]/10 rounded-lg group-hover:translate-x-1 transition-all"
+                              >
+                                View Full Report
+                                <ArrowRight className="w-3 h-3 ml-1.5" />
+                              </Button>
                             </div>
                           ))}
                         </div>
@@ -834,6 +861,20 @@ export default function ClientPortal() {
           )}
         </div>
       )}
+
+      {/* Service Report View Modal */}
+      <Dialog open={!!showReport} onOpenChange={() => setShowReport(null)}>
+        <DialogContent className="bg-white border-gray-200 max-w-4xl max-h-[95vh] overflow-auto scrollbar-hide rounded-2xl">
+          {showReport && (
+            <ServiceReportView
+              record={showReport}
+              equipment={equipment.find((eqItem) => eqItem.id === showReport.equipmentId)}
+              client={client}
+              photos={servicePhotos.filter((p) => p.serviceRecordId === showReport.id)}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

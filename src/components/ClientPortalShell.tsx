@@ -34,7 +34,7 @@ interface NavItem {
 const navItems: NavItem[] = [
   { label: "Dashboard",       path: "/client",           icon: LayoutDashboard },
   { label: "My Equipment",    path: "/client/equipment", icon: Monitor         },
-  { label: "Service History", path: "/client/history",   icon: History         },
+  { label: "Service Reports",  path: "/client/history",   icon: FileText        },
   { label: "Bookings",        path: "/client/bookings",  icon: Calendar        },
   { label: "Packages",        path: "/client/packages",  icon: Package         },
   { label: "Billing",         path: "/client/billing",   icon: CreditCard      },

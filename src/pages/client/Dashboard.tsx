@@ -3,7 +3,8 @@ import { useNavigate } from "react-router";
 import { useAuthStore } from "@/stores/useAuthStore";
 import { useOperationsStore } from "@/stores/useOperationsStore";
 import { useBillingStore } from "@/stores/useBillingStore";
-import type { Booking, Equipment, ServiceCategory } from "@/types";
+import { useCRMStore } from "@/stores/useCRMStore";
+import type { Booking, Equipment, ServiceCategory, ServiceRecord } from "@/types";
 import { ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 import {
   ArrowRight,
@@ -21,7 +22,13 @@ import {
   Receipt,
   Siren,
   Wrench,
+  Printer
 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 
 type DashboardServiceTab = "upcoming" | "calibration" | "testing";
 
@@ -214,14 +221,18 @@ function donutCenterLabel(total: number, label: string) {
 export default function ClientDashboard() {
   const navigate = useNavigate();
   const { user } = useAuthStore();
-  const { equipment, serviceRecords, bookings } = useOperationsStore();
+  const { equipment, serviceRecords, servicePhotos, bookings } = useOperationsStore();
   const { invoices } = useBillingStore();
+  const { clients } = useCRMStore();
 
   const clientId = user?.clientId || 1;
+  const clientObj = useMemo(() => clients.find(c => c.id === clientId), [clients, clientId]);
   const [serviceTab, setServiceTab] = useState<DashboardServiceTab>("upcoming");
+  const [showReport, setShowReport] = useState<ServiceRecord | null>(null);
 
   const clientEquipment = useMemo(() => equipment.filter((entry) => entry.clientId === clientId), [equipment, clientId]);
-  const clientServices = useMemo(() => serviceRecords.filter((entry) => entry.clientId === clientId), [serviceRecords, clientId]);
+  const clientEquipmentIds = useMemo(() => new Set(clientEquipment.map(e => e.id)), [clientEquipment]);
+  const clientServices = useMemo(() => serviceRecords.filter((entry) => clientEquipmentIds.has(entry.equipmentId)), [serviceRecords, clientEquipmentIds]);
   const clientBookings = useMemo(() => bookings.filter((entry) => entry.clientId === clientId), [bookings, clientId]);
   const clientInvoices = useMemo(() => invoices.filter((entry) => entry.clientId === clientId), [invoices, clientId]);
 
@@ -462,6 +473,7 @@ export default function ClientDashboard() {
       .sort((left, right) => new Date(right.completedDate || right.createdAt).getTime() - new Date(left.completedDate || left.createdAt).getTime())
       .slice(0, 3)
       .map((entry) => ({
+        record: entry,
         id: entry.id,
         title:
           entry.serviceCategory === "Lab Testing Service"
@@ -727,8 +739,11 @@ export default function ClientDashboard() {
               </div>
 
               <div className="flex justify-center border-t border-gray-200 px-5 py-3">
-                <button className="inline-flex items-center gap-2 text-sm font-medium text-[#66B2B2] transition-colors hover:text-[#5A9E9E]">
-                  View all upcoming services
+                <button 
+                  onClick={() => navigate("/client/history")}
+                  className="inline-flex items-center gap-2 text-sm font-medium text-[#66B2B2] transition-colors hover:text-[#5A9E9E]"
+                >
+                  View all service reports
                   <ArrowRight className="h-4 w-4" />
                 </button>
               </div>
@@ -780,7 +795,7 @@ export default function ClientDashboard() {
             <section className="data-card rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
               <div className="mb-3 flex items-center justify-between">
                 <h3 className="text-lg font-semibold text-gray-900">Recent Activity</h3>
-                <button className="text-sm font-medium text-[#66B2B2]">View all</button>
+                <button className="text-sm font-medium text-[#66B2B2]" onClick={() => navigate("/client/history")}>View all</button>
               </div>
               <div className="flex gap-2.5 overflow-x-auto pb-0.5">
                 {recentActivity.map((item) => {
@@ -855,18 +870,19 @@ export default function ClientDashboard() {
             <section className="data-card rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
               <div className="mb-4 flex items-center justify-between">
                 <h3 className="text-lg font-semibold text-gray-900">Latest Service Reports</h3>
-                <button className="text-sm font-medium text-[#66B2B2]">View all</button>
+                <button className="text-sm font-medium text-[#66B2B2]" onClick={() => navigate("/client/history")}>View all</button>
               </div>
               <div className="space-y-3">
                 {latestReports.map((report) => (
-                  <div key={report.id} className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white p-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-red-50 text-[#DC2626]">
+                  <div key={report.id} className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white p-3 hover:border-[#66B2B2]/40 transition-colors cursor-pointer group" onClick={() => setShowReport(report.record)}>
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-red-50 text-[#DC2626] group-hover:bg-[#66B2B2] group-hover:text-white transition-colors">
                       <FileText className="h-4 w-4" />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-medium text-gray-900">{report.title}</div>
+                      <div className="truncate text-sm font-medium text-gray-900 group-hover:text-[#66B2B2] transition-colors">{report.title}</div>
                       <div className="mt-1 text-xs text-gray-500">{report.date}</div>
                     </div>
+                    <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-[#66B2B2] transition-colors" />
                   </div>
                 ))}
                 {latestReports.length === 0 && (
@@ -879,6 +895,19 @@ export default function ClientDashboard() {
           </div>
         </div>
       </div>
+
+      <Dialog open={!!showReport} onOpenChange={() => setShowReport(null)}>
+        <DialogContent className="max-w-4xl bg-white border-gray-200 max-h-[95vh] overflow-auto scrollbar-hide rounded-2xl">
+          {showReport && (
+            <ServiceReportView
+              record={showReport}
+              equipment={equipment.find(e => e.id === showReport.equipmentId)}
+              client={clientObj}
+              photos={servicePhotos.filter(p => p.serviceRecordId === showReport.id)}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -1017,6 +1046,159 @@ function QuickSummaryCard({
         </div>
         <div className={`flex h-10 w-10 items-center justify-center rounded-lg bg-white shadow-sm border border-gray-100 ${tint.split(' ')[1]}`}>
           <Icon className="h-4 w-4" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ServiceReportView({ record, equipment, client, photos }: any) {
+  return (
+    <div className="p-2 animate-in fade-in zoom-in-95 duration-300">
+      <div className="flex items-center justify-between border-b-2 border-gray-900 pb-6 mb-8">
+        <div>
+          <div className="inline-flex items-center gap-2 px-3 py-1 bg-black text-white rounded-full text-[9px] font-black uppercase tracking-[0.2em] mb-3">
+             <div className="w-2 h-2 rounded-full bg-[#66B2B2] animate-pulse" /> Official Document
+          </div>
+          <h2 className="text-3xl font-black text-gray-900 tracking-tighter">TECHNICAL SERVICE REPORT</h2>
+          <p className="text-xs text-gray-400 font-bold tracking-widest mt-1 font-mono-tech">NEXVISION OPS SYSTEM RECORD <span className="text-gray-900 font-black">#SR-{record.id}</span></p>
+        </div>
+        <Button onClick={() => window.print()} className="bg-gray-100 hover:bg-gray-200 text-gray-900 h-12 px-6 border border-gray-200 text-xs font-black rounded-xl transition-all active:scale-95 shadow-sm">
+          <Printer className="w-5 h-5 mr-3" />
+          EXPORT SYSTEM COPY
+        </Button>
+      </div>
+
+      <div className="grid grid-cols-2 gap-12 mb-10">
+        <div className="space-y-8">
+          <section>
+            <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-[0.25em] mb-4 flex items-center gap-2">
+               <div className="w-1.5 h-4 bg-[#66B2B2]" /> ASSET SPECIFICATIONS
+            </h4>
+            <div className="space-y-3 px-3">
+              <div className="flex justify-between border-b border-gray-100 pb-2">
+                <span className="text-[11px] text-gray-400 font-bold uppercase">Identification ID:</span>
+                <span className="text-[11px] text-gray-900 font-black font-mono-tech tracking-wider">{equipment?.unitId}</span>
+              </div>
+              <div className="flex justify-between border-b border-gray-100 pb-2">
+                <span className="text-[11px] text-gray-400 font-bold uppercase">Manufacturer:</span>
+                <span className="text-[11px] text-gray-900 font-bold">{equipment?.manufacturer}</span>
+              </div>
+              <div className="flex justify-between border-b border-gray-100 pb-2">
+                <span className="text-[11px] text-gray-400 font-bold uppercase">Model Descriptor:</span>
+                <span className="text-[11px] text-gray-900 font-bold">{equipment?.model}</span>
+              </div>
+              <div className="flex justify-between border-b border-gray-100 pb-2">
+                <span className="text-[11px] text-gray-400 font-bold uppercase">Runtime Meter:</span>
+                <span className="text-sm text-[#66B2B2] font-black font-mono-tech">{record.hoursAtService} HOURS</span>
+              </div>
+            </div>
+          </section>
+
+          <section>
+             <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-[0.25em] mb-4 flex items-center gap-2">
+               <div className="w-1.5 h-4 bg-[#66B2B2]" /> LOGISTICAL CONTEXT
+            </h4>
+            <div className="space-y-3 px-3">
+              <div className="flex justify-between border-b border-gray-100 pb-2">
+                <span className="text-[11px] text-gray-400 font-bold uppercase">Service Category:</span>
+                <span className="text-[11px] text-gray-900 font-black uppercase tracking-tighter">{record.serviceCategory}</span>
+              </div>
+              <div className="flex justify-between border-b border-gray-100 pb-2">
+                <span className="text-[11px] text-gray-400 font-bold uppercase">Primary Technician:</span>
+                <span className="text-[11px] text-gray-900 font-bold">{record.technician}</span>
+              </div>
+              <div className="flex justify-between border-b border-gray-100 pb-2">
+                <span className="text-[11px] text-gray-400 font-bold uppercase">Completion Date:</span>
+                <span className="text-[11px] text-gray-900 font-bold">{record.completedDate ? new Date(record.completedDate).toLocaleDateString('en-PH', {year:'numeric', month:'long', day:'numeric'}) : "PENDING"}</span>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <div className="space-y-8">
+          <section className="h-full">
+             <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-[0.25em] mb-4 flex items-center gap-2">
+               <div className="w-1.5 h-4 bg-[#66B2B2]" /> EXECUTIVE SUMMARY
+            </h4>
+            <div className="p-6 rounded-2xl bg-gray-50 border border-gray-100 space-y-6 shadow-inner h-[calc(100%-2.5rem)]">
+              <div>
+                <span className="text-[10px] text-[#66B2B2] font-black uppercase tracking-widest mb-2 block">Fault Diagnosis / Findings:</span>
+                <p className="text-[12px] text-gray-900 font-medium leading-relaxed bg-white p-3 rounded-lg border border-gray-100">{record.findings || "Operational state nominal. No significant faults detected during primary inspection."}</p>
+              </div>
+              <div>
+                <span className="text-[10px] text-[#66B2B2] font-black uppercase tracking-widest mb-2 block">Technical Work Documentation:</span>
+                <p className="text-[12px] text-gray-900 font-medium leading-relaxed bg-white p-3 rounded-lg border border-gray-100">{record.workDone}</p>
+              </div>
+              <div>
+                <span className="text-[10px] text-[#66B2B2] font-black uppercase tracking-widest mb-2 block">Strategic Recommendations:</span>
+                <p className="text-[12px] text-gray-900 font-bold leading-relaxed italic bg-[#66B2B2]/5 p-3 rounded-lg border border-[#66B2B2]/10">{record.recommendation || "No immediate action required. Maintain standard PMS intervals."}</p>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <section className="mb-10">
+        <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-[0.25em] mb-6 flex items-center gap-2">
+            <div className="w-1.5 h-4 bg-[#66B2B2]" /> FIELD DOCUMENTATION
+        </h4>
+        <div className="grid grid-cols-2 gap-10">
+          <div className="space-y-3">
+            <div className="flex items-center justify-between px-2">
+                <span className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Initial State Proof</span>
+                <span className="text-[8px] font-bold text-[#66B2B2] uppercase">Before Service</span>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              {photos.filter((p: any) => p.type === 'before').map((p: any, i: number) => (
+                <div key={i} className="aspect-video rounded-xl overflow-hidden border-2 border-gray-100 shadow-md">
+                   <img src={p.url} className="w-full h-full object-cover" alt="Before" />
+                </div>
+              ))}
+              {photos.filter((p: any) => p.type === 'before').length === 0 && <div className="col-span-2 py-8 text-center bg-gray-50 rounded-xl border border-dashed text-[10px] text-gray-400 font-bold uppercase tracking-widest">No Before Documentation</div>}
+            </div>
+          </div>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between px-2">
+                <span className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Completion Proof</span>
+                <span className="text-[8px] font-bold text-green-500 uppercase">After Service</span>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              {photos.filter((p: any) => p.type === 'after').map((p: any, i: number) => (
+                <div key={i} className="aspect-video rounded-xl overflow-hidden border-2 border-gray-100 shadow-md">
+                   <img src={p.url} className="w-full h-full object-cover" alt="After" />
+                </div>
+              ))}
+              {photos.filter((p: any) => p.type === 'after').length === 0 && <div className="col-span-2 py-8 text-center bg-gray-50 rounded-xl border border-dashed text-[10px] text-gray-400 font-bold uppercase tracking-widest">No After Documentation</div>}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div className="grid grid-cols-2 gap-12 border-t-2 border-gray-100 pt-10 mb-6">
+        <div className="space-y-4">
+          <span className="text-[10px] text-gray-400 font-black uppercase tracking-[0.3em] block ml-1">Technician Certification</span>
+          <div className="p-8 bg-gray-50/50 rounded-3xl border border-gray-100 flex items-center justify-center shadow-inner relative overflow-hidden">
+            {record.techSignature ? (
+               <img src={record.techSignature} className="h-24 object-contain contrast-125 mix-blend-multiply transition-all hover:scale-105 duration-500" alt="Tech Sig" />
+            ) : <div className="h-24 flex items-center justify-center text-gray-300 italic text-[11px] font-bold uppercase tracking-widest">Digital Stamp Missing</div>}
+            <div className="absolute bottom-4 left-0 right-0 text-center">
+                <div className="h-[1px] w-2/3 mx-auto bg-gray-200 mb-2" />
+                <span className="text-[9px] text-gray-500 font-black uppercase tracking-tighter">{record.technician} <span className="text-gray-300 mx-1">•</span> SENIOR TECHNICIAN</span>
+            </div>
+          </div>
+        </div>
+        <div className="space-y-4">
+          <span className="text-[10px] text-gray-400 font-black uppercase tracking-[0.3em] block ml-1">Client Acknowledgment</span>
+          <div className="p-8 bg-gray-50/50 rounded-3xl border border-gray-100 flex items-center justify-center shadow-inner relative overflow-hidden">
+            {record.clientSignature ? (
+               <img src={record.clientSignature} className="h-24 object-contain contrast-125 mix-blend-multiply transition-all hover:scale-105 duration-500" alt="Client Sig" />
+            ) : <div className="h-24 flex items-center justify-center text-gray-300 italic text-[11px] font-bold uppercase tracking-widest">Acknowledgment Missing</div>}
+            <div className="absolute bottom-4 left-0 right-0 text-center">
+                <div className="h-[1px] w-2/3 mx-auto bg-gray-200 mb-2" />
+                <span className="text-[9px] text-gray-500 font-black uppercase tracking-tighter">{client?.companyName} <span className="text-gray-300 mx-1">•</span> AUTHORIZED REP</span>
+            </div>
+          </div>
         </div>
       </div>
     </div>

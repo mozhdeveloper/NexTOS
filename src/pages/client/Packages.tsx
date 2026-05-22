@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useAuthStore } from "@/stores/useAuthStore";
 import { useBillingStore } from "@/stores/useBillingStore";
+import { useOperationsStore } from "@/stores/useOperationsStore";
 import { Button } from "@/components/ui/button";
 import {
   CheckCircle2,
@@ -15,20 +16,40 @@ import {
   TrendingUp,
   ChevronRight,
   Info,
+  Package as PackageIcon,
+  Search,
+  LayoutDashboard,
+  Monitor,
+  History,
+  Calendar,
+  CreditCard,
+  FileText,
+  ChevronLeft,
 } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
-import type { Package } from "@/types";
+import type { Package, Equipment } from "@/types";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { toast } from "sonner";
 
 export default function ClientPackages() {
   const { user } = useAuthStore();
   const { packages, addInvoice } = useBillingStore();
+  const { equipment, registerEquipmentToPackage } = useOperationsStore();
   const clientId = user?.clientId || 1;
 
   const clientPackages = packages.filter((pkg) => pkg.clientId === clientId);
   const activePackages = clientPackages.filter((pkg) => pkg.status === "active");
   const availablePackages = packages.filter((pkg) => pkg.clientId !== clientId);
 
-  const [selectedPackage, setSelectedPackage] = useState<number | null>(null);
+  const [selectedPackage, setSelectedPackage] = useState<Package | null>(null);
+  const [showRegModal, setShowRegModal] = useState(false);
+  const [regSearch, setRegSearch] = useState("");
   const [purchaseProcessing, setPurchaseProcessing] = useState(false);
   const [purchaseSuccess, setPurchaseSuccess] = useState("");
 
@@ -125,21 +146,19 @@ export default function ClientPackages() {
     return diff > 0 ? `${diff} days` : "Expired";
   };
 
-  const handlePackagePurchase = (packageId: number, packageName: string) => {
-    setSelectedPackage(packageId);
+  const handlePackagePurchase = (pkg: Package) => {
     setPurchaseProcessing(true);
 
     setTimeout(() => {
       const invoiceNumber = `INV-${Date.now().toString().slice(-6)}`;
-      const pkg = packages.find((p) => p.id === packageId) || displayPackages.find((p) => p.id === packageId);
-      const amount = pkg?.price ?? 0;
+      const amount = pkg.price;
       const tax = Math.round(amount * 0.1 * 100) / 100;
       const total = Math.round((amount + tax) * 100) / 100;
       const dueDate = new Date(Date.now() + 14 * 86400000).toISOString();
 
       addInvoice({
         clientId,
-        packageId,
+        packageId: pkg.id,
         serviceRecordId: null,
         invoiceNumber,
         amount,
@@ -151,12 +170,25 @@ export default function ClientPackages() {
       });
 
       setPurchaseProcessing(false);
-      setPurchaseSuccess(`${packageName} purchase requested - invoice ${invoiceNumber} created.`);
+      setPurchaseSuccess(`${pkg.name} purchase requested - invoice ${invoiceNumber} created.`);
       setTimeout(() => {
         setPurchaseSuccess("");
-        setSelectedPackage(null);
       }, 3000);
     }, 1200);
+  };
+
+  const handleOpenRegistration = (pkg: Package) => {
+    setSelectedPackage(pkg);
+    setShowRegModal(true);
+  };
+
+  const handleRegister = (equipmentId: number) => {
+    if (selectedPackage) {
+      handlePackagePurchase(selectedPackage);
+      registerEquipmentToPackage(equipmentId, selectedPackage);
+      setShowRegModal(false);
+      setSelectedPackage(null);
+    }
   };
 
   const getPackageIcon = (type: string) => {
@@ -165,19 +197,27 @@ export default function ClientPackages() {
     return <ClipboardList className="w-4 h-4 text-[#A78BFA]" />;
   };
 
+  const unassignedEquipment = equipment.filter(eq => 
+    eq.clientId === clientId && 
+    (!eq.packageId) &&
+    (regSearch === "" || 
+     eq.unitId.toLowerCase().includes(regSearch.toLowerCase()) || 
+     eq.serialNumber.toLowerCase().includes(regSearch.toLowerCase()))
+  );
+
   return (
     <div className="space-y-6 px-8 pt-8">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <h1 className="text-[32px] font-bold text-gray-900 tracking-[-0.02em]">Packages & Subscriptions</h1>
-          <p className="text-sm text-gray-500 mt-1">Manage your service packages, usage and renewals</p>
+          <h1 className="text-[32px] font-bold text-gray-900 tracking-[-0.02em]">Service Packages</h1>
+          <p className="text-sm text-gray-500 mt-1">Select a package and register your equipment for automated PMS tracking</p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row">
           <Button className="bg-gray-100 border border-gray-200 text-gray-900 hover:bg-gray-100 px-4 py-2 text-xs font-semibold">
-            <Info className="w-4 h-4 mr-2" /> How Packages Work
+            <Info className="w-4 h-4 mr-2" /> How it Works
           </Button>
           <Button className="bg-[#66B2B2] text-white px-4 py-2 text-xs font-semibold hover:bg-[#5A9E9E]">
-            <PackagePlus className="w-4 h-4 mr-2" /> Purchase New Package
+            <PackagePlus className="w-4 h-4 mr-2" /> Request Custom Plan
           </Button>
         </div>
       </div>
@@ -188,14 +228,14 @@ export default function ClientPackages() {
             <ShieldCheck className="w-3 h-3" /> Active Packages
           </div>
           <div className="text-3xl font-bold text-gray-900">{activePackages.length}</div>
-          <div className="text-[10px] text-gray-500 mt-2">View details of your current packages</div>
+          <div className="text-[10px] text-gray-500 mt-2">Current active subscriptions</div>
         </div>
         <div className="data-card p-4 lg:col-span-1">
           <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-2">
-            <ClipboardList className="w-3 h-3" /> Total Services Included
+            <ClipboardList className="w-3 h-3" /> Services Included
           </div>
           <div className="text-3xl font-bold text-gray-900">{totalServicesIncluded}</div>
-          <div className="text-[10px] text-gray-500 mt-2">Across all active packages</div>
+          <div className="text-[10px] text-gray-500 mt-2">Across all active plans</div>
         </div>
         <div className="data-card p-4 lg:col-span-1">
           <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-2">
@@ -209,7 +249,7 @@ export default function ClientPackages() {
             <Clock className="w-3 h-3" /> Expiring Soon
           </div>
           <div className="text-3xl font-bold text-gray-900">{expiringSoon.length}</div>
-          <div className="text-[10px] text-gray-500 mt-2">Within 30 days</div>
+          <div className="text-[10px] text-gray-500 mt-2">Within next 30 days</div>
         </div>
         <div className="data-card p-4 lg:col-span-1">
           <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-2">
@@ -228,17 +268,12 @@ export default function ClientPackages() {
                 <h3 className="text-sm font-semibold text-gray-900">Active Packages</h3>
                 <p className="text-[10px] text-gray-500 mt-1">Overview of your currently subscribed packages</p>
               </div>
-              <Button className="inline-flex items-center gap-2 text-[10px] font-semibold bg-gray-100 border border-gray-200 text-gray-900 hover:bg-gray-100 px-4 py-2">
-                View all active <ChevronRight className="w-4 h-4" />
-              </Button>
             </div>
             <div className="overflow-auto">
               <table className="min-w-full text-left text-[11px]">
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="py-3 px-3 text-gray-500 font-medium">Package</th>
-                    <th className="py-3 px-3 text-gray-500 font-medium">Linked Service</th>
-                    <th className="py-3 px-3 text-gray-500 font-medium">Inclusions</th>
                     <th className="py-3 px-3 text-gray-500 font-medium">Usage</th>
                     <th className="py-3 px-3 text-gray-500 font-medium">Validity</th>
                     <th className="py-3 px-3 text-gray-500 font-medium">Status</th>
@@ -256,44 +291,39 @@ export default function ClientPackages() {
                             <div>
                               <div className="font-semibold text-gray-900 text-sm">{pkg.name}</div>
                               <div className="text-[10px] text-gray-500">{pkg.packageType}</div>
-                              <div className="text-[10px] text-[#66B2B2] mt-1">₱{pkg.price.toLocaleString()} / {pkg.billingCycle}</div>
                             </div>
-                          </div>
-                        </td>
-                        <td className="py-4 px-3 align-top text-gray-900">
-                          <div className="text-[10px] text-gray-500">{pkg.linkedServiceCategory || "Primary Equipment"}</div>
-                        </td>
-                        <td className="py-4 px-3 align-top text-gray-900">
-                          <div className="flex flex-col gap-1 text-[10px]">
-                            {pkg.includedServices.slice(0, 3).map((service, idx) => (
-                              <span key={idx} className="inline-flex rounded bg-gray-50 px-2 py-1">{service}</span>
-                            ))}
                           </div>
                         </td>
                         <td className="py-4 px-3 align-top">
                           <div className="text-sm font-semibold text-gray-900">{used}/{pkg.totalVisits}</div>
-                          <div className="text-[10px] text-gray-500">PMS Visits Used</div>
-                          <div className="mt-2 h-2 overflow-hidden rounded-full bg-gray-100">
+                          <div className="text-[10px] text-gray-500">Visits Used</div>
+                          <div className="mt-2 h-1.5 w-24 overflow-hidden rounded-full bg-gray-100">
                             <div className="h-full rounded-full bg-[#66B2B2]" style={{ width: `${Math.round((used / pkg.totalVisits) * 100)}%` }} />
                           </div>
                         </td>
                         <td className="py-4 px-3 align-top text-gray-900">
-                          <div className="text-[10px] text-gray-500">Start</div>
-                          <div className="font-semibold">{formatDate(pkg.startDate)}</div>
-                          <div className="text-[10px] text-gray-500 mt-2">Expiry</div>
+                          <div className="text-[10px] text-gray-500">Expires</div>
                           <div className="font-semibold">{formatDate(pkg.endDate)}</div>
                         </td>
                         <td className="py-4 px-3 align-top">
                           <span className="inline-flex rounded-full bg-[#10B981]/20 px-2.5 py-1 text-[10px] font-semibold text-[#10B981]">Active</span>
                         </td>
                         <td className="py-4 px-3 align-top">
-                          <Button className="bg-[#66B2B2] text-white text-[10px] font-semibold px-3 py-2 hover:bg-[#5A9E9E]">
-                            Use Package
+                          <Button 
+                            onClick={() => handleOpenRegistration(pkg)}
+                            className="bg-[#66B2B2] text-white text-[10px] font-semibold px-3 py-2 hover:bg-[#5A9E9E]"
+                          >
+                            Register Unit
                           </Button>
                         </td>
                       </tr>
                     );
                   })}
+                  {activePackages.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="py-10 text-center text-gray-500">No active packages. Select one below to get started.</td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -303,30 +333,24 @@ export default function ClientPackages() {
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h3 className="text-sm font-semibold text-gray-900">Available Packages</h3>
-                <p className="text-[10px] text-gray-500 mt-1">Choose a package that fits your equipment and service needs</p>
+                <p className="text-[10px] text-gray-500 mt-1">Select a package and link your equipment</p>
               </div>
-              <button className="text-[10px] text-[#66B2B2] font-semibold flex items-center gap-1">
-                Compare Packages <ArrowRight className="w-3 h-3" />
-              </button>
             </div>
             <div className="grid gap-3 lg:grid-cols-3">
               {displayPackages.map((pkg) => (
                 <div
                   key={pkg.id}
-                  className={`rounded-xl border p-4 text-sm shadow-sm ${pkg.tier === "enterprise" ? "border-[#66B2B2] bg-gray-100" : "border-gray-200 bg-gray-50"}`}
+                  className={`rounded-xl border p-4 text-sm shadow-sm ${pkg.tier === "enterprise" ? "border-[#66B2B2] bg-white" : "border-gray-200 bg-gray-50"}`}
                 >
                   <div className="flex items-center justify-between mb-3">
                     <div>
                       <div className="text-xs font-semibold text-gray-900">{pkg.name}</div>
-                      <div className="text-[10px] text-gray-500 uppercase tracking-[0.18em] mt-1">{pkg.tier === "enterprise" ? "Enterprise" : pkg.tier === "professional" ? "Professional" : "Basic"}</div>
+                      <div className="text-[10px] text-gray-500 uppercase tracking-widest mt-1">{pkg.tier}</div>
                     </div>
-                    {pkg.tier === "enterprise" && (
-                      <span className="rounded-full bg-[#66B2B2] px-2 py-1 text-[10px] font-semibold text-white">Most Popular</span>
-                    )}
                   </div>
-                  <div className="text-[#66B2B2] font-bold text-lg mb-2">₱{pkg.price.toLocaleString()} / {pkg.billingCycle === "annual" ? "year" : pkg.billingCycle}</div>
-                  <div className="text-[10px] text-gray-500 mb-3">{pkg.description}</div>
-                  <div className="space-y-2 mb-4">
+                  <div className="text-[#66B2B2] font-bold text-lg mb-2">₱{pkg.price.toLocaleString()}</div>
+                  <div className="text-[10px] text-gray-500 mb-4 h-8 line-clamp-2">{pkg.description}</div>
+                  <div className="space-y-2 mb-6">
                     {pkg.includedServices.slice(0, 4).map((service, idx) => (
                       <div key={idx} className="flex items-center gap-2 text-[10px] text-gray-900">
                         <CheckCircle2 className="w-3 h-3 text-[#10B981]" />
@@ -336,8 +360,7 @@ export default function ClientPackages() {
                   </div>
                   <Button
                     size="sm"
-                    onClick={() => handlePackagePurchase(pkg.id, pkg.name)}
-                    disabled={purchaseProcessing && selectedPackage === pkg.id}
+                    onClick={() => handleOpenRegistration(pkg)}
                     className="w-full rounded-md bg-[#66B2B2] text-white text-[10px] font-semibold py-2 hover:bg-[#5A9E9E]"
                   >
                     Select Equipment
@@ -350,24 +373,19 @@ export default function ClientPackages() {
 
         <div className="space-y-4">
           <div className="data-card p-4">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h3 className="text-sm font-semibold text-gray-900">Package Usage Summary</h3>
-                <p className="text-[10px] text-gray-500 mt-1">Used, remaining and expired visits</p>
-              </div>
-              <div className="w-24 h-24">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie data={summaryData} dataKey="value" innerRadius={28} outerRadius={40} stroke="transparent">
-                      {summaryData.map((entry) => (
-                        <Cell key={entry.name} fill={entry.color} />
-                      ))}
-                    </Pie>
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
+            <h3 className="text-sm font-semibold text-gray-900 mb-4">Usage Analytics</h3>
+            <div className="h-40">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={summaryData} dataKey="value" innerRadius={35} outerRadius={50} stroke="transparent" paddingAngle={5}>
+                    {summaryData.map((entry) => (
+                      <Cell key={entry.name} fill={entry.color} />
+                    ))}
+                  </Pie>
+                </PieChart>
+              </ResponsiveContainer>
             </div>
-            <div className="space-y-2 mt-4">
+            <div className="space-y-2 mt-2">
               {summaryData.map((segment) => (
                 <div key={segment.name} className="flex items-center justify-between text-[10px] text-gray-900">
                   <span className="inline-flex items-center gap-2">
@@ -381,77 +399,89 @@ export default function ClientPackages() {
           </div>
 
           <div className="data-card p-4">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold text-gray-900">Upcoming Expirations</h3>
-              <span className="text-[10px] text-[#66B2B2]">{expiringSoon.length} soon</span>
-            </div>
-            <div className="space-y-3">
-              {expiringSoon.length > 0 ? (
-                expiringSoon.map((pkg) => (
-                  <div key={pkg.id} className="rounded-xl border border-gray-200 bg-gray-50 p-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <div>
-                        <div className="text-sm font-semibold text-gray-900">{pkg.name}</div>
-                        <div className="text-[10px] text-gray-500">{pkg.linkedServiceCategory || "Primary Equipment"}</div>
-                      </div>
-                      <div className="text-[10px] text-[#66B2B2] font-semibold">{formatDays(pkg.endDate)}</div>
-                    </div>
-                    <div className="text-[10px] text-gray-500 mt-2">Expires {formatDate(pkg.endDate)}</div>
-                  </div>
-                ))
-              ) : (
-                <div className="text-[10px] text-gray-500">No packages expiring in the next 30 days.</div>
-              )}
-            </div>
-          </div>
-
-          <div className="data-card p-4">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h3 className="text-sm font-semibold text-gray-900">Need a Custom Package?</h3>
-                <p className="text-[10px] text-gray-500 mt-1">Tell us your requirements and we’ll create a custom plan.</p>
-              </div>
-            </div>
-            <Button className="w-full rounded-md bg-gray-100 border border-gray-200 text-gray-900 text-[10px] font-semibold py-2 hover:bg-gray-100">
-              Request Custom Package
-            </Button>
-          </div>
-
-          <div className="data-card p-4">
             <h3 className="text-sm font-semibold text-gray-900 mb-4">How it Works</h3>
-            <div className="space-y-3 text-[10px] text-gray-500">
+            <div className="space-y-4 text-[10px] text-gray-500">
               <div className="flex items-start gap-3">
-                <div className="mt-1 h-6 w-6 rounded-full bg-[#66B2B2]/20 text-[#66B2B2] flex items-center justify-center">1</div>
+                <div className="h-5 w-5 rounded-full bg-[#66B2B2]/20 text-[#66B2B2] flex items-center justify-center shrink-0">1</div>
                 <div>
-                  <div className="font-semibold text-gray-900">Choose a Package</div>
-                  Select the package that best fits your equipment and needs.
+                  <div className="font-semibold text-gray-900 mb-0.5">Select Equipment</div>
+                  Pick an available package and choose the equipment you want to register.
                 </div>
               </div>
               <div className="flex items-start gap-3">
-                <div className="mt-1 h-6 w-6 rounded-full bg-[#66B2B2]/20 text-[#66B2B2] flex items-center justify-center">2</div>
+                <div className="h-5 w-5 rounded-full bg-[#66B2B2]/20 text-[#66B2B2] flex items-center justify-center shrink-0">2</div>
                 <div>
-                  <div className="font-semibold text-gray-900">Link Your Equipment</div>
-                  Choose the equipment you want this package for.
+                  <div className="font-semibold text-gray-900 mb-0.5">Automated Tracking</div>
+                  System sets thresholds (500h or 1000h) and monitors runtime in real-time.
                 </div>
               </div>
               <div className="flex items-start gap-3">
-                <div className="mt-1 h-6 w-6 rounded-full bg-[#66B2B2]/20 text-[#66B2B2] flex items-center justify-center">3</div>
+                <div className="h-5 w-5 rounded-full bg-[#66B2B2]/20 text-[#66B2B2] flex items-center justify-center shrink-0">3</div>
                 <div>
-                  <div className="font-semibold text-gray-900">Confirm & Schedule</div>
-                  Confirm details and schedule your service.
-                </div>
-              </div>
-              <div className="flex items-start gap-3">
-                <div className="mt-1 h-6 w-6 rounded-full bg-[#66B2B2]/20 text-[#66B2B2] flex items-center justify-center">4</div>
-                <div>
-                  <div className="font-semibold text-gray-900">Start Using</div>
-                  Book services and track usage in real-time.
+                  <div className="font-semibold text-gray-900 mb-0.5">Instant Alert</div>
+                  When thresholds are hit, a technician task is auto-generated for action.
                 </div>
               </div>
             </div>
           </div>
         </div>
       </div>
+
+      <Dialog open={showRegModal} onOpenChange={setShowRegModal}>
+        <DialogContent className="max-w-md bg-white border-gray-200">
+          <DialogHeader>
+            <DialogTitle className="text-gray-900 flex items-center gap-2">
+              <PackageIcon className="w-5 h-5 text-[#66B2B2]" />
+              Register Equipment
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4 mt-2">
+            <div className="p-3 rounded-lg bg-gray-50 border border-gray-200">
+              <div className="text-[10px] text-gray-500 uppercase font-bold">Selected Package</div>
+              <div className="text-sm font-bold text-gray-900">{selectedPackage?.name}</div>
+              <div className="text-[10px] text-[#66B2B2]">
+                Threshold: {selectedPackage?.tier === 'enterprise' ? '1000' : '500'} hours
+              </div>
+            </div>
+
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <Input 
+                placeholder="Search unit ID or serial..." 
+                value={regSearch}
+                onChange={(e) => setRegSearch(e.target.value)}
+                className="pl-9 bg-white border-gray-200 text-gray-900"
+              />
+            </div>
+
+            <div className="max-h-[300px] overflow-auto space-y-2 pr-1">
+              {unassignedEquipment.length > 0 ? (
+                unassignedEquipment.map(eq => (
+                  <div key={eq.id} className="p-3 rounded-lg border border-gray-200 bg-white hover:border-[#66B2B2]/50 transition-colors flex items-center justify-between">
+                    <div>
+                      <div className="text-xs font-bold text-gray-900">{eq.unitId}</div>
+                      <div className="text-[10px] text-gray-500">{eq.manufacturer} {eq.model}</div>
+                      <div className="text-[10px] text-gray-500 font-mono-tech">{eq.serialNumber}</div>
+                    </div>
+                    <Button 
+                      size="sm" 
+                      onClick={() => handleRegister(eq.id)}
+                      className="bg-[#66B2B2] hover:bg-[#5A9E9E] text-white text-[10px] h-8"
+                    >
+                      Register
+                    </Button>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-8 text-gray-500 text-xs">
+                  No unassigned equipment found.
+                </div>
+              )}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {purchaseSuccess && (
         <div className="fixed bottom-4 right-4 px-4 py-3 rounded bg-[#10B981]/20 border border-[#10B981]/30 flex items-center gap-2 z-50">
