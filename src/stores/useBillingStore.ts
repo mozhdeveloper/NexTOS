@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { Package, Invoice } from "@/types";
+import seedData from "@/data/seed-data.json";
 
 interface BillingState {
   packages: Package[];

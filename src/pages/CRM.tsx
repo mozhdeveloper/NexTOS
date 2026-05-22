@@ -5,6 +5,7 @@ import { useOperationsStore } from "@/stores/useOperationsStore";
 import { useBillingStore } from "@/stores/useBillingStore";
 import type { Deal, DealStage, Task, Client, Contact, Equipment, ServiceRecord, Booking, Package, Invoice, Lead } from "@/types";
 import { QRCodeSVG } from "qrcode.react";
+import CRMDashboard from "@/components/CRMDashboard";
 import {
   Search,
   Filter,
@@ -31,6 +32,7 @@ import {
   MoreVertical,
   Trash2,
   PenTool,
+  LayoutDashboard,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -43,7 +45,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-type TabType = "clients" | "pipeline" | "tasks" | "leads" | "performance";
+type TabType = "dashboard" | "clients" | "pipeline" | "tasks" | "leads" | "performance";
 
 export default function CRM() {
   const { user } = useAuthStore();
@@ -61,7 +63,7 @@ export default function CRM() {
   const { equipment, serviceRecords, bookings } = useOperationsStore();
   const { packages, invoices } = useBillingStore();
 
-  const [activeTab, setActiveTab] = useState<TabType>("pipeline");
+  const [activeTab, setActiveTab] = useState<TabType>("dashboard");
   const [searchQuery, setSearchQuery] = useState("");
   const [clientFilter, setClientFilter] = useState("all");
   const [draggingDeal, setDraggingDeal] = useState<number | null>(null);
@@ -260,36 +262,40 @@ export default function CRM() {
           />
 
           {/* Search Bar */}
-          <div className="flex items-center gap-3">
-            <div className="relative flex-1 max-w-xs">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-600" />
-              <Input
-                placeholder={`Search ${activeTab === 'pipeline' ? 'deals' : activeTab}...`}
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-8 h-8 bg-white border-gray-200 text-black text-xs placeholder:text-gray-400"
-              />
+          {/* Search Bar & Filters */}
+          {activeTab !== "dashboard" && activeTab !== "performance" && (
+            <div className="flex items-center gap-3">
+              <div className="relative flex-1 max-w-xs">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-600" />
+                <Input
+                  placeholder={`Search ${activeTab === 'pipeline' ? 'deals' : activeTab}...`}
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-8 h-8 bg-white border-gray-200 text-black text-xs placeholder:text-gray-400"
+                />
+              </div>
+              {activeTab === "clients" && (
+                <Select value={clientFilter} onValueChange={setClientFilter}>
+                  <SelectTrigger className="h-8 w-36 bg-white border-gray-200 text-black text-xs">
+                    <Filter className="w-3 h-3 mr-1" />
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-white border-gray-200">
+                    <SelectItem value="all" className="text-xs text-black">All Status</SelectItem>
+                    <SelectItem value="active" className="text-xs text-black">Active</SelectItem>
+                    <SelectItem value="prospect" className="text-xs text-black">Prospect</SelectItem>
+                    <SelectItem value="inactive" className="text-xs text-black">Inactive</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
             </div>
-            {activeTab === "clients" && (
-              <Select value={clientFilter} onValueChange={setClientFilter}>
-                <SelectTrigger className="h-8 w-36 bg-white border-gray-200 text-black text-xs">
-                  <Filter className="w-3 h-3 mr-1" />
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="bg-white border-gray-200">
-                  <SelectItem value="all" className="text-xs text-black">All Status</SelectItem>
-                  <SelectItem value="active" className="text-xs text-black">Active</SelectItem>
-                  <SelectItem value="prospect" className="text-xs text-black">Prospect</SelectItem>
-                  <SelectItem value="inactive" className="text-xs text-black">Inactive</SelectItem>
-                </SelectContent>
-              </Select>
-            )}
-          </div>
+          )}
 
           {/* Tabs */}
           <div className="flex gap-1 border-b border-gray-200 pb-0">
             {(
               [
+                { id: "dashboard" as TabType, label: "Dashboard", icon: LayoutDashboard },
                 { id: "pipeline" as TabType, label: "Pipeline", icon: TrendingUp },
                 { id: "clients" as TabType, label: "Clients", icon: Building2 },
                 { id: "leads" as TabType, label: "Leads", icon: ArrowRightLeft },
@@ -321,6 +327,11 @@ export default function CRM() {
               Performance
             </button>
           </div>
+
+          {/* Dashboard Tab */}
+          {activeTab === "dashboard" && (
+            <CRMDashboard />
+          )}
 
           {/* Performance Tab */}
           {activeTab === "performance" && (
