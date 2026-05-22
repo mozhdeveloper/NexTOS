@@ -90,6 +90,50 @@ const serviceTypeOptions = [
   { value: "Installation", label: "Installation" },
 ];
 
+function getPmsMetricLabel(unit: string): string {
+  switch (unit.toLowerCase()) {
+    case "km": return "KM Logged";
+    case "weeks": return "Weeks Logged";
+    case "months": return "Months Logged";
+    case "years": return "Years Logged";
+    default: return "Hours Logged";
+  }
+}
+
+function getPmsMetricValue(seedEq: any, unit: string, gps001CacheMs: number): string {
+  const u = unit.toLowerCase();
+  if (u === "hours") {
+    if (seedEq?.id === "EQ-001" && gps001CacheMs > 0) {
+      const totalMin = Math.floor(gps001CacheMs / (1000 * 60));
+      return `${Math.floor(totalMin / 60)}h ${totalMin % 60}m`;
+    }
+    return seedEq?.hoursTotal ?? "—";
+  }
+  if (u === "km") {
+    const km = seedEq?.kmTotal;
+    return (km !== undefined && km !== null) ? `${km} km` : "—";
+  }
+  const raw = seedEq?.days;
+  const d = typeof raw === "number" ? raw : parseFloat(String(raw ?? ""));
+  if (!Number.isFinite(d) || d < 0) return "—";
+  if (u === "weeks") return `${(d / 7).toFixed(1)} wk`;
+  if (u === "months") return `${(d / 30.44).toFixed(1)} mo`;
+  if (u === "years") return `${(d / 365.25).toFixed(2)} yr`;
+  return "—";
+}
+
+function mapPmsServiceCategory(serviceType?: string, equipmentType?: string): string {
+  const st = (serviceType ?? "").toLowerCase();
+  if (st.includes("calibration")) return "Calibration PMS";
+  if (st.includes("repair")) return "Repair";
+  if (st.includes("inspection")) return "Inspection";
+  if (st.includes("installation")) return "Installation";
+  if (st.includes("pms") || st.includes("preventative") || st.includes("preventive")) return "Heavy Equipment PMS";
+  const et = (equipmentType ?? "").toLowerCase();
+  if (et.includes("lab") || et.includes("testing")) return "Calibration PMS";
+  return "Heavy Equipment PMS";
+}
+
 function readUserScheduledMaintenance(): ScheduledMaintenanceEntry[] {
   try {
     const raw = typeof window !== "undefined" ? window.localStorage.getItem(SCHEDULED_MAINTENANCE_KEY) : null;
@@ -128,6 +172,8 @@ export default function Services() {
   };
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedEquipment, setSelectedEquipment] = useState<number | null>(null);
+  // Tracks which seed equipment ID ("EQ-001" etc.) is visually selected in the Equipment table.
+  const [selectedSeedId, setSelectedSeedId] = useState<string | null>(null);
 
   const clearSimulationData = useCallback(() => {
     storeClearSimulationData();
@@ -187,6 +233,13 @@ export default function Services() {
   const addPmsConfigurationMutation = trpc.seedEquipment.addPmsConfiguration.useMutation();
   const updatePmsConfigurationMutation = trpc.seedEquipment.updatePmsConfiguration.useMutation();
   const deletePmsConfigurationMutation = trpc.seedEquipment.deletePmsConfiguration.useMutation();
+  const upsertSeedServiceRecord = trpc.seedServiceRecords.upsert.useMutation();
+  const completeSeedServiceRecord = trpc.seedServiceRecords.complete.useMutation();
+  const { data: seedServiceRecordsData } = trpc.seedServiceRecords.list.useQuery(undefined, {
+    staleTime: 60_000,
+  });
+  // processingPmsRef removed — deterministic task IDs are used for dedup instead.
+  const seedRecordsInjectedRef = useRef(false);
 
   // Reactive GPS cache for Excavator CAT 320 status — mirrors what Fleet.tsx writes
   const [gps001CacheMs, setGps001CacheMs] = useState<number>(() => {
@@ -198,6 +251,39 @@ export default function Services() {
       try {
         const ms = Number(window.localStorage.getItem("nextos-gps001-total-hours-ms") ?? "0") || 0;
         setGps001CacheMs((prev) => (prev !== ms ? ms : prev));
+      } catch {}
+    };
+    const id = setInterval(refresh, 30_000);
+    window.addEventListener("storage", refresh);
+    return () => { clearInterval(id); window.removeEventListener("storage", refresh); };
+  }, []);
+
+  // EQ-001: total km — same localStorage key Fleet writes to (nextos-gps001-total-km)
+  const [gps001KmTotal, setGps001KmTotal] = useState<number>(() => {
+    try { return Number(window.localStorage.getItem("nextos-gps001-total-km") ?? "0") || 0; }
+    catch { return 0; }
+  });
+  // EQ-001: working days — Fleet stores this in fleet:gps001WorkingDaysByDay:v2 as {ymd: count}
+  const [gps001WorkingDays, setGps001WorkingDays] = useState<number>(() => {
+    try {
+      const raw = window.localStorage.getItem("fleet:gps001WorkingDaysByDay:v2");
+      if (!raw) return 0;
+      const parsed = JSON.parse(raw) as Record<string, number>;
+      const entries = Object.entries(parsed).sort((a, b) => b[0].localeCompare(a[0]));
+      return entries[0]?.[1] ?? 0;
+    } catch { return 0; }
+  });
+  useEffect(() => {
+    const refresh = () => {
+      try {
+        const km = Number(window.localStorage.getItem("nextos-gps001-total-km") ?? "0") || 0;
+        setGps001KmTotal((prev) => (prev !== km ? km : prev));
+        const raw = window.localStorage.getItem("fleet:gps001WorkingDaysByDay:v2");
+        if (raw) {
+          const parsed = JSON.parse(raw) as Record<string, number>;
+          const days = Object.entries(parsed).sort((a, b) => b[0].localeCompare(a[0]))[0]?.[1] ?? 0;
+          setGps001WorkingDays((prev) => (prev !== days ? days : prev));
+        }
       } catch {}
     };
     const id = setInterval(refresh, 30_000);
@@ -339,12 +425,11 @@ export default function Services() {
 
   const activeTasks = serviceRecords.filter(r => r.status === "scheduled" || r.status === "in_progress");
 
-  const filteredEquipment = equipment.filter(
-    (eq: Equipment) =>
-      searchQuery === "" ||
-      eq.unitId.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      eq.manufacturer.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      eq.serialNumber.toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredSeedEquipment = (seedData.equipment as any[]).filter((s) =>
+    searchQuery === "" ||
+    (s.name ?? "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (s.serialNumber ?? "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (s.equipmentType ?? "").toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   // Compute the status for a single pmsConfiguration entry given an equipment's usage metrics.
@@ -428,6 +513,25 @@ export default function Services() {
     return "—";
   };
 
+  // Returns the worst status across ALL pmsConfiguration entries for a seed equipment object.
+  const computeEquipmentWorstStatus = (seedEq: any): "OK" | "Near Service" | "Overdue" | null => {
+    if (!seedEq) return null;
+    const configs: any[] = Array.isArray(seedEq.pmsConfiguration) ? seedEq.pmsConfiguration : [];
+    if (configs.length === 0) return null;
+    const statuses = configs.map((pms) => computeEntryStatus(pms, seedEq));
+    if (statuses.includes("Overdue")) return "Overdue";
+    if (statuses.includes("Near Service")) return "Near Service";
+    if (statuses.includes("OK")) return "OK";
+    return null;
+  };
+
+  // Format gps001CacheMs to a readable hours string for display.
+  const formatGps001Hours = (): string => {
+    if (!gps001CacheMs || gps001CacheMs <= 0) return "—";
+    const totalMin = Math.floor(gps001CacheMs / (1000 * 60));
+    return `${Math.floor(totalMin / 60)}h ${totalMin % 60}m`;
+  };
+
   // One row per pmsConfiguration array entry — status computed independently per entry.
   // Reactive to gps001CacheMs so EQ-001 updates live.
   const seedScheduledMaintenance = useMemo((): ScheduledMaintenanceEntry[] => {
@@ -482,6 +586,132 @@ export default function Services() {
       return prev;
     });
   }, [seedScheduledMaintenance]);
+
+  // Sync seed-persisted PMS records with the store on mount.
+  // 1. Remove stale PMS tasks that were deleted from seed-data.json (e.g. after data resets).
+  // 2. Inject any open PMS tasks from seed-data.json that aren't in the store yet.
+  useEffect(() => {
+    if (!seedServiceRecordsData?.records || seedRecordsInjectedRef.current) return;
+    seedRecordsInjectedRef.current = true;
+
+    const seedIds = new Set(seedServiceRecordsData.records.map((r) => r.id));
+
+    // Step 1: purge stale PMS tasks from the store.
+    // A record is a PMS task if its ID is in the deterministic range 9_000_000–9_999_999
+    // OR its description carries the _src:"pms" marker (legacy random-ID tasks).
+    useOperationsStore.setState((state) => ({
+      serviceRecords: state.serviceRecords.filter((r) => {
+        const isPms =
+          (r.id >= 9_000_000 && r.id < 10_000_000) ||
+          (() => { try { return JSON.parse(r.description ?? "{}")._src === "pms"; } catch { return false; } })();
+        if (isPms) return seedIds.has(r.id);
+        return true;
+      }),
+    }));
+
+    // Step 2: inject open records from seed-data.json that aren't in the store yet.
+    for (const record of seedServiceRecordsData.records) {
+      if (record.status === "completed") continue;
+      useOperationsStore.setState((state) => {
+        if (state.serviceRecords.some((r) => r.id === record.id)) return state;
+        return {
+          serviceRecords: [
+            ...state.serviceRecords,
+            { ...record, invoiceId: null, createdAt: new Date().toISOString() },
+          ],
+        };
+      });
+    }
+  }, [seedServiceRecordsData]);
+
+  // Auto-create a scheduled task for every Overdue PMS entry.
+  // Uses a DETERMINISTIC task ID so the store itself is the dedup source —
+  // no ref needed, safe across remounts / React Strict Mode double-invocation.
+  useEffect(() => {
+    if (!equipment.length) return;
+    const overdueEntries = allScheduledMaintenance.filter((e) => e.status === "Overdue");
+
+    for (const entry of overdueEntries) {
+      const pmsIdx = entry.scheduleIndex ?? 0;
+      const seedEqId = entry.equipmentId;
+
+      // Stable ID: 9_0XX_YZZ where XX = equipment number, Y = LAB vs EQ prefix, ZZ = pmsIdx
+      const isLab = seedEqId.startsWith("LAB");
+      const eqNum = parseInt(seedEqId.replace(/\D/g, "") || "0");
+      const taskId = 9_000_000 + (isLab ? 100_000 : 0) + eqNum * 100 + pmsIdx;
+
+      // Skip if an open (non-completed) task already exists with this exact ID.
+      if (serviceRecords.some((r) => r.id === taskId && r.status !== "completed")) continue;
+
+      const seedEq = (seedData.equipment as any[]).find((s) => s.id === seedEqId);
+      if (!seedEq) continue;
+
+      const storeEq =
+        equipment.find((e) => (e.equipmentType ?? "").toLowerCase() === (seedEq.equipmentType ?? "").toLowerCase()) ??
+        equipment.find((e) => (e.type ?? "").toLowerCase().includes((seedEq.name ?? "").split(" ")[0].toLowerCase())) ??
+        equipment[0];
+      if (!storeEq) continue;
+
+      const clientId = Number(String(seedEq.clientId).replace(/\D/g, "")) || 1;
+      const serviceCategory = mapPmsServiceCategory(entry.serviceType, seedEq.equipmentType);
+
+      const description = JSON.stringify({
+        _src: "pms",
+        _seedEqId: seedEqId,
+        _pmsIdx: pmsIdx,
+        label: `${entry.serviceType} for ${entry.equipmentName}`,
+      });
+
+      // Replace any stale completed record with the same ID before inserting the new task.
+      useOperationsStore.setState((state) => ({
+        serviceRecords: [
+          ...state.serviceRecords.filter((r) => r.id !== taskId),
+          {
+            id: taskId,
+            equipmentId: storeEq.id,
+            clientId,
+            technician: "Pending Assignment",
+            serviceCategory,
+            description,
+            partsUsed: "Pending Inspection",
+            status: "scheduled" as const,
+            scheduledDate: new Date().toISOString(),
+            completedDate: null,
+            cost: entry.estimatedCost || 0,
+            findings: "",
+            workDone: "",
+            recommendation: "",
+            hoursAtService: storeEq.currentHours || 0,
+            invoiceId: null,
+            createdAt: new Date().toISOString(),
+          },
+        ],
+      }));
+
+      upsertSeedServiceRecord.mutate({
+        id: taskId,
+        seedEquipmentId: seedEqId,
+        pmsConfigIndex: pmsIdx,
+        equipmentId: storeEq.id,
+        clientId,
+        serviceCategory,
+        status: "scheduled",
+        scheduledDate: new Date().toISOString(),
+        technician: "Pending Assignment",
+        description,
+        findings: "",
+        workDone: "",
+        recommendation: "",
+        partsUsed: "Pending Inspection",
+        cost: entry.estimatedCost || 0,
+        hoursAtService: storeEq.currentHours || 0,
+      });
+
+      toast.info("PMS Task Auto-Created", {
+        description: `${entry.equipmentName} — ${entry.serviceType} is overdue.`,
+      });
+    }
+  }, [allScheduledMaintenance, serviceRecords]);
 
   const handleDeleteEntry = async (entry: ScheduledMaintenanceEntry) => {
     const seedEq = (seedData.equipment as any[]).find((e) => e.id === entry.equipmentId);
@@ -751,7 +981,36 @@ export default function Services() {
                 const eq = equipment.find(e => e.id === task.equipmentId);
                 const client = clients.find(c => c.id === task.clientId);
                 const isDraft = !!draftExecutions[task.id];
-                
+
+                // Resolve display data from seed for PMS auto-tasks, store for manual/sim tasks
+                let pmsMeta: any = {};
+                try { pmsMeta = JSON.parse(task.description ?? "{}"); } catch {}
+                const isPmsTask = pmsMeta._src === "pms";
+                const pmsSeedEq = isPmsTask
+                  ? (seedData.equipment as any[]).find((s) => s.id === pmsMeta._seedEqId) ?? null
+                  : null;
+                const pmsCfg = pmsSeedEq && pmsMeta._pmsIdx !== undefined
+                  ? (Array.isArray(pmsSeedEq.pmsConfiguration) ? pmsSeedEq.pmsConfiguration[pmsMeta._pmsIdx] : null)
+                  : null;
+                const pmsSeedClient = pmsSeedEq
+                  ? (seedData.clients as any[]).find((c) => c.id === pmsSeedEq.clientId) ?? null
+                  : null;
+
+                const displayName = isPmsTask
+                  ? (pmsSeedEq?.name ?? eq?.unitId ?? "Unknown Equipment")
+                  : (eq?.unitId ?? "No unit selected");
+                const displaySub = isPmsTask
+                  ? null
+                  : (eq ? `${eq.manufacturer} ${eq.model}` : null);
+                const displayClient = isPmsTask
+                  ? (pmsSeedClient?.companyName ?? client?.companyName ?? "Unknown Client")
+                  : (client?.companyName ?? "Unknown Client");
+                const metricUnit = pmsCfg?.serviceIntervalUnit ?? "Hours";
+                const metricLabel = isPmsTask ? getPmsMetricLabel(metricUnit) : "Hours Logged";
+                const metricValue = isPmsTask
+                  ? getPmsMetricValue(pmsSeedEq, metricUnit, gps001CacheMs)
+                  : `${eq?.currentHours || 0}h`;
+
                 return (
                   <div key={task.id} className="data-card p-4 flex flex-col justify-between hover:border-[#66B2B2]/40 transition-all cursor-pointer group" onClick={() => setExecutionTask(task)}>
                      <div>
@@ -763,9 +1022,9 @@ export default function Services() {
                           )}
                           <span className="text-[10px] text-gray-500 font-mono-tech">ID: {task.id}</span>
                         </div>
-                        <h4 className="text-sm font-bold text-gray-900 group-hover:text-[#66B2B2] transition-colors">{eq?.unitId || "No unit selected"}</h4>
-                        <p className="text-[10px] text-gray-500 mb-2">{eq?.manufacturer} {eq?.model}</p>
-                        
+                        <h4 className="text-sm font-bold text-gray-900 group-hover:text-[#66B2B2] transition-colors">{displayName}</h4>
+                        {displaySub && <p className="text-[10px] text-gray-500 mb-2">{displaySub}</p>}
+
                         <div className="space-y-1 mt-3">
                           <div className="flex justify-between text-[11px]">
                             <span className="text-gray-500">Service:</span>
@@ -773,11 +1032,11 @@ export default function Services() {
                           </div>
                           <div className="flex justify-between text-[11px]">
                             <span className="text-gray-500">Client:</span>
-                            <span className="text-gray-900">{client?.companyName || "Unknown Client"}</span>
+                            <span className="text-gray-900">{displayClient}</span>
                           </div>
                           <div className="flex justify-between text-[11px]">
-                            <span className="text-gray-500">Hours Logged:</span>
-                            <span className="text-gray-900 font-mono-tech">{eq?.currentHours || 0}h</span>
+                            <span className="text-gray-500">{metricLabel}:</span>
+                            <span className="text-gray-900 font-mono-tech">{metricValue}</span>
                           </div>
                         </div>
                      </div>
@@ -819,16 +1078,16 @@ export default function Services() {
                 variant="outline"
                 size="sm"
                 onClick={() => {
-                  if (selectedEquipment) {
-                    const eq = equipment.find(e => e.id === selectedEquipment);
-                    if (eq) {
-                      setQrSerial(eq.serialNumber);
+                  if (selectedSeedId) {
+                    const seedEqForQr = (seedData.equipment as any[]).find(s => s.id === selectedSeedId);
+                    if (seedEqForQr?.serialNumber) {
+                      setQrSerial(seedEqForQr.serialNumber);
                       setShowQR(true);
                     }
                   }
                 }}
                 className="h-8 border-gray-200 bg-white text-gray-700 hover:bg-[#66B2B2] hover:text-white"
-                disabled={!selectedEquipment}
+                disabled={!selectedSeedId}
               >
                 <QrCode className="w-3.5 h-3.5 mr-1.5" />
                 Generate QR
@@ -846,45 +1105,92 @@ export default function Services() {
               <table className="w-full text-xs">
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-200">
-                    <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider">Unit ID</th>
-                    <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider">Manufacturer/Model</th>
+                    <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider">Equipment</th>
                     <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider">Client</th>
+                    <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider">Serial Number</th>
+                    <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider">Total Hours</th>
+                    <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider">Total Km</th>
+                    <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider">Days</th>
+                    <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider">Weeks</th>
+                    <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider">Months</th>
+                    <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider">Years</th>
                     <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider">Status</th>
-                    <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider text-right">Hours</th>
-                    <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider text-right">Next PMS</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredEquipment.map((eq) => {
-                    const client = clients.find((c) => c.id === eq.clientId);
-                    const serviceDue = eq.currentHours >= eq.nextPMSHours && eq.nextPMSHours > 0;
+                  {filteredSeedEquipment.map((seedEq) => {
+                    const seedClient = (seedData.clients as any[]).find((c) => c.id === seedEq.clientId);
+                    const storeEq = equipment.find((e) => e.serialNumber === seedEq.serialNumber);
+                    const storeId = storeEq?.id ?? null;
+
+                    // EQ-001: pull hours/km/days from Fleet's localStorage caches
+                    const isExcavator = seedEq.id === "EQ-001";
+                    const hoursDisplay = isExcavator
+                      ? formatGps001Hours()
+                      : (seedEq.hoursTotal ?? "—");
+
+                    const rawKm = isExcavator ? gps001KmTotal : seedEq.kmTotal;
+                    const kmNum = rawKm !== undefined && rawKm !== null
+                      ? (typeof rawKm === "number" ? rawKm : parseFloat(String(rawKm).replace(/[^\d.]/g, "")))
+                      : null;
+                    const kmDisplay = kmNum !== null && Number.isFinite(kmNum) ? `${kmNum.toFixed(2)} km` : "—";
+
+                    const rawDays = isExcavator ? gps001WorkingDays : seedEq.days;
+                    const daysNum = rawDays !== undefined && rawDays !== null
+                      ? (typeof rawDays === "number" ? rawDays : parseFloat(String(rawDays).replace(/[^\d.]/g, "")))
+                      : null;
+                    const validDays = daysNum !== null && Number.isFinite(daysNum) && daysNum >= 0;
+                    const daysDisplay = validDays ? `${Math.floor(daysNum!)}` : "—";
+                    const weeksDisplay = validDays ? `${(daysNum! / 7).toFixed(1)}` : "—";
+                    const monthsDisplay = validDays ? `${(daysNum! / 30.44).toFixed(1)}` : "—";
+                    const yearsDisplay = validDays ? `${(daysNum! / 365.25).toFixed(1)}` : "—";
+
+                    const worstStatus = computeEquipmentWorstStatus(seedEq);
+                    const isSelected = selectedSeedId === seedEq.id;
+                    const isHighlighted = storeId !== null && highlightedEquipment === storeId;
+
                     return (
                       <tr
-                        key={eq.id}
+                        key={seedEq.id}
                         ref={(el) => {
-                          if (el) equipmentRefs.current.set(eq.id, el);
-                          else equipmentRefs.current.delete(eq.id);
+                          if (storeId !== null) {
+                            if (el) equipmentRefs.current.set(storeId, el);
+                            else equipmentRefs.current.delete(storeId);
+                          }
                         }}
                         className={`grid-table-row border-b border-gray-100 cursor-pointer hover:bg-[#66B2B2]/5 transition-all ${
-                          selectedEquipment === eq.id || highlightedEquipment === eq.id ? 'bg-[#66B2B2]/10 border-[#66B2B2]/30' : ''
+                          isSelected || isHighlighted ? 'bg-[#66B2B2]/10 border-[#66B2B2]/30' : ''
                         }`}
-                        onClick={() => setSelectedEquipment(selectedEquipment === eq.id ? null : eq.id)}
+                        onClick={() => {
+                          if (selectedSeedId === seedEq.id) {
+                            setSelectedSeedId(null);
+                            setSelectedEquipment(null);
+                          } else {
+                            setSelectedSeedId(seedEq.id);
+                            setSelectedEquipment(storeId);
+                          }
+                        }}
                       >
-                        <td className="py-3 px-3 text-black font-mono-tech font-bold text-sm">{eq.unitId}</td>
-                        <td className="py-3 px-3 text-gray-700">
-                           <div className="font-medium">{eq.manufacturer}</div>
-                           <div className="text-[10px] text-gray-500">{eq.model}</div>
-                        </td>
-                        <td className="py-3 px-3 text-black">{client?.companyName || "—"}</td>
+                        <td className="py-3 px-3 text-black font-medium">{seedEq.name ?? "—"}</td>
+                        <td className="py-3 px-3 text-black">{seedClient?.companyName ?? "—"}</td>
+                        <td className="py-3 px-3 text-gray-600 font-mono-tech">{seedEq.serialNumber ?? "—"}</td>
+                        <td className="py-3 px-3 font-mono-tech text-gray-800">{hoursDisplay}</td>
+                        <td className="py-3 px-3 font-mono-tech text-gray-800">{kmDisplay}</td>
+                        <td className="py-3 px-3 font-mono-tech text-gray-800">{daysDisplay}</td>
+                        <td className="py-3 px-3 font-mono-tech text-gray-800">{weeksDisplay}</td>
+                        <td className="py-3 px-3 font-mono-tech text-gray-800">{monthsDisplay}</td>
+                        <td className="py-3 px-3 font-mono-tech text-gray-800">{yearsDisplay}</td>
                         <td className="py-3 px-3">
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                            serviceDue ? 'bg-red-100 text-red-700 animate-pulse' : 'bg-green-100 text-green-700'
-                          }`}>
-                            {serviceDue ? 'PMS Due' : eq.status}
-                          </span>
+                          {worstStatus === "Overdue" ? (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#EF4444]/20 text-[#EF4444] uppercase">Overdue</span>
+                          ) : worstStatus === "Near Service" ? (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#F2A900]/20 text-[#F2A900] uppercase">Near Service</span>
+                          ) : worstStatus === "OK" ? (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#10B981]/20 text-[#10B981] uppercase">OK</span>
+                          ) : (
+                            <span className="text-gray-400">—</span>
+                          )}
                         </td>
-                        <td className="py-3 px-3 text-right font-mono-tech font-bold text-gray-900">{eq.currentHours}h</td>
-                        <td className="py-3 px-3 text-right font-mono-tech text-gray-500">{eq.nextPMSHours > 0 ? `${eq.nextPMSHours}h` : '—'}</td>
                       </tr>
                     );
                   })}
@@ -892,14 +1198,24 @@ export default function Services() {
               </table>
             </div>
 
-            {selectedEquipment && equipment.find((eqItem) => eqItem.id === selectedEquipment) && (
-              <EquipmentDetail
-                equipment={equipment.find((eqItem) => eqItem.id === selectedEquipment)!}
-                client={clients.find((c) => c.id === equipment.find((eqItem) => eqItem.id === selectedEquipment)?.clientId)}
-                serviceHistory={serviceRecords.filter(r => r.equipmentId === selectedEquipment)}
-                onViewReport={(record) => setShowReport(record)}
-              />
-            )}
+            {selectedSeedId && (() => {
+              // Find matching store equipment; fall back to first available for display purposes
+              const detailStoreEq = equipment.find((e) => e.id === selectedEquipment) ?? equipment[0];
+              if (!detailStoreEq) return null;
+              // Service history: prefer records for this equipment, fall back to any completed records
+              const ownHistory = serviceRecords.filter(r => r.equipmentId === detailStoreEq.id);
+              const serviceHistory = ownHistory.length > 0
+                ? ownHistory
+                : serviceRecords.filter(r => r.status === 'completed').slice(0, 5);
+              return (
+                <EquipmentDetail
+                  equipment={detailStoreEq}
+                  client={clients.find((c) => c.id === detailStoreEq.clientId)}
+                  serviceHistory={serviceHistory}
+                  onViewReport={(record) => setShowReport(record)}
+                />
+              );
+            })()}
           </div>
         )}
 
@@ -1122,10 +1438,14 @@ export default function Services() {
                 <tbody>
                   {serviceRecords.filter(r => r.status === 'completed').map((record) => {
                     const eq = equipment.find(e => e.id === record.equipmentId);
+                    const reportSeedEq = eq
+                      ? (seedData.equipment as any[]).find((s) => s.serialNumber === eq.serialNumber)
+                      : null;
+                    const reportEquipmentName = reportSeedEq?.name ?? eq?.unitId ?? "—";
                     return (
                       <tr key={record.id} className="grid-table-row border-b border-gray-100 hover:bg-gray-50 transition-all">
                         <td className="py-3 px-3 text-gray-500 font-mono-tech">#{record.id}</td>
-                        <td className="py-3 px-3 text-black font-bold">{eq?.unitId}</td>
+                        <td className="py-3 px-3 text-black font-bold">{reportEquipmentName}</td>
                         <td className="py-3 px-3">
                           <span className="text-gray-900 font-medium">{record.serviceCategory}</span>
                         </td>
@@ -1407,6 +1727,7 @@ function ExecutionModal({ task, onClose, onFinish }: { task: ServiceRecord | nul
     const { logPartUsage } = useInventoryStore();
     const { packages } = useBillingStore();
     const { clients } = useCRMStore();
+    const completeSeedServiceRecordMutation = trpc.seedServiceRecords.complete.useMutation();
     
     const draft = task ? draftExecutions[task.id] || { currentStep: 1, partsUsed: "Pending" } : null;
     const currentStep = draft?.currentStep || 1;
@@ -1458,7 +1779,14 @@ function ExecutionModal({ task, onClose, onFinish }: { task: ServiceRecord | nul
 
     const handleScanSuccess = async (decodedText: string) => {
         const currentEq = equipment.find(e => e.id === (draft?.equipmentId || task?.equipmentId));
-        if (decodedText.trim() === currentEq?.serialNumber) {
+        // Use the seed serial for PMS tasks; fall back to store serial for sim/manual tasks
+        let _scanMeta: any = {};
+        try { _scanMeta = JSON.parse(task?.description ?? "{}"); } catch {}
+        const _scanSeedEq = _scanMeta._src === "pms"
+          ? (seedData.equipment as any[]).find((s) => s.id === _scanMeta._seedEqId) ?? null
+          : null;
+        const expectedSerial = _scanSeedEq?.serialNumber ?? currentEq?.serialNumber ?? "";
+        if (decodedText.trim() === expectedSerial) {
             await stopScanning();
             setIsVerified(true);
             toast.success("Asset Verified Successfully!");
@@ -1522,6 +1850,24 @@ function ExecutionModal({ task, onClose, onFinish }: { task: ServiceRecord | nul
             addServicePhoto({ serviceRecordId: task.id, type: "after", url: draft.afterPhoto, caption: "After Service" });
         }
 
+        // If this task originated from an overdue PMS entry, persist completion to seed-data.json.
+        try {
+          const meta = JSON.parse(task.description ?? "{}");
+          if (meta._src === "pms") {
+            completeSeedServiceRecordMutation.mutate({
+              id: task.id,
+              completedDate: new Date().toISOString(),
+              technician: draft.techSignature ? "Technician (Signed)" : "Pending",
+              findings: draft.findings ?? "",
+              workDone: draft.workDone ?? "",
+              recommendation: draft.recommendations ?? "",
+              partsUsed: draft.selectedParts?.map((p) => `${p.name} (x${p.quantity})`).join(", ") || "",
+              cost: 0,
+              hoursAtService: draft.hoursAtService ?? 0,
+            });
+          }
+        } catch { /* non-PMS task — skip */ }
+
         clearDraftExecution(task.id);
         toast.success("Final report sealed and submitted!");
         onFinish();
@@ -1539,6 +1885,37 @@ function ExecutionModal({ task, onClose, onFinish }: { task: ServiceRecord | nul
 
     const currentEq = equipment.find(e => e.id === (draft?.equipmentId || task?.equipmentId));
 
+    // For PMS auto-tasks, resolve display values from seed data so they match the real equipment.
+    let _pmsMeta: any = {};
+    try { _pmsMeta = JSON.parse(task?.description ?? "{}"); } catch {}
+    const _isPmsTask = _pmsMeta._src === "pms";
+    const _pmsSeedEq = _isPmsTask
+      ? (seedData.equipment as any[]).find((s) => s.id === _pmsMeta._seedEqId) ?? null
+      : null;
+
+    // Serial number used for QR verification and display
+    const displaySerial = _pmsSeedEq?.serialNumber ?? currentEq?.serialNumber ?? "";
+    // Equipment name shown in the header and Step 1 card
+    const displayName = _pmsSeedEq?.name ?? currentEq?.unitId ?? `SIM-UNIT-${task?.id}`;
+    const displaySubtitle = _pmsSeedEq?.equipmentType ?? (currentEq ? `${currentEq.manufacturer} ${currentEq.model}` : "");
+    const displayClient = _pmsSeedEq?.clientId
+      ? ((seedData.clients as any[]).find((c) => c.id === _pmsSeedEq.clientId)?.companyName ?? null)
+      : null;
+    const _pmsCfg = _pmsSeedEq?.pmsConfiguration?.[_pmsMeta._pmsIdx] ?? null;
+    // Operating time: GPS cache for EQ-001, seed hoursTotal otherwise
+    const displayOperatingTime = (() => {
+      if (_pmsSeedEq?.id === "EQ-001") {
+        try {
+          const ms = Number(window.localStorage.getItem("nextos-gps001-total-hours-ms") ?? "0") || 0;
+          if (ms > 0) {
+            const totalMin = Math.floor(ms / (1000 * 60));
+            return `${Math.floor(totalMin / 60)}h ${totalMin % 60}m`;
+          }
+        } catch { /* fall through */ }
+      }
+      return _pmsSeedEq?.hoursTotal ?? `${currentEq?.currentHours ?? 0}h`;
+    })();
+
     return (
         <Dialog open={!!task} onOpenChange={(open) => !open && onClose()}>
             <DialogContent className="max-w-2xl bg-white border-gray-200 max-h-[90vh] overflow-auto scrollbar-hide rounded-2xl shadow-2xl p-0">
@@ -1549,7 +1926,7 @@ function ExecutionModal({ task, onClose, onFinish }: { task: ServiceRecord | nul
                                 <div className="w-8 h-8 rounded bg-[#66B2B2]/10 flex items-center justify-center">
                                     <ClipboardList className="w-4 h-4 text-[#66B2B2]" />
                                 </div>
-                                Service Execution: <span className="font-mono-tech">{currentEq?.unitId || `SIM-UNIT-${task.id}`}</span>
+                                Service Execution: <span className="font-mono-tech">{displayName}</span>
                             </DialogTitle>
                             <DialogDescription className="text-xs text-gray-500 mt-1">
                                 Complete the following steps to document and finalize the service execution for this asset.
@@ -1633,8 +2010,9 @@ function ExecutionModal({ task, onClose, onFinish }: { task: ServiceRecord | nul
                                                     <div className="flex items-start justify-between">
                                                         <div>
                                                             <div className="text-[10px] text-[#66B2B2] font-black uppercase tracking-[0.2em] mb-1">Target Asset</div>
-                                                            <div className="text-2xl font-black tracking-tight">{currentEq.unitId}</div>
-                                                            <div className="text-sm text-gray-400 font-bold">{currentEq.manufacturer} {currentEq.model}</div>
+                                                            <div className="text-2xl font-black tracking-tight">{displayName}</div>
+                                                            {displayClient && <div className="text-xs text-[#66B2B2] font-semibold mt-0.5">{displayClient}</div>}
+                                                            <div className="text-sm text-gray-400 font-bold">{displaySubtitle}</div>
                                                         </div>
                                                         <div className="w-12 h-12 rounded-xl bg-white/5 flex items-center justify-center border border-white/10">
                                                             <Package className="w-6 h-6 text-[#66B2B2]" />
@@ -1644,11 +2022,11 @@ function ExecutionModal({ task, onClose, onFinish }: { task: ServiceRecord | nul
                                                     <div className="grid grid-cols-2 gap-6 py-6 border-y border-white/5">
                                                         <div className="space-y-1">
                                                             <div className="text-[9px] text-gray-400 uppercase font-black tracking-widest">Serial Number</div>
-                                                            <div className="text-sm font-mono-tech font-bold text-[#66B2B2]">{currentEq.serialNumber}</div>
+                                                            <div className="text-sm font-mono-tech font-bold text-[#66B2B2]">{displaySerial}</div>
                                                         </div>
                                                         <div className="space-y-1 text-right">
                                                             <div className="text-[9px] text-gray-400 uppercase font-black tracking-widest">Operating Time</div>
-                                                            <div className="text-sm font-bold text-white">{currentEq.currentHours} Hours</div>
+                                                            <div className="text-sm font-bold text-white">{displayOperatingTime}</div>
                                                         </div>
                                                     </div>
 
@@ -1718,11 +2096,13 @@ function ExecutionModal({ task, onClose, onFinish }: { task: ServiceRecord | nul
                             )}
 
                             {currentStep === 4 && (
-                                <TechnicalWorkForm 
+                                <TechnicalWorkForm
                                     draft={draft}
                                     equipment={currentEq}
                                     client={clients.find(c => c.id === task.clientId)}
                                     packages={packages}
+                                    seedEquipment={_pmsSeedEq}
+                                    pmsConfig={_pmsCfg}
                                     onSave={(data) => handleNext(data)}
                                     onBack={handleBack}
                                 />
@@ -1901,8 +2281,7 @@ function VisualEvidence({ label, photo, notes, onSave, onBack }: { label: string
     );
 }
 
-function TechnicalWorkForm({ draft, equipment, client, packages, onSave, onBack }: { draft: DraftExecution, equipment?: Equipment, client?: Client, packages: any[], onSave: (d: Partial<DraftExecution>) => void, onBack: () => void }) {
-    const { items: inventory } = useInventoryStore();
+function TechnicalWorkForm({ draft, equipment, client, packages, seedEquipment, pmsConfig, onSave, onBack }: { draft: DraftExecution, equipment?: Equipment, client?: Client, packages: any[], seedEquipment?: any, pmsConfig?: any, onSave: (d: Partial<DraftExecution>) => void, onBack: () => void }) {
     const [fields, setFields] = useState({
         findings: draft.findings || "",
         workDone: draft.workDone || "",
@@ -1911,79 +2290,63 @@ function TechnicalWorkForm({ draft, equipment, client, packages, onSave, onBack 
         hoursAtService: draft.hoursAtService || equipment?.currentHours || 0
     });
 
-    const [selectedPartId, setSelectedPartId] = useState<string>("");
-    const [partQty, setPartQty] = useState<number>(1);
+    // Current metric value for the service context card
+    const currentMetric = useMemo(() => {
+        if (!pmsConfig) return null;
+        const unit: string = pmsConfig.serviceIntervalUnit ?? "Hours";
+        let gps001CacheMs = 0;
+        try { gps001CacheMs = Number(window.localStorage.getItem("nextos-gps001-total-hours-ms") ?? "0") || 0; } catch {}
+        return getPmsMetricValue(seedEquipment, unit, gps001CacheMs);
+    }, [seedEquipment, pmsConfig]);
 
-    const addPart = () => {
-        const item = inventory.find(i => i.id === parseInt(selectedPartId));
-        if (!item) return;
+    // PMS interval display e.g. "200h" or "2w"
+    const intervalDisplay = useMemo(() => {
+        if (!pmsConfig) return null;
+        const n = pmsConfig.serviceInterval;
+        const u: string = (pmsConfig.serviceIntervalUnit ?? "").toLowerCase();
+        const suffix = u === "hours" ? "h" : u === "km" ? "km" : u === "weeks" ? "w" : u === "days" ? "d" : u === "months" ? "mo" : u;
+        return `${n}${suffix}`;
+    }, [pmsConfig]);
 
-        const existing = fields.selectedParts.find(p => p.inventoryItemId === item.id);
-        if (existing) {
-            setFields({
-                ...fields,
-                selectedParts: fields.selectedParts.map(p => 
-                    p.inventoryItemId === item.id ? { ...p, quantity: p.quantity + partQty } : p
-                )
-            });
-        } else {
-            setFields({
-                ...fields,
-                selectedParts: [...fields.selectedParts, { 
-                    inventoryItemId: item.id, 
-                    quantity: partQty, 
-                    name: item.name 
-                }]
-            });
+    // Client name: prefer seed client lookup, fall back to CRM client
+    const clientName = useMemo(() => {
+        if (seedEquipment?.clientId) {
+            const sc = (seedData.clients as any[]).find((c) => c.id === seedEquipment.clientId);
+            if (sc?.companyName) return sc.companyName;
         }
-        setSelectedPartId("");
-        setPartQty(1);
-    };
+        return client?.companyName ?? "—";
+    }, [seedEquipment, client]);
 
-    const removePart = (itemId: number) => {
-        setFields({
-            ...fields,
-            selectedParts: fields.selectedParts.filter(p => p.inventoryItemId !== itemId)
-        });
-    };
-
-    const activePackage = packages.find(p => p.id === equipment?.packageId);
+    const eqName = seedEquipment?.name ?? equipment?.unitId ?? "—";
+    const eqType = seedEquipment?.equipmentType ?? (equipment ? `${equipment.manufacturer} ${equipment.model}` : "—");
 
     return (
         <div className="space-y-6 animate-in fade-in duration-300">
-            <div className="grid grid-cols-2 gap-4">
-                <div className="p-4 rounded-xl bg-gray-50 border border-gray-100">
-                  <div className="text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-1">Equipment Unit</div>
-                  <div className="text-sm font-bold text-gray-900">{equipment?.unitId}</div>
-                  <div className="text-xs text-[#66B2B2] font-bold mt-1">Last Logged: {equipment?.currentHours}h</div>
+            <div className="grid grid-cols-1 gap-4">
+                <div className="p-4 rounded-xl bg-gray-50 border border-gray-100"> 
+                    <div className="text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-2">Equipment Unit</div>
+                    <div className="text-xs text-gray-500 mt-1"><span className="font-semibold text-gray-600">Equipment Name:</span> {eqName}</div>
+                    <div className="text-xs text-gray-500 mt-1"><span className="font-semibold text-gray-600">Equipment Type:</span> {eqType}</div>
+                    <div className="text-xs text-gray-500 mt-0.5"><span className="font-semibold text-gray-600">Client:</span> {clientName}</div>
                 </div>
                 <div className="p-4 rounded-xl bg-gray-50 border border-gray-100">
-                  <div className="text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-1">Service Context</div>
-                  <div className="text-sm font-bold text-gray-900 truncate">{client?.companyName}</div>
-                  {activePackage && <div className="text-[9px] px-1.5 py-0.5 rounded-full bg-gray-200 text-gray-700 font-bold uppercase inline-block mt-1">{activePackage.name}</div>}
+                    <div className="text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-2">Service Context</div>
+                    {pmsConfig ? (
+                        <div className="space-y-1">
+                            <div className="text-xs text-gray-500"><span className="font-semibold text-gray-600">Service Type:</span> {pmsConfig.serviceType}</div>
+                            {intervalDisplay && <div className="text-xs text-gray-500"><span className="font-semibold text-gray-600">Scheduled Maintenance:</span> {intervalDisplay}</div>}
+                            {currentMetric && <div className="text-xs text-gray-500"><span className="font-semibold text-gray-600">{getPmsMetricLabel(pmsConfig.serviceIntervalUnit ?? "Hours")}:</span> {currentMetric}</div>}
+                        </div>
+                    ) : (
+                        <div className="text-sm font-bold text-gray-900 truncate">{client?.companyName ?? "—"}</div>
+                    )}
                 </div>
             </div>
 
             <div className="grid gap-4">
-                <div className="p-5 rounded-2xl bg-amber-50 border border-amber-100 space-y-3">
-                    <div className="flex items-center gap-2">
-                        <Clock className="w-4 h-4 text-amber-600" />
-                        <span className="text-[10px] font-black text-amber-800 uppercase tracking-widest">Meter Reading (Mandatory)</span>
-                    </div>
-                    <div className="flex items-center gap-3">
-                        <Input 
-                            type="number"
-                            className="h-12 bg-white border-amber-200 text-lg font-black font-mono-tech focus:ring-amber-500/20"
-                            value={fields.hoursAtService}
-                            onChange={(e) => setFields({...fields, hoursAtService: parseInt(e.target.value) || 0})}
-                        />
-                        <div className="text-xs font-bold text-amber-600 uppercase tracking-tighter">Current Hours<br/>on Machine</div>
-                    </div>
-                </div>
-
                 <div className="space-y-1.5">
                     <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider ml-1">Initial Findings / Faults</label>
-                    <textarea 
+                    <textarea
                         className="w-full p-4 rounded-xl border border-gray-200 text-sm focus:border-[#66B2B2] focus:ring-2 focus:ring-[#66B2B2]/10 outline-none resize-none"
                         rows={2}
                         value={fields.findings}
@@ -1991,65 +2354,10 @@ function TechnicalWorkForm({ draft, equipment, client, packages, onSave, onBack 
                         placeholder="Detail any damage or leaks..."
                     />
                 </div>
-                
-                <div className="space-y-3">
-                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider ml-1">Spare Parts & Consumables</label>
-                    <div className="flex gap-2">
-                        <div className="flex-[3]">
-                            <Select value={selectedPartId} onValueChange={setSelectedPartId}>
-                                <SelectTrigger className="h-10 bg-white border-gray-200 text-xs">
-                                    <SelectValue placeholder="Select part from inventory..." />
-                                </SelectTrigger>
-                                <SelectContent className="bg-white border-gray-200 z-[100]">
-                                    {inventory.map(item => (
-                                        <SelectItem key={item.id} value={item.id.toString()} disabled={item.stockLevel <= 0}>
-                                            <div className="flex flex-col">
-                                                <span className="font-bold">{item.name}</span>
-                                                <span className="text-[10px] text-gray-400">Stock: {item.stockLevel} {item.unit} • {item.partNumber}</span>
-                                            </div>
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        <div className="flex-1">
-                            <Input 
-                                type="number" 
-                                min={1} 
-                                value={partQty} 
-                                onChange={(e) => setPartQty(parseInt(e.target.value) || 1)}
-                                className="h-10 text-center font-bold"
-                            />
-                        </div>
-                        <Button 
-                            onClick={addPart}
-                            disabled={!selectedPartId}
-                            className="h-10 bg-gray-900 text-white font-bold px-4 hover:bg-black"
-                        >
-                            Add
-                        </Button>
-                    </div>
-
-                    {fields.selectedParts.length > 0 && (
-                        <div className="p-3 rounded-xl border border-gray-100 bg-gray-50/50 space-y-2">
-                            {fields.selectedParts.map((p, i) => (
-                                <div key={i} className="flex items-center justify-between bg-white p-2 rounded-lg border border-gray-100 shadow-sm">
-                                    <div className="flex items-center gap-2">
-                                        <div className="w-6 h-6 rounded bg-[#66B2B2]/10 text-[#66B2B2] flex items-center justify-center text-[10px] font-black">{p.quantity}</div>
-                                        <span className="text-[11px] font-bold text-gray-900">{p.name}</span>
-                                    </div>
-                                    <button onClick={() => removePart(p.inventoryItemId)} className="text-gray-400 hover:text-red-500 transition-colors">
-                                        <X className="w-3.5 h-3.5" />
-                                    </button>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </div>
 
                 <div className="space-y-1.5">
                     <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider ml-1">Technical Work Performed</label>
-                    <textarea 
+                    <textarea
                         className="w-full p-4 rounded-xl border border-gray-200 text-sm focus:border-[#66B2B2] focus:ring-2 focus:ring-[#66B2B2]/10 outline-none resize-none"
                         rows={2}
                         value={fields.workDone}
@@ -2057,10 +2365,10 @@ function TechnicalWorkForm({ draft, equipment, client, packages, onSave, onBack 
                         placeholder="Describe services completed..."
                     />
                 </div>
-                
+
                 <div className="space-y-1.5">
                     <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider ml-1">Strategic Recommendations</label>
-                    <Input 
+                    <Input
                         className="h-10 rounded-xl text-xs"
                         placeholder="e.g. Belt change in 500h"
                         value={fields.recommendations}
@@ -2070,7 +2378,7 @@ function TechnicalWorkForm({ draft, equipment, client, packages, onSave, onBack 
             </div>
             <div className="flex gap-3 pt-2">
                 <Button variant="ghost" className="flex-1 h-12 rounded-xl text-gray-400 font-bold" onClick={onBack}>Previous</Button>
-                <Button 
+                <Button
                     className="flex-[2] h-12 bg-[#66B2B2] text-white font-bold rounded-xl hover:bg-[#5A9E9E]"
                     onClick={() => onSave(fields)}
                 >

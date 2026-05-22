@@ -30,9 +30,30 @@ type SeedEquipmentEntry = {
   pmsConfiguration?: PmsConfigEntry[]; // array — each entry is an independent schedule
 };
 
+type SeedServiceRecord = {
+  id: number;
+  seedEquipmentId: string;
+  pmsConfigIndex: number;
+  equipmentId: number;
+  clientId: number;
+  serviceCategory: string;
+  status: "scheduled" | "in_progress" | "completed";
+  scheduledDate: string;
+  completedDate?: string | null;
+  technician: string;
+  description: string;
+  findings?: string;
+  workDone?: string;
+  recommendation?: string;
+  partsUsed?: string;
+  cost?: number;
+  hoursAtService?: number;
+};
+
 type SeedDataShape = {
   clients?: Array<{ id: string }>;
   equipment?: SeedEquipmentEntry[];
+  serviceRecords?: SeedServiceRecord[];
   [key: string]: unknown;
 };
 
@@ -476,10 +497,93 @@ export const appRouter = createRouter({
         }),
     }),
 
-  // TODO: add feature routers here, e.g.
-  // todo: createRouter({
-  //   list: publicQuery.query(() => findTodos()),
-  // }),
+  seedServiceRecords: createRouter({
+    list: publicQuery.query(async () => {
+      const seedDataPath = getSeedDataPath();
+      const raw = await fs.readFile(seedDataPath, "utf-8");
+      const parsed = JSON.parse(raw) as SeedDataShape;
+      return { records: Array.isArray(parsed.serviceRecords) ? parsed.serviceRecords : [] };
+    }),
+
+    upsert: publicQuery
+      .input(
+        z.object({
+          id: z.number(),
+          seedEquipmentId: z.string(),
+          pmsConfigIndex: z.number(),
+          equipmentId: z.number(),
+          clientId: z.number(),
+          serviceCategory: z.string(),
+          status: z.enum(["scheduled", "in_progress", "completed"]),
+          scheduledDate: z.string(),
+          completedDate: z.string().nullable().optional(),
+          technician: z.string(),
+          description: z.string(),
+          findings: z.string().optional(),
+          workDone: z.string().optional(),
+          recommendation: z.string().optional(),
+          partsUsed: z.string().optional(),
+          cost: z.number().optional(),
+          hoursAtService: z.number().optional(),
+        })
+      )
+      .mutation(async ({ input }) => {
+        const seedDataPath = getSeedDataPath();
+        const raw = await fs.readFile(seedDataPath, "utf-8");
+        const parsed = JSON.parse(raw) as SeedDataShape;
+
+        const records: SeedServiceRecord[] = Array.isArray(parsed.serviceRecords)
+          ? [...parsed.serviceRecords]
+          : [];
+        const existingIdx = records.findIndex((r) => r.id === input.id);
+
+        if (existingIdx >= 0) {
+          records[existingIdx] = { ...records[existingIdx], ...input };
+        } else {
+          records.push(input as SeedServiceRecord);
+        }
+
+        parsed.serviceRecords = records;
+        await fs.writeFile(seedDataPath, `${JSON.stringify(parsed, null, 4)}\n`, "utf-8");
+        return { ok: true };
+      }),
+
+    complete: publicQuery
+      .input(
+        z.object({
+          id: z.number(),
+          completedDate: z.string(),
+          technician: z.string(),
+          findings: z.string().optional(),
+          workDone: z.string().optional(),
+          recommendation: z.string().optional(),
+          partsUsed: z.string().optional(),
+          cost: z.number().optional(),
+          hoursAtService: z.number().optional(),
+        })
+      )
+      .mutation(async ({ input }) => {
+        const seedDataPath = getSeedDataPath();
+        const raw = await fs.readFile(seedDataPath, "utf-8");
+        const parsed = JSON.parse(raw) as SeedDataShape;
+
+        const records: SeedServiceRecord[] = Array.isArray(parsed.serviceRecords)
+          ? [...parsed.serviceRecords]
+          : [];
+        const existingIdx = records.findIndex((r) => r.id === input.id);
+        if (existingIdx === -1) return { ok: false, message: "Record not found" };
+
+        records[existingIdx] = {
+          ...records[existingIdx],
+          ...input,
+          status: "completed",
+        };
+
+        parsed.serviceRecords = records;
+        await fs.writeFile(seedDataPath, `${JSON.stringify(parsed, null, 4)}\n`, "utf-8");
+        return { ok: true };
+      }),
+  }),
 });
 
 export type AppRouter = typeof appRouter;

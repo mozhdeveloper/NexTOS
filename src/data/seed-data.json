@@ -68,9 +68,9 @@
             "equipmentType": "Heavy Equipment",
             "pmsConfiguration": [
                 {
-                    "serviceInterval": 1000,
+                    "serviceInterval": 200,
                     "serviceIntervalUnit": "Hours",
-                    "serviceType": "Repair",
+                    "serviceType": "Calibration PMS",
                     "estimatedCost": 10000
                 },
                 {
@@ -104,7 +104,7 @@
                 {
                     "serviceInterval": 3,
                     "serviceIntervalUnit": "Weeks",
-                    "serviceType": "Repair",
+                    "serviceType": "General Repair",
                     "estimatedCost": 12000
                 }
             ],
@@ -119,7 +119,7 @@
             "lat": 14.56331,
             "lng": 121.04812,
             "hoursToday": "4h 20m",
-            "hoursTotal": "3280h 40m",
+            "hoursTotal": "3800h 40m",
             "kmToday": 37,
             "kmTotal": 25410,
             "serialNumber": "GEN500-GBD-003",
@@ -131,7 +131,7 @@
                 }
             ],
             "days": 13,
-            "status": "OK"
+            "status": "Near Service"
         },
         {
             "id": "LAB-001",
@@ -171,7 +171,7 @@
                 {
                     "serviceInterval": 2,
                     "serviceIntervalUnit": "Months",
-                    "serviceType": "Repair"
+                    "serviceType": "General Repair"
                 }
             ],
             "days": 19,
@@ -224,47 +224,22 @@
     ],
     "serviceRecords": [
         {
-            "id": "SRV-001",
-            "equipmentId": "EQ-001",
-            "serviceCategory": "Heavy Equipment PMS",
-            "serviceType": "PMS (1000 hrs)",
-            "createdAt": "2025-05-10T00:00:00.000Z",
-            "completedDate": "2025-05-10T00:00:00.000Z",
-            "technician": "James Rodriguez",
-            "currentHours": 980,
-            "workDone": [
-                "Oil replacement",
-                "Hydraulic inspection",
-                "Greasing",
-                "Filter replacement"
-            ],
-            "nextPmsHours": 1980,
-            "status": "Completed",
-            "clientId": "CL-001"
-        },
-        {
-            "id": "SRV-002",
-            "equipmentId": "LAB-002",
+            "id": 9000100,
+            "seedEquipmentId": "EQ-001",
+            "pmsConfigIndex": 0,
+            "equipmentId": 1,
+            "clientId": 1,
             "serviceCategory": "Calibration PMS",
-            "serviceType": "Calibration",
-            "createdAt": "2025-04-12T00:00:00.000Z",
-            "completedDate": "2025-04-12T00:00:00.000Z",
-            "technician": "Alex Smith",
-            "result": "Calibration passed",
-            "nextCalibrationDate": "2025-10-12T00:00:00.000Z",
-            "status": "Completed",
-            "clientId": "CL-001"
-        },
-        {
-            "id": "SRV-003",
-            "serviceCategory": "Lab Testing Service",
-            "serviceType": "Concrete Strength Test",
-            "projectName": "City Mall Project",
-            "clientId": "CL-001",
-            "createdAt": "2025-03-22T00:00:00.000Z",
-            "completedDate": "2025-03-22T00:00:00.000Z",
-            "status": "Completed",
-            "result": "Passed required strength threshold"
+            "status": "scheduled",
+            "scheduledDate": "2026-05-22T08:37:25.906Z",
+            "technician": "Pending Assignment",
+            "description": "{\"_src\":\"pms\",\"_seedEqId\":\"EQ-001\",\"_pmsIdx\":0,\"label\":\"Calibration PMS for Excavator CAT 320\"}",
+            "findings": "",
+            "workDone": "",
+            "recommendation": "",
+            "partsUsed": "Pending Inspection",
+            "cost": 10000,
+            "hoursAtService": 4.75
         }
     ],
     "bookings": [
