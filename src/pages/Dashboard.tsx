@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { useCRMStore } from "@/stores/useCRMStore";
 import { useBillingStore } from "@/stores/useBillingStore";
 import { useFleetStore } from "@/stores/useFleetStore";
@@ -33,7 +34,10 @@ import {
   Clock,
   CheckCircle2,
   Box,
-  ArrowRight
+  ArrowRight,
+  Trophy,
+  Medal,
+  Star
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -64,6 +68,35 @@ export default function Dashboard() {
   const outstandingRevenue = getOutstandingRevenue();
 
   const totalOverdueEquipment = equipment.filter(e => e.status === 'service_due').length;
+
+  // Top Technician Calculation
+  const topTech = useMemo(() => {
+    const techStats: Record<string, { name: string; jobs: number; safety: number; safetyCount: number }> = {};
+    serviceRecords.forEach(s => {
+      if (s.status !== "completed") return;
+      if (!techStats[s.technician]) {
+        techStats[s.technician] = { name: s.technician, jobs: 0, safety: 0, safetyCount: 0 };
+      }
+      techStats[s.technician].jobs++;
+      if (s.safetyChecklist) {
+        techStats[s.technician].safetyCount++;
+        let score = 0;
+        if (s.safetyChecklist.ppeChecked) score += 25;
+        if (s.safetyChecklist.engineOff) score += 25;
+        if (s.safetyChecklist.areaSecured) score += 25;
+        if (s.safetyChecklist.lotoApplied) score += 25;
+        techStats[s.technician].safety += score;
+      }
+    });
+
+    const techs = Object.values(techStats).map(t => ({
+      ...t,
+      avgSafety: t.safetyCount > 0 ? t.safety / t.safetyCount : 100,
+      powerScore: (t.safetyCount > 0 ? (t.safety / t.safetyCount) * 0.6 : 60) + (Math.min(t.jobs, 10) * 4)
+    })).sort((a, b) => b.powerScore - a.powerScore);
+
+    return techs[0] || null;
+  }, [serviceRecords]);
 
   // Chart Data
   const funnelData = [
@@ -302,7 +335,7 @@ export default function Dashboard() {
       {/* Logistics & Alerts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
          {/* Low Stock Alerts */}
-         <div className="data-card p-4 lg:col-span-1 border-amber-100 bg-amber-50/20">
+         <div className="data-card p-4 border-amber-100 bg-amber-50/20">
             <div className="flex items-center justify-between mb-3">
                <div className="flex items-center gap-2">
                   <Box className="w-4 h-4 text-amber-600" />
@@ -335,8 +368,63 @@ export default function Dashboard() {
             </div>
          </div>
 
-         {/* Sales Pipeline Funnel (Moved here to balance) */}
-         <div className="data-card p-4 lg:col-span-2">
+         {/* Top Notcher Spotlight - NEW */}
+         <div className="data-card p-4 relative overflow-hidden bg-gradient-to-br from-amber-500/5 to-transparent border-amber-200">
+            <div className="absolute top-2 right-2">
+               <Trophy className="w-12 h-12 text-amber-500/10 -rotate-12" />
+            </div>
+            <div className="flex items-center justify-between mb-4">
+               <div className="flex items-center gap-2">
+                  <Medal className="w-4 h-4 text-amber-600" />
+                  <h3 className="text-base font-semibold text-gray-900">Top Notcher</h3>
+               </div>
+               <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[9px] font-black uppercase tracking-tighter">Elite Performer</span>
+            </div>
+            
+            {topTech ? (
+               <div className="space-y-4">
+                  <div className="flex items-center gap-3">
+                     <div className="w-12 h-12 rounded-2xl bg-amber-500 flex items-center justify-center text-white font-bold text-xl shadow-lg shadow-amber-500/20">
+                        {topTech.name.charAt(0)}
+                     </div>
+                     <div>
+                        <div className="text-sm font-black text-gray-900">{topTech.name}</div>
+                        <div className="flex items-center gap-1 text-[10px] text-amber-600 font-bold uppercase tracking-widest">
+                           <Star className="w-2.5 h-2.5 fill-amber-500" />
+                           Top Performer
+                        </div>
+                     </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-2">
+                     <div className="p-2 rounded-lg bg-white border border-gray-100">
+                        <div className="text-[9px] text-gray-400 uppercase font-bold">Power Score</div>
+                        <div className="text-sm font-black text-gray-900">{topTech.powerScore.toFixed(0)}</div>
+                     </div>
+                     <div className="p-2 rounded-lg bg-white border border-gray-100">
+                        <div className="text-[9px] text-gray-400 uppercase font-bold">Safety</div>
+                        <div className="text-sm font-black text-green-600">{topTech.avgSafety.toFixed(0)}%</div>
+                     </div>
+                  </div>
+                  
+                  <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+                     <div className="text-[10px] text-gray-400 font-bold uppercase">{topTech.jobs} Jobs Completed</div>
+                     <div className="flex items-center gap-1">
+                        {[1, 2, 3, 4, 5].map(i => (
+                           <Star key={i} className={`w-2 h-2 ${i <= 5 ? 'text-amber-500 fill-amber-500' : 'text-gray-200'}`} />
+                        ))}
+                     </div>
+                  </div>
+               </div>
+            ) : (
+               <div className="py-12 text-center text-gray-400 italic text-xs">
+                  Awaiting performance data...
+               </div>
+            )}
+         </div>
+
+         {/* Sales Pipeline Funnel */}
+         <div className="data-card p-4">
             <div className="flex items-center justify-between mb-3">
                <h3 className="text-base font-semibold text-gray-900">Sales Pipeline</h3>
                <TrendingUp className="w-4 h-4 text-[#66B2B2]" />

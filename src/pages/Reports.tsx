@@ -27,6 +27,8 @@ import {
   Package,
   Activity,
   UserCheck,
+  Trophy,
+  Medal,
 } from "lucide-react";
 
 function monthKey(dateISO: string) {
@@ -170,6 +172,54 @@ export default function Reports() {
     }).sort((a, b) => b.revenue - a.revenue);
   }, [clients, invoices, serviceRecords, equipment, now]);
 
+  // Technician Leaderboard Logic
+  const techStats = useMemo(() => {
+    const techMap = new Map<string, { 
+      name: string; 
+      services: number; 
+      revenue: number; 
+      safetyTotal: number; 
+      safetyJobs: number 
+    }>();
+
+    serviceRecords.forEach(s => {
+      if (s.status !== "completed") return;
+      
+      const stats = techMap.get(s.technician) || { 
+        name: s.technician, 
+        services: 0, 
+        revenue: 0, 
+        safetyTotal: 0, 
+        safetyJobs: 0 
+      };
+
+      stats.services += 1;
+      stats.revenue += s.cost;
+      
+      if (s.safetyChecklist) {
+        stats.safetyJobs += 1;
+        let score = 0;
+        if (s.safetyChecklist.ppeChecked) score += 25;
+        if (s.safetyChecklist.engineOff) score += 25;
+        if (s.safetyChecklist.areaSecured) score += 25;
+        if (s.safetyChecklist.lotoApplied) score += 25;
+        stats.safetyTotal += score;
+      }
+
+      techMap.set(s.technician, stats);
+    });
+
+    return Array.from(techMap.values()).map(tech => {
+      const safetyScore = tech.safetyJobs > 0 ? tech.safetyTotal / tech.safetyJobs : 100;
+      // Power Score: 40% Safety, 30% Volume (normalized to 10 max), 30% Revenue (normalized to 10k max)
+      const powerScore = (safetyScore * 0.4) + 
+                         (Math.min(tech.services, 10) * 3) + 
+                         (Math.min(tech.revenue / 1000, 10) * 3);
+      
+      return { ...tech, safetyScore, powerScore };
+    }).sort((a, b) => b.powerScore - a.powerScore);
+  }, [serviceRecords]);
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -299,6 +349,97 @@ export default function Reports() {
             </BarChart>
           </ResponsiveContainer>
         </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+         {/* Technician Leaderboard - NEW */}
+         <div className="lg:col-span-2 data-card overflow-auto">
+            <div className="p-3 border-b border-gray-200 flex items-center justify-between">
+               <div className="flex items-center gap-2">
+                  <Trophy className="w-4 h-4 text-amber-500" />
+                  <h3 className="text-sm font-semibold text-gray-900">Technician Performance Matrix (Top Notchers)</h3>
+               </div>
+               <span className="text-[10px] font-black text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full uppercase">Elite Squad</span>
+            </div>
+            <table className="w-full text-xs">
+               <thead>
+                  <tr className="bg-gray-50">
+                     <th className="text-left py-2.5 px-3 text-gray-500 font-medium">Rank</th>
+                     <th className="text-left py-2.5 px-3 text-gray-500 font-medium">Technician</th>
+                     <th className="text-left py-2.5 px-3 text-gray-500 font-medium">Power Score</th>
+                     <th className="text-left py-2.5 px-3 text-gray-500 font-medium">Safety</th>
+                     <th className="text-left py-2.5 px-3 text-gray-500 font-medium">Volume</th>
+                     <th className="text-left py-2.5 px-3 text-gray-500 font-medium">Revenue</th>
+                  </tr>
+               </thead>
+               <tbody>
+                  {techStats.map((tech, index) => (
+                     <tr key={tech.name} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                        <td className="py-2.5 px-3">
+                           {index === 0 ? <Medal className="w-4 h-4 text-amber-500" /> : 
+                            index === 1 ? <Medal className="w-4 h-4 text-gray-400" /> :
+                            index === 2 ? <Medal className="w-4 h-4 text-amber-700" /> :
+                            <span className="text-gray-400 font-mono-tech ml-1">{index + 1}</span>}
+                        </td>
+                        <td className="py-2.5 px-3">
+                           <div className="font-bold text-gray-900">{tech.name}</div>
+                           <div className="text-[10px] text-gray-400 uppercase tracking-tighter">Verified Specialist</div>
+                        </td>
+                        <td className="py-2.5 px-3">
+                           <div className="flex items-center gap-2">
+                              <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden w-16">
+                                 <div className="h-full bg-amber-500 rounded-full" style={{ width: `${tech.powerScore}%` }} />
+                              </div>
+                              <span className="font-black text-gray-900">{tech.powerScore.toFixed(0)}</span>
+                           </div>
+                        </td>
+                        <td className="py-2.5 px-3">
+                           <span className={`font-bold ${tech.safetyScore >= 95 ? 'text-green-600' : 'text-amber-600'}`}>
+                              {tech.safetyScore.toFixed(0)}%
+                           </span>
+                        </td>
+                        <td className="py-2.5 px-3 text-gray-500 font-medium">{tech.services} Jobs</td>
+                        <td className="py-2.5 px-3 text-[#66B2B2] font-mono-tech font-bold">₱{tech.revenue.toLocaleString()}</td>
+                     </tr>
+                  ))}
+               </tbody>
+            </table>
+         </div>
+
+         {/* Pie Chart Service Mix */}
+         <div className="data-card p-4">
+            <h3 className="text-base font-semibold text-gray-900 mb-1">Service Mix</h3>
+            <p className="text-xs text-gray-500 mb-3">Volume by category</p>
+            <ResponsiveContainer width="100%" height={200}>
+               <PieChart>
+                  <Pie
+                     data={serviceMixData}
+                     cx="50%"
+                     cy="50%"
+                     innerRadius={60}
+                     outerRadius={80}
+                     paddingAngle={5}
+                     dataKey="value"
+                  >
+                     {serviceMixData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={['#66B2B2', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6'][index % 5]} />
+                     ))}
+                  </Pie>
+                  <Tooltip />
+               </PieChart>
+            </ResponsiveContainer>
+            <div className="mt-2 space-y-1">
+               {serviceMixData.slice(0, 3).map((item, i) => (
+                  <div key={item.name} className="flex items-center justify-between text-[10px]">
+                     <div className="flex items-center gap-1.5">
+                        <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: ['#66B2B2', '#10B981', '#F59E0B'][i] }} />
+                        <span className="text-gray-500 truncate max-w-[120px]">{item.name}</span>
+                     </div>
+                     <span className="font-bold text-gray-900">{item.value}</span>
+                  </div>
+               ))}
+            </div>
+         </div>
       </div>
 
       {/* Package Performance Report */}
