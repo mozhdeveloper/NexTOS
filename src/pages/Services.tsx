@@ -596,16 +596,19 @@ export default function Services() {
 
     const seedIds = new Set(seedServiceRecordsData.records.map((r) => r.id));
 
-    // Step 1: purge stale PMS tasks from the store.
-    // A record is a PMS task if its ID is in the deterministic range 9_000_000–9_999_999
-    // OR its description carries the _src:"pms" marker (legacy random-ID tasks).
+    // Step 1: purge stale records from the store.
+    // • PMS tasks (deterministic ID range OR _src:"pms" description) must exist in seed-data.json.
+    // • Any completed record that is NOT a live task must also exist in seed-data.json.
+    //   This removes leftover test/manual records that were never persisted to the JSON file.
     useOperationsStore.setState((state) => ({
       serviceRecords: state.serviceRecords.filter((r) => {
         const isPms =
           (r.id >= 9_000_000 && r.id < 10_000_000) ||
           (() => { try { return JSON.parse(r.description ?? "{}")._src === "pms"; } catch { return false; } })();
         if (isPms) return seedIds.has(r.id);
-        return true;
+        // Completed non-PMS records: keep only if they're tracked in seed-data.json
+        if (r.status === "completed") return seedIds.has(r.id);
+        return true; // Keep scheduled / in-progress non-PMS records (manual tasks, bookings)
       }),
     }));
 
@@ -617,7 +620,7 @@ export default function Services() {
         return {
           serviceRecords: [
             ...state.serviceRecords,
-            { ...record, invoiceId: null, createdAt: new Date().toISOString() },
+            { ...record, invoiceId: null, createdAt: new Date().toISOString(), serviceCategory: record.serviceCategory as any },
           ],
         };
       });
@@ -671,7 +674,7 @@ export default function Services() {
             equipmentId: storeEq.id,
             clientId,
             technician: "Pending Assignment",
-            serviceCategory,
+            serviceCategory: serviceCategory as any,
             description,
             partsUsed: "Pending Inspection",
             status: "scheduled" as const,
@@ -1199,20 +1202,18 @@ export default function Services() {
             </div>
 
             {selectedSeedId && (() => {
-              // Find matching store equipment; fall back to first available for display purposes
               const detailStoreEq = equipment.find((e) => e.id === selectedEquipment) ?? equipment[0];
               if (!detailStoreEq) return null;
-              // Service history: prefer records for this equipment, fall back to any completed records
-              const ownHistory = serviceRecords.filter(r => r.equipmentId === detailStoreEq.id);
-              const serviceHistory = ownHistory.length > 0
-                ? ownHistory
-                : serviceRecords.filter(r => r.status === 'completed').slice(0, 5);
+              // Service history comes exclusively from seed-data.json, matched by seedEquipmentId.
+              // This guarantees only real persisted records appear, never leftover test data.
+              const seedHistory = (seedServiceRecordsData?.records ?? [])
+                .filter((r) => r.status === "completed" && r.seedEquipmentId === selectedSeedId);
               return (
                 <EquipmentDetail
                   equipment={detailStoreEq}
                   client={clients.find((c) => c.id === detailStoreEq.clientId)}
-                  serviceHistory={serviceHistory}
-                  onViewReport={(record) => setShowReport(record)}
+                  serviceHistory={seedHistory as any}
+                  onViewReport={(record) => setShowReport(record as any)}
                 />
               );
             })()}
@@ -1474,11 +1475,10 @@ export default function Services() {
                       ? `${r.serviceInterval} ${r.serviceIntervalUnit}`
                       : "—";
                     const rowMetric = r.metricAtService || "—";
-                    const rowCost = (r.finalCost != null && r.finalCost > 0)
-                      ? `₱${Number(r.finalCost).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                      : (record.cost > 0
-                        ? `₱${Number(record.cost).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                        : "—");
+                    const recordCost = r.finalCost ?? record.cost ?? 0;
+                    const rowCost = recordCost > 0
+                      ? `₱${Number(recordCost).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                      : "—";
 
                     return (
                       <tr key={record.id} className="grid-table-row border-b border-gray-100 hover:bg-gray-50 transition-all">
@@ -1505,7 +1505,9 @@ export default function Services() {
                               serialNumber: rowSerial,
                               equipmentType: rowEqType,
                               serviceType: rowSvcType,
-                            })}
+                              invoiceId: (record as any).invoiceId ?? null,
+                              createdAt: (record as any).createdAt ?? new Date().toISOString(),
+                            } as any)}
                             className="h-7 text-[10px] border-gray-200 hover:bg-[#66B2B2] hover:text-white transition-all whitespace-nowrap"
                           >
                             <FileText className="w-3 h-3 mr-1" />
@@ -1849,7 +1851,7 @@ function ExecutionModal({ task, onClose, onFinish }: { task: ServiceRecord | nul
             
             // Auto-advance after a brief delay to show success state
             setTimeout(() => {
-                handleNext({ equipmentId: currentEq.id });
+                if (currentEq) handleNext({ equipmentId: currentEq.id });
                 setIsVerified(false);
             }, 1500);
         } else {
@@ -1984,8 +1986,8 @@ function ExecutionModal({ task, onClose, onFinish }: { task: ServiceRecord | nul
     useEffect(() => {
         return () => {
             if (scannerRef.current) {
-                scannerRef.current.stop().catch(() => {});
-                scannerRef.current.clear().catch(() => {});
+                try { const s = scannerRef.current.stop(); if (s && typeof (s as any).catch === "function") (s as any).catch(() => {}); } catch {}
+                try { const c = scannerRef.current.clear(); if (c && typeof (c as any).catch === "function") (c as any).catch(() => {}); } catch {}
             }
         };
     }, []);
@@ -2647,8 +2649,8 @@ function EquipmentDetail({
                     <Check className="w-5 h-5 text-green-500" />
                   </div>
                   <div>
-                    <div className="text-sm font-bold text-gray-900 group-hover:text-[#66B2B2] transition-colors">{record.serviceCategory}</div>
-                    <div className="text-[10px] text-gray-400 font-medium uppercase mt-0.5">{new Date(record.completedDate!).toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'})} <span className="mx-1">•</span> Tech: {record.technician}</div>
+                    <div className="text-sm font-bold text-gray-900 group-hover:text-[#66B2B2] transition-colors">{(record as any).serviceType || record.serviceCategory}</div>
+                    <div className="text-[10px] text-gray-400 font-medium uppercase mt-0.5">{record.completedDate ? new Date(record.completedDate).toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'}) : '—'} <span className="mx-1">•</span> Tech: {record.technician}</div>
                   </div>
                 </div>
                 <div className="w-8 h-8 rounded-full flex items-center justify-center bg-white border border-gray-100 text-gray-300 group-hover:text-[#66B2B2] transition-all">
