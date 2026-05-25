@@ -48,6 +48,27 @@ type SeedServiceRecord = {
   partsUsed?: string;
   cost?: number;
   hoursAtService?: number;
+  // Rich completion fields
+  equipmentName?: string;
+  clientName?: string;
+  equipmentType?: string;
+  serialNumber?: string;
+  serviceType?: string;
+  serviceInterval?: number;
+  serviceIntervalUnit?: string;
+  metricAtService?: string;
+  safetyChecklist?: { ppeChecked: boolean; engineOff: boolean; areaSecured: boolean; lotoApplied: boolean };
+  beforePhoto?: string;
+  beforeNotes?: string;
+  afterPhoto?: string;
+  afterNotes?: string;
+  techSignature?: string;
+  clientSignature?: string;
+  // Timing & financials
+  startTime?: string | null;
+  endTime?: string | null;
+  duration?: string | null;
+  finalCost?: number | null;
 };
 
 type SeedDataShape = {
@@ -554,12 +575,47 @@ export const appRouter = createRouter({
           id: z.number(),
           completedDate: z.string(),
           technician: z.string(),
+          // Core record fields (used when creating a new record)
+          seedEquipmentId: z.string().optional(),
+          pmsConfigIndex: z.number().optional(),
+          equipmentId: z.number().optional(),
+          clientId: z.number().optional(),
+          serviceCategory: z.string().optional(),
+          scheduledDate: z.string().optional(),
+          description: z.string().optional(),
+          // Service details
           findings: z.string().optional(),
           workDone: z.string().optional(),
           recommendation: z.string().optional(),
           partsUsed: z.string().optional(),
           cost: z.number().optional(),
           hoursAtService: z.number().optional(),
+          // Rich completion fields
+          equipmentName: z.string().optional(),
+          clientName: z.string().optional(),
+          equipmentType: z.string().optional(),
+          serialNumber: z.string().optional(),
+          serviceType: z.string().optional(),
+          serviceInterval: z.number().optional(),
+          serviceIntervalUnit: z.string().optional(),
+          metricAtService: z.string().optional(),
+          safetyChecklist: z.object({
+            ppeChecked: z.boolean(),
+            engineOff: z.boolean(),
+            areaSecured: z.boolean(),
+            lotoApplied: z.boolean(),
+          }).optional(),
+          beforePhoto: z.string().optional(),
+          beforeNotes: z.string().optional(),
+          afterPhoto: z.string().optional(),
+          afterNotes: z.string().optional(),
+          techSignature: z.string().optional(),
+          clientSignature: z.string().optional(),
+          // Timing & financials
+          startTime: z.string().nullable().optional(),
+          endTime: z.string().nullable().optional(),
+          duration: z.string().nullable().optional(),
+          finalCost: z.number().nullable().optional(),
         })
       )
       .mutation(async ({ input }) => {
@@ -571,13 +627,53 @@ export const appRouter = createRouter({
           ? [...parsed.serviceRecords]
           : [];
         const existingIdx = records.findIndex((r) => r.id === input.id);
-        if (existingIdx === -1) return { ok: false, message: "Record not found" };
 
-        records[existingIdx] = {
-          ...records[existingIdx],
-          ...input,
-          status: "completed",
-        };
+        if (existingIdx >= 0) {
+          records[existingIdx] = {
+            ...records[existingIdx],
+            ...input,
+            status: "completed",
+          } as SeedServiceRecord;
+        } else {
+          records.push({
+            id: input.id,
+            seedEquipmentId: input.seedEquipmentId ?? "",
+            pmsConfigIndex: input.pmsConfigIndex ?? 0,
+            equipmentId: input.equipmentId ?? 0,
+            clientId: input.clientId ?? 0,
+            serviceCategory: input.serviceCategory ?? "",
+            status: "completed",
+            scheduledDate: input.scheduledDate ?? input.completedDate,
+            technician: input.technician,
+            description: input.description ?? "",
+            completedDate: input.completedDate,
+            findings: input.findings,
+            workDone: input.workDone,
+            recommendation: input.recommendation,
+            partsUsed: input.partsUsed,
+            cost: input.cost,
+            hoursAtService: input.hoursAtService,
+            equipmentName: input.equipmentName,
+            clientName: input.clientName,
+            equipmentType: input.equipmentType,
+            serialNumber: input.serialNumber,
+            serviceType: input.serviceType,
+            serviceInterval: input.serviceInterval,
+            serviceIntervalUnit: input.serviceIntervalUnit,
+            metricAtService: input.metricAtService,
+            safetyChecklist: input.safetyChecklist,
+            beforePhoto: input.beforePhoto,
+            beforeNotes: input.beforeNotes,
+            afterPhoto: input.afterPhoto,
+            afterNotes: input.afterNotes,
+            techSignature: input.techSignature,
+            clientSignature: input.clientSignature,
+            startTime: input.startTime ?? null,
+            endTime: input.endTime ?? null,
+            duration: input.duration ?? null,
+            finalCost: input.finalCost ?? null,
+          });
+        }
 
         parsed.serviceRecords = records;
         await fs.writeFile(seedDataPath, `${JSON.stringify(parsed, null, 4)}\n`, "utf-8");

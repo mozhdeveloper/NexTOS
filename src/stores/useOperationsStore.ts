@@ -8,6 +8,7 @@ export interface DraftExecution {
   currentStep: number;
   equipmentId?: number;
   hoursAtService?: number;
+  cost?: number;
   safetyChecklist?: {
     ppeChecked: boolean;
     engineOff: boolean;

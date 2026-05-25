@@ -203,7 +203,7 @@ export default function Services() {
 
   // Modal State
   const [executionTask, setExecutionTask] = useState<ServiceRecord | null>(null);
-  const [showReport, setShowReport] = useState<ServiceRecord | null>(null);
+  const [showReport, setShowReport] = useState<(ServiceRecord & Record<string, any>) | null>(null);
 
   // Form state (for Manual Log)
   const [formClientId, setFormClientId] = useState("");
@@ -1421,44 +1421,92 @@ export default function Services() {
         )}
 
         {/* Service Reports Tab */}
-        {activeTab === "reports" && (
+        {activeTab === "reports" && (() => {
+          // Merge in-memory completed records with any completed seed records not yet in the store.
+          // Store records take precedence (they're the live session truth).
+          const storeCompleted = serviceRecords.filter(r => r.status === "completed");
+          const storeIds = new Set(storeCompleted.map(r => r.id));
+          const seedCompleted = (seedServiceRecordsData?.records ?? []).filter(
+            r => r.status === "completed" && !storeIds.has(r.id)
+          );
+          const allCompleted = [...storeCompleted, ...seedCompleted];
+
+          return (
           <div className="space-y-3 animate-in fade-in duration-300">
             <div className="data-card overflow-auto">
               <table className="w-full text-xs">
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-200">
-                    <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider">Ref ID</th>
-                    <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider">Equipment</th>
-                    <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider">Service Category</th>
-                    <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider">Technician</th>
-                    <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider">Completed</th>
-                    <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider">Actions</th>
+                    <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider whitespace-nowrap">Equipment</th>
+                    <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider whitespace-nowrap">Client</th>
+                    <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider whitespace-nowrap">Serial Number</th>
+                    <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider whitespace-nowrap">Equipment Type</th>
+                    <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider whitespace-nowrap">Service Type</th>
+                    <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider whitespace-nowrap">Service Interval</th>
+                    <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider whitespace-nowrap">Metric at Service</th>
+                    <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider whitespace-nowrap">Cost</th>
+                    <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider whitespace-nowrap">Technician</th>
+                    <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider whitespace-nowrap">Completed Date</th>
+                    <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider whitespace-nowrap">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {serviceRecords.filter(r => r.status === 'completed').map((record) => {
-                    const eq = equipment.find(e => e.id === record.equipmentId);
-                    const reportSeedEq = eq
-                      ? (seedData.equipment as any[]).find((s) => s.serialNumber === eq.serialNumber)
+                  {allCompleted.map((record) => {
+                    // Resolve display values: rich fields on seed records first, then store lookups, then seed JSON lookups
+                    const r = record as any;
+                    const storeEq = equipment.find(e => e.id === record.equipmentId);
+                    const seedEqRow = r.seedEquipmentId
+                      ? (seedData.equipment as any[]).find(s => s.id === r.seedEquipmentId)
+                      : storeEq
+                        ? (seedData.equipment as any[]).find(s => s.serialNumber === storeEq.serialNumber)
+                        : null;
+                    const storeClient = clients.find(c => c.id === record.clientId);
+                    const seedClientRow = seedEqRow?.clientId
+                      ? (seedData.clients as any[]).find(c => c.id === seedEqRow.clientId)
                       : null;
-                    const reportEquipmentName = reportSeedEq?.name ?? eq?.unitId ?? "—";
+
+                    const rowEqName = r.equipmentName || seedEqRow?.name || storeEq?.unitId || "—";
+                    const rowClientName = r.clientName || seedClientRow?.companyName || storeClient?.companyName || "—";
+                    const rowSerial = r.serialNumber || seedEqRow?.serialNumber || storeEq?.serialNumber || "—";
+                    const rowEqType = r.equipmentType || seedEqRow?.equipmentType || "—";
+                    const rowSvcType = r.serviceType || record.serviceCategory || "—";
+                    const rowInterval = r.serviceInterval && r.serviceIntervalUnit
+                      ? `${r.serviceInterval} ${r.serviceIntervalUnit}`
+                      : "—";
+                    const rowMetric = r.metricAtService || "—";
+                    const rowCost = (r.finalCost != null && r.finalCost > 0)
+                      ? `₱${Number(r.finalCost).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                      : (record.cost > 0
+                        ? `₱${Number(record.cost).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                        : "—");
+
                     return (
                       <tr key={record.id} className="grid-table-row border-b border-gray-100 hover:bg-gray-50 transition-all">
-                        <td className="py-3 px-3 text-gray-500 font-mono-tech">#{record.id}</td>
-                        <td className="py-3 px-3 text-black font-bold">{reportEquipmentName}</td>
-                        <td className="py-3 px-3">
-                          <span className="text-gray-900 font-medium">{record.serviceCategory}</span>
-                        </td>
-                        <td className="py-3 px-3 text-gray-700">{record.technician}</td>
-                        <td className="py-3 px-3 text-gray-500 font-mono-tech">
+                        <td className="py-3 px-3 font-bold text-gray-900 whitespace-nowrap">{rowEqName}</td>
+                        <td className="py-3 px-3 text-gray-700 whitespace-nowrap">{rowClientName}</td>
+                        <td className="py-3 px-3 text-gray-500 font-mono-tech whitespace-nowrap">{rowSerial}</td>
+                        <td className="py-3 px-3 text-gray-600 whitespace-nowrap">{rowEqType}</td>
+                        <td className="py-3 px-3 text-gray-700 whitespace-nowrap">{rowSvcType}</td>
+                        <td className="py-3 px-3 text-gray-500 font-mono-tech whitespace-nowrap">{rowInterval}</td>
+                        <td className="py-3 px-3 text-[#66B2B2] font-bold font-mono-tech whitespace-nowrap">{rowMetric}</td>
+                        <td className="py-3 px-3 text-gray-700 font-mono-tech whitespace-nowrap">{rowCost}</td>
+                        <td className="py-3 px-3 text-gray-700 whitespace-nowrap">{record.technician}</td>
+                        <td className="py-3 px-3 text-gray-500 font-mono-tech whitespace-nowrap">
                           {record.completedDate ? new Date(record.completedDate).toLocaleDateString() : "—"}
                         </td>
                         <td className="py-3 px-3">
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => setShowReport(record)}
-                            className="h-7 text-[10px] border-gray-200 hover:bg-[#66B2B2] hover:text-white transition-all"
+                            onClick={() => setShowReport({
+                              ...record,
+                              equipmentName: rowEqName,
+                              clientName: rowClientName,
+                              serialNumber: rowSerial,
+                              equipmentType: rowEqType,
+                              serviceType: rowSvcType,
+                            })}
+                            className="h-7 text-[10px] border-gray-200 hover:bg-[#66B2B2] hover:text-white transition-all whitespace-nowrap"
                           >
                             <FileText className="w-3 h-3 mr-1" />
                             View Report
@@ -1467,11 +1515,19 @@ export default function Services() {
                       </tr>
                     );
                   })}
+                  {allCompleted.length === 0 && (
+                    <tr>
+                      <td colSpan={11} className="py-12 text-center text-gray-400 text-xs font-bold uppercase tracking-widest">
+                        No completed service records found
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
           </div>
-        )}
+          );
+        })()}
 
         {/* Manual Log Tab */}
         {activeTab === "new" && (
@@ -1818,6 +1874,10 @@ function ExecutionModal({ task, onClose, onFinish }: { task: ServiceRecord | nul
             return;
         }
 
+        const completedDate = new Date().toISOString();
+        const effectiveEquipId = draft.equipmentId || task.equipmentId;
+        const storeEq = equipment.find(e => e.id === effectiveEquipId);
+
         // Log Part Usage and Deduct Stock
         if (draft.selectedParts && draft.selectedParts.length > 0) {
             draft.selectedParts.forEach(part => {
@@ -1838,9 +1898,10 @@ function ExecutionModal({ task, onClose, onFinish }: { task: ServiceRecord | nul
             techSignature: draft.techSignature,
             clientSignature: draft.clientSignature,
             safetyChecklist: draft.safetyChecklist,
-            completedDate: new Date().toISOString(),
-            equipmentId: draft.equipmentId || task.equipmentId,
-            hoursAtService: draft.hoursAtService || equipment.find(e => e.id === (draft.equipmentId || task.equipmentId))?.currentHours || 0
+            completedDate,
+            equipmentId: effectiveEquipId,
+            hoursAtService: draft.hoursAtService || storeEq?.currentHours || 0,
+            cost: draft.cost ?? task.cost ?? 0,
         });
 
         if (draft.beforePhoto) {
@@ -1850,23 +1911,69 @@ function ExecutionModal({ task, onClose, onFinish }: { task: ServiceRecord | nul
             addServicePhoto({ serviceRecordId: task.id, type: "after", url: draft.afterPhoto, caption: "After Service" });
         }
 
-        // If this task originated from an overdue PMS entry, persist completion to seed-data.json.
+        // Persist completed service record to seed-data.json (all tasks, not just PMS)
         try {
-          const meta = JSON.parse(task.description ?? "{}");
-          if (meta._src === "pms") {
+            let meta: any = {};
+            try { meta = JSON.parse(task.description ?? "{}"); } catch {}
+            const seedEq = meta._src === "pms"
+                ? (seedData.equipment as any[]).find((s) => s.id === meta._seedEqId) ?? null
+                : null;
+            const pmsCfg = seedEq?.pmsConfiguration?.[meta._pmsIdx] ?? null;
+            const seedClient = seedEq?.clientId
+                ? (seedData.clients as any[]).find((c) => c.id === seedEq.clientId) ?? null
+                : null;
+
+            let metricAtService = "";
+            if (pmsCfg) {
+                const unit: string = pmsCfg.serviceIntervalUnit ?? "Hours";
+                let gps001Ms = 0;
+                try { gps001Ms = Number(window.localStorage.getItem("nextos-gps001-total-hours-ms") ?? "0") || 0; } catch {}
+                metricAtService = getPmsMetricValue(seedEq, unit, gps001Ms);
+            }
+
             completeSeedServiceRecordMutation.mutate({
-              id: task.id,
-              completedDate: new Date().toISOString(),
-              technician: draft.techSignature ? "Technician (Signed)" : "Pending",
-              findings: draft.findings ?? "",
-              workDone: draft.workDone ?? "",
-              recommendation: draft.recommendations ?? "",
-              partsUsed: draft.selectedParts?.map((p) => `${p.name} (x${p.quantity})`).join(", ") || "",
-              cost: 0,
-              hoursAtService: draft.hoursAtService ?? 0,
+                id: task.id,
+                completedDate,
+                technician: draft.techSignature ? "Technician (Signed)" : "Pending",
+                // Core record fields (for upsert)
+                seedEquipmentId: meta._seedEqId ?? "",
+                pmsConfigIndex: meta._pmsIdx ?? 0,
+                equipmentId: effectiveEquipId,
+                clientId: task.clientId,
+                serviceCategory: task.serviceCategory,
+                scheduledDate: task.scheduledDate ?? completedDate,
+                description: task.description ?? "",
+                // Service work
+                findings: draft.findings ?? "",
+                workDone: draft.workDone ?? "",
+                recommendation: draft.recommendations ?? "",
+                partsUsed: draft.selectedParts?.map((p) => `${p.name} (x${p.quantity})`).join(", ") || "",
+                cost: draft.cost ?? pmsCfg?.estimatedCost ?? task.cost ?? 0,
+                hoursAtService: draft.hoursAtService ?? storeEq?.currentHours ?? 0,
+                // Rich completion fields
+                equipmentName: seedEq?.name ?? storeEq?.unitId ?? "",
+                clientName: seedClient?.companyName ?? clients.find(c => c.id === task.clientId)?.companyName ?? "",
+                equipmentType: seedEq?.equipmentType ?? "",
+                serialNumber: seedEq?.serialNumber ?? storeEq?.serialNumber ?? "",
+                serviceType: pmsCfg?.serviceType ?? task.serviceCategory,
+                serviceInterval: pmsCfg?.serviceInterval,
+                serviceIntervalUnit: pmsCfg?.serviceIntervalUnit,
+                metricAtService,
+                safetyChecklist: draft.safetyChecklist,
+                beforePhoto: draft.beforePhoto,
+                beforeNotes: draft.beforeNotes,
+                afterPhoto: draft.afterPhoto,
+                afterNotes: draft.afterNotes,
+                techSignature: draft.techSignature,
+                clientSignature: draft.clientSignature,
+                startTime: null,
+                endTime: null,
+                duration: null,
+                finalCost: draft.cost ?? null,
+            }, {
+                onError: () => toast.error("Report saved locally but failed to write to records. Please sync manually."),
             });
-          }
-        } catch { /* non-PMS task — skip */ }
+        } catch { /* silently skip — in-memory update already done */ }
 
         clearDraftExecution(task.id);
         toast.success("Final report sealed and submitted!");
@@ -2287,7 +2394,8 @@ function TechnicalWorkForm({ draft, equipment, client, packages, seedEquipment, 
         workDone: draft.workDone || "",
         selectedParts: draft.selectedParts || [],
         recommendations: draft.recommendations || "",
-        hoursAtService: draft.hoursAtService || equipment?.currentHours || 0
+        hoursAtService: draft.hoursAtService || equipment?.currentHours || 0,
+        cost: draft.cost ?? 0,
     });
 
     // Current metric value for the service context card
@@ -2374,6 +2482,25 @@ function TechnicalWorkForm({ draft, equipment, client, packages, seedEquipment, 
                         value={fields.recommendations}
                         onChange={(e) => setFields({...fields, recommendations: e.target.value})}
                     />
+                </div>
+
+                <div className="p-4 rounded-xl bg-gray-50 border border-gray-100 space-y-3">
+                    <div className="flex items-center gap-2">
+                        <div className="text-[10px] font-black text-gray-600 uppercase tracking-widest">Final Service Cost</div>
+                        <div className="text-[9px] text-gray-400 font-medium">(Optional)</div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                        <span className="text-sm font-bold text-gray-500 shrink-0">₱</span>
+                        <Input
+                            type="number"
+                            min={0}
+                            step={0.01}
+                            className="h-10 bg-white border-gray-200 font-bold font-mono-tech focus:ring-[#66B2B2]/20 focus:border-[#66B2B2]"
+                            placeholder="0.00"
+                            value={fields.cost === 0 ? "" : fields.cost}
+                            onChange={(e) => setFields({ ...fields, cost: parseFloat(e.target.value) || 0 })}
+                        />
+                    </div>
                 </div>
             </div>
             <div className="flex gap-3 pt-2">
