@@ -113,7 +113,8 @@ async function recalculateAndPersistStatuses(): Promise<void> {
   try {
     const seedDataPath = getSeedDataPath();
     const raw = await fs.readFile(seedDataPath, "utf-8");
-    const parsed = JSON.parse(raw) as SeedDataShape;
+    const stripped = raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw;
+    const parsed = JSON.parse(stripped) as SeedDataShape;
 
     if (!Array.isArray(parsed.equipment)) {
       return;

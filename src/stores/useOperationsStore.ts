@@ -30,6 +30,64 @@ export interface DraftExecution {
   recommendations?: string;
   techSignature?: string;
   clientSignature?: string;
+  // Timestamps
+  travelStartTime?: string;
+  arrivalTime?: string;
+  completionTime?: string;
+  // Captured addresses (technician at departure, equipment at site)
+  technicianAddress?: string;
+  equipmentSiteAddress?: string;
+}
+
+// Full payload shape that mirrors the tRPC seedServiceRecords.complete input.
+// Stored in Zustand when the mutation fails so it can be retried automatically.
+export interface PendingSubmission {
+  id: number;        // task ID — used for dedup
+  queuedAt: string;  // ISO timestamp — for diagnostics
+  payload: {
+    id: number;
+    completedDate: string;
+    technician: string;
+    seedEquipmentId?: string;
+    pmsConfigIndex?: number;
+    equipmentId?: number;
+    clientId?: number;
+    serviceCategory?: string;
+    scheduledDate?: string;
+    description?: string;
+    findings?: string;
+    workDone?: string;
+    recommendation?: string;
+    partsUsed?: string;
+    cost?: number;
+    hoursAtService?: number;
+    equipmentName?: string;
+    clientName?: string;
+    equipmentType?: string;
+    serialNumber?: string;
+    serviceType?: string;
+    serviceInterval?: number;
+    serviceIntervalUnit?: string;
+    metricAtService?: string;
+    safetyChecklist?: { ppeChecked: boolean; engineOff: boolean; areaSecured: boolean; lotoApplied: boolean };
+    beforePhoto?: string;
+    beforeNotes?: string;
+    afterPhoto?: string;
+    afterNotes?: string;
+    techSignature?: string;
+    clientSignature?: string;
+    startTime?: string | null;
+    endTime?: string | null;
+    duration?: string | null;
+    finalCost?: number | null;
+    travelStartTime?: string | null;
+    arrivalTime?: string | null;
+    completionTime?: string | null;
+    technicianAddress?: string | null;
+    equipmentSiteAddress?: string | null;
+    equipmentStatusAtService?: string | null;
+    resetMetricsOnComplete?: boolean;
+  };
 }
 
 interface OperationsState {
@@ -38,7 +96,9 @@ interface OperationsState {
   servicePhotos: ServicePhoto[];
   bookings: Booking[];
   draftExecutions: Record<number, DraftExecution>;
-  
+  // Submissions that failed to persist to seed-data.json — retried automatically on next load
+  pendingSubmissions: PendingSubmission[];
+
   // Actions
   addEquipment: (eq: Omit<Equipment, "id" | "createdAt">) => void;
   updateEquipment: (id: number, data: Partial<Equipment>) => void;
@@ -51,6 +111,10 @@ interface OperationsState {
   // Draft Persistence
   updateDraftExecution: (id: number, data: Partial<DraftExecution>) => void;
   clearDraftExecution: (id: number) => void;
+
+  // Failed-submission retry queue
+  queuePendingSubmission: (sub: PendingSubmission) => void;
+  removePendingSubmission: (id: number) => void;
   
   // Package & Task Flow Logic
   registerEquipmentToPackage: (equipmentId: number, pkg: Package) => void;
@@ -151,6 +215,22 @@ export const useOperationsStore = create<OperationsState>()(
       servicePhotos: [],
       bookings: mockBookings,
       draftExecutions: {},
+      pendingSubmissions: [],
+
+      queuePendingSubmission: (sub) => {
+        set((state) => ({
+          pendingSubmissions: [
+            ...state.pendingSubmissions.filter((s) => s.id !== sub.id), // dedupe by task id
+            sub,
+          ],
+        }));
+      },
+
+      removePendingSubmission: (id) => {
+        set((state) => ({
+          pendingSubmissions: state.pendingSubmissions.filter((s) => s.id !== id),
+        }));
+      },
 
       addEquipment: (eq) => {
         const newEq = { ...eq, id: Date.now(), createdAt: new Date().toISOString() };

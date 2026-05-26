@@ -1,4 +1,4 @@
-import { Printer, CheckCircle2, X, ShieldCheck } from "lucide-react";
+import { Printer, CheckCircle2, X, ShieldCheck, MapPin, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { ServiceRecord, Equipment, Client, ServicePhoto } from "@/types";
 
@@ -9,6 +9,37 @@ interface ServiceReportViewProps {
   photos: ServicePhoto[];
 }
 
+// Format an ISO timestamp to a clean time string: "11:14 AM"
+function formatTime(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return null;
+    return d.toLocaleTimeString("en-PH", { hour: "numeric", minute: "2-digit", hour12: true });
+  } catch {
+    return null;
+  }
+}
+
+// Format the elapsed time between two ISO strings: "1h 30m" or "45m"
+function formatElapsed(fromIso: string | null | undefined, toIso: string | null | undefined): string | null {
+  if (!fromIso || !toIso) return null;
+  try {
+    const from = new Date(fromIso).getTime();
+    const to = new Date(toIso).getTime();
+    const diffMs = to - from;
+    if (!Number.isFinite(diffMs) || diffMs < 0) return null;
+    const totalMinutes = Math.round(diffMs / 60_000);
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    if (hours === 0) return `${minutes}m`;
+    if (minutes === 0) return `${hours}h`;
+    return `${hours}h ${minutes}m`;
+  } catch {
+    return null;
+  }
+}
+
 export function ServiceReportView({ record, equipment, client, photos }: ServiceReportViewProps) {
   // Prefer rich fields saved directly on the record (from seed), fall back to looked-up store data
   const eqName: string = record.equipmentName || equipment?.unitId || "";
@@ -17,10 +48,32 @@ export function ServiceReportView({ record, equipment, client, photos }: Service
   const equipmentType: string = record.equipmentType || "";
   const serviceType: string = record.serviceType || record.serviceCategory || "";
   const metricAtService: string = record.metricAtService || (record.hoursAtService ? `${record.hoursAtService}h` : "");
-  const startTime: string = record.startTime || "";
-  const endTime: string = record.endTime || "";
-  const duration: string = record.duration || "";
   const finalCost: number | null = record.finalCost ?? (record.cost > 0 ? record.cost : null);
+  const equipmentStatus: string | null = record.equipmentStatusAtService ?? null;
+
+  const statusBadgeClass =
+    equipmentStatus === "Overdue"
+      ? "bg-red-100 text-red-700 border-red-200"
+      : equipmentStatus === "Near Service"
+      ? "bg-amber-100 text-amber-700 border-amber-200"
+      : equipmentStatus === "OK"
+      ? "bg-green-100 text-green-700 border-green-200"
+      : "bg-gray-100 text-gray-500 border-gray-200";
+
+  // Journey fields
+  const travelStartTime: string | null = record.travelStartTime ?? null;
+  const arrivalTime: string | null = record.arrivalTime ?? null;
+  const completionTime: string | null = record.completionTime ?? null;
+  const technicianAddress: string | null = record.technicianAddress ?? null;
+  const equipmentSiteAddress: string | null = record.equipmentSiteAddress ?? null;
+
+  const travelTimeDisplay = formatElapsed(travelStartTime, arrivalTime);
+  const serviceTimeDisplay = formatElapsed(arrivalTime, completionTime);
+  const travelStartDisplay = formatTime(travelStartTime);
+  const arrivalDisplay = formatTime(arrivalTime);
+  const completionDisplay = formatTime(completionTime);
+
+  const hasJourney = !!(travelStartTime || arrivalTime || completionTime || technicianAddress || equipmentSiteAddress);
 
   // Photos: prefer record-embedded URLs (from seed), augmented by servicePhotos store
   const beforePhotoUrl: string =
@@ -109,6 +162,14 @@ export function ServiceReportView({ record, equipment, client, photos }: Service
                 <span className="text-gray-800 font-bold text-right max-w-[60%]">{clientName}</span>
               </div>
             )}
+            {equipmentStatus && (
+              <div className="flex justify-between items-center text-xs border-t border-gray-100 pt-1.5">
+                <span className="text-gray-400 font-semibold">Status at Service</span>
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wide border ${statusBadgeClass}`}>
+                  {equipmentStatus}
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Service Details */}
@@ -147,19 +208,6 @@ export function ServiceReportView({ record, equipment, client, photos }: Service
                 <span className="text-gray-800 font-bold">{completedDateDisplay}</span>
               </div>
             )}
-            {/* Timing fields — always present in JSON structure, shown when populated */}
-            <div className="flex justify-between text-xs border-t border-gray-100 pt-1.5">
-              <span className="text-gray-400 font-semibold">Start Time</span>
-              <span className="text-gray-800 font-mono-tech">{startTime || "—"}</span>
-            </div>
-            <div className="flex justify-between text-xs border-t border-gray-100 pt-1.5">
-              <span className="text-gray-400 font-semibold">End Time</span>
-              <span className="text-gray-800 font-mono-tech">{endTime || "—"}</span>
-            </div>
-            <div className="flex justify-between text-xs border-t border-gray-100 pt-1.5">
-              <span className="text-gray-400 font-semibold">Duration</span>
-              <span className="text-gray-800 font-mono-tech">{duration || "—"}</span>
-            </div>
             {finalCost !== null && (
               <div className="flex justify-between text-xs border-t border-gray-100 pt-1.5">
                 <span className="text-gray-400 font-semibold">Service Cost</span>
@@ -170,6 +218,86 @@ export function ServiceReportView({ record, equipment, client, photos }: Service
             )}
           </div>
         </div>
+
+        {/* Journey & Location — only if any journey data exists */}
+        {hasJourney && (
+          <div className="p-4 rounded-xl bg-gray-50 border border-gray-100 space-y-3">
+            <div className="text-[10px] text-[#66B2B2] font-black uppercase tracking-widest flex items-center gap-1.5">
+              <div className="w-1 h-3 bg-[#66B2B2] rounded-full" />
+              Journey &amp; Location
+            </div>
+
+            {/* Addresses */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="p-3 rounded-xl bg-blue-50 border border-blue-100 space-y-1">
+                <div className="flex items-center gap-1.5">
+                  <MapPin className="w-3 h-3 text-blue-500 shrink-0" />
+                  <span className="text-[9px] font-black uppercase tracking-widest text-blue-600">Technician's Address</span>
+                </div>
+                <p className="text-[11px] text-blue-900 font-medium leading-snug break-words">
+                  {technicianAddress || "—"}
+                </p>
+              </div>
+              <div className="p-3 rounded-xl bg-amber-50 border border-amber-100 space-y-1">
+                <div className="flex items-center gap-1.5">
+                  <MapPin className="w-3 h-3 text-amber-500 shrink-0" />
+                  <span className="text-[9px] font-black uppercase tracking-widest text-amber-600">Equipment Site</span>
+                </div>
+                <p className="text-[11px] text-amber-900 font-medium leading-snug break-words">
+                  {equipmentSiteAddress || "—"}
+                </p>
+              </div>
+            </div>
+
+            {/* Timing breakdown */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+              {travelStartDisplay && (
+                <div className="p-2.5 rounded-lg bg-white border border-gray-100 space-y-0.5 text-center">
+                  <div className="flex items-center justify-center gap-1 mb-1">
+                    <Clock className="w-3 h-3 text-gray-400" />
+                    <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Departed</span>
+                  </div>
+                  <p className="text-xs font-bold text-gray-800 font-mono-tech">{travelStartDisplay}</p>
+                </div>
+              )}
+              {arrivalDisplay && (
+                <div className="p-2.5 rounded-lg bg-white border border-gray-100 space-y-0.5 text-center">
+                  <div className="flex items-center justify-center gap-1 mb-1">
+                    <Clock className="w-3 h-3 text-gray-400" />
+                    <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Arrived</span>
+                  </div>
+                  <p className="text-xs font-bold text-gray-800 font-mono-tech">{arrivalDisplay}</p>
+                </div>
+              )}
+              {travelTimeDisplay && (
+                <div className="p-2.5 rounded-lg bg-white border border-[#66B2B2]/30 space-y-0.5 text-center">
+                  <div className="flex items-center justify-center gap-1 mb-1">
+                    <Clock className="w-3 h-3 text-[#66B2B2]" />
+                    <span className="text-[9px] font-black uppercase tracking-widest text-[#66B2B2]">Travel Time</span>
+                  </div>
+                  <p className="text-xs font-black text-[#66B2B2] font-mono-tech">{travelTimeDisplay}</p>
+                </div>
+              )}
+              {serviceTimeDisplay && (
+                <div className="p-2.5 rounded-lg bg-white border border-[#66B2B2]/30 space-y-0.5 text-center">
+                  <div className="flex items-center justify-center gap-1 mb-1">
+                    <Clock className="w-3 h-3 text-[#66B2B2]" />
+                    <span className="text-[9px] font-black uppercase tracking-widest text-[#66B2B2]">Service Time</span>
+                  </div>
+                  <p className="text-xs font-black text-[#66B2B2] font-mono-tech">{serviceTimeDisplay}</p>
+                </div>
+              )}
+            </div>
+
+            {/* Completion time */}
+            {completionDisplay && (
+              <div className="flex justify-between items-center text-xs border-t border-gray-100 pt-2.5">
+                <span className="text-gray-400 font-semibold">Completed At</span>
+                <span className="text-gray-800 font-bold font-mono-tech">{completionDisplay}</span>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Safety Checklist — only if exists */}
         {hasSafety && (

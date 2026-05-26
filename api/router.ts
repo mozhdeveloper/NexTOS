@@ -69,6 +69,15 @@ type SeedServiceRecord = {
   endTime?: string | null;
   duration?: string | null;
   finalCost?: number | null;
+  // Journey timestamps
+  travelStartTime?: string | null;
+  arrivalTime?: string | null;
+  completionTime?: string | null;
+  // Location context captured at dispatch time
+  technicianAddress?: string | null;
+  equipmentSiteAddress?: string | null;
+  // Equipment status snapshotted at the moment the task was submitted
+  equipmentStatusAtService?: string | null;
 };
 
 type SeedDataShape = {
@@ -80,6 +89,14 @@ type SeedDataShape = {
 
 function getSeedDataPath(): string {
   return path.resolve(process.cwd(), "src/data/seed-data.json");
+}
+
+/** Read and parse seed-data.json, stripping any UTF-8 BOM that editors like VS Code may add. */
+async function readSeedData(): Promise<SeedDataShape> {
+  const raw = await fs.readFile(getSeedDataPath(), "utf-8");
+  // U+FEFF (BOM) at position 0 causes JSON.parse to throw — strip it defensively.
+  const stripped = raw.charCodeAt(0) === 0xFEFF ? raw.slice(1) : raw;
+  return JSON.parse(stripped) as SeedDataShape;
 }
 
 function getNextEquipmentId(equipment: SeedEquipmentEntry[], prefix: "EQ" | "LAB"): string {
@@ -205,6 +222,17 @@ export const appRouter = createRouter({
   ping: publicQuery.query(() => ({ ok: true, ts: Date.now() })),
   auth: authRouter,
   seedEquipment: createRouter({
+    // Live read — returns the latest equipment + clients arrays from disk so the
+    // frontend doesn't depend on the module-level static JSON import for status-sensitive data.
+    list: publicQuery.query(async () => {
+      const seedDataPath = getSeedDataPath();
+      const parsed = await readSeedData();
+      return {
+        equipment: Array.isArray(parsed.equipment) ? parsed.equipment : [],
+        clients: Array.isArray(parsed.clients) ? parsed.clients : [],
+      };
+    }),
+
     add: publicQuery
       .input(
         z.object({
@@ -217,9 +245,7 @@ export const appRouter = createRouter({
         })
       )
       .mutation(async ({ input }) => {
-        const seedDataPath = getSeedDataPath();
-        const raw = await fs.readFile(seedDataPath, "utf-8");
-        const parsed = JSON.parse(raw) as SeedDataShape;
+        const parsed = await readSeedData();
 
         const equipment = Array.isArray(parsed.equipment) ? parsed.equipment : [];
         const prefix: "EQ" | "LAB" = input.equipmentType.toLowerCase().includes("lab") ? "LAB" : "EQ";
@@ -257,9 +283,7 @@ export const appRouter = createRouter({
         })
       )
       .mutation(async ({ input }) => {
-        const seedDataPath = getSeedDataPath();
-        const raw = await fs.readFile(seedDataPath, "utf-8");
-        const parsed = JSON.parse(raw) as SeedDataShape;
+        const parsed = await readSeedData();
 
         const equipment = Array.isArray(parsed.equipment) ? parsed.equipment : [];
         const existingIndex = equipment.findIndex((item) => item.id === input.id);
@@ -293,9 +317,7 @@ export const appRouter = createRouter({
     delete: publicQuery
       .input(z.object({ id: z.string().regex(/^(EQ|LAB)-\d{3}$/) }))
       .mutation(async ({ input }) => {
-        const seedDataPath = getSeedDataPath();
-        const raw = await fs.readFile(seedDataPath, "utf-8");
-        const parsed = JSON.parse(raw) as SeedDataShape;
+        const parsed = await readSeedData();
 
         const equipment = Array.isArray(parsed.equipment) ? parsed.equipment : [];
         const existing = equipment.find((item) => item.id === input.id);
@@ -324,9 +346,7 @@ export const appRouter = createRouter({
         })
       )
       .mutation(async ({ input }) => {
-        const seedDataPath = getSeedDataPath();
-        const raw = await fs.readFile(seedDataPath, "utf-8");
-        const parsed = JSON.parse(raw) as SeedDataShape;
+        const parsed = await readSeedData();
 
         const equipment = Array.isArray(parsed.equipment) ? parsed.equipment : [];
         const idx = equipment.findIndex((item) => item.id === input.equipmentId);
@@ -363,9 +383,7 @@ export const appRouter = createRouter({
         })
       )
       .mutation(async ({ input }) => {
-        const seedDataPath = getSeedDataPath();
-        const raw = await fs.readFile(seedDataPath, "utf-8");
-        const parsed = JSON.parse(raw) as SeedDataShape;
+        const parsed = await readSeedData();
 
         const equipment = Array.isArray(parsed.equipment) ? parsed.equipment : [];
         const idx = equipment.findIndex((item) => item.id === input.equipmentId);
@@ -399,9 +417,7 @@ export const appRouter = createRouter({
         })
       )
       .mutation(async ({ input }) => {
-        const seedDataPath = getSeedDataPath();
-        const raw = await fs.readFile(seedDataPath, "utf-8");
-        const parsed = JSON.parse(raw) as SeedDataShape;
+        const parsed = await readSeedData();
 
         const equipment = Array.isArray(parsed.equipment) ? parsed.equipment : [];
         const idx = equipment.findIndex((item) => item.id === input.equipmentId);
@@ -414,6 +430,37 @@ export const appRouter = createRouter({
         configs.splice(input.configIndex, 1);
 
         equipment[idx] = { ...entry, pmsConfiguration: configs };
+        parsed.equipment = equipment;
+        applyComputedServiceStatuses(parsed);
+        await fs.writeFile(seedDataPath, `${JSON.stringify(parsed, null, 4)}\n`, "utf-8");
+
+        return { ok: true };
+      }),
+
+    // Reset hoursTotal or kmTotal to 0 after a completed service (used by Reset-on-Completion toggle)
+    resetMetrics: publicQuery
+      .input(
+        z.object({
+          id: z.string().regex(/^(EQ|LAB)-\d{3}$/),
+          unit: z.enum(["Hours", "KM"]),
+        })
+      )
+      .mutation(async ({ input }) => {
+        const parsed = await readSeedData();
+
+        const equipment = Array.isArray(parsed.equipment) ? parsed.equipment : [];
+        const idx = equipment.findIndex((item) => item.id === input.id);
+        if (idx === -1) throw new Error("Equipment not found");
+
+        const entry = { ...equipment[idx] };
+        if (input.unit === "Hours") {
+          entry.hoursTotal = "0h 0m";
+          entry.hoursToday = "0h 0m";
+        } else {
+          entry.kmTotal = 0;
+          entry.kmToday = 0;
+        }
+        equipment[idx] = entry;
         parsed.equipment = equipment;
         applyComputedServiceStatuses(parsed);
         await fs.writeFile(seedDataPath, `${JSON.stringify(parsed, null, 4)}\n`, "utf-8");
@@ -433,8 +480,7 @@ export const appRouter = createRouter({
         )
         .mutation(async ({ input }) => {
           const seedDataPath = getSeedDataPath();
-          const raw = await fs.readFile(seedDataPath, "utf-8");
-          const parsed = JSON.parse(raw) as SeedDataShape;
+          const parsed = await readSeedData();
 
           const list = Array.isArray(parsed.pmsConfigurations) ? parsed.pmsConfigurations : [];
 
@@ -471,8 +517,7 @@ export const appRouter = createRouter({
         )
         .mutation(async ({ input }) => {
           const seedDataPath = getSeedDataPath();
-          const raw = await fs.readFile(seedDataPath, "utf-8");
-          const parsed = JSON.parse(raw) as SeedDataShape;
+          const parsed = await readSeedData();
 
           const list = Array.isArray(parsed.pmsConfigurations) ? parsed.pmsConfigurations : [];
           const idx = list.findIndex((it: any) => it.id === input.id);
@@ -499,8 +544,7 @@ export const appRouter = createRouter({
         .input(z.object({ id: z.string().min(1) }))
         .mutation(async ({ input }) => {
           const seedDataPath = getSeedDataPath();
-          const raw = await fs.readFile(seedDataPath, "utf-8");
-          const parsed = JSON.parse(raw) as SeedDataShape;
+          const parsed = await readSeedData();
 
           const list = Array.isArray(parsed.pmsConfigurations) ? parsed.pmsConfigurations : [];
           const filtered = list.filter((it: any) => it.id !== input.id);
@@ -521,8 +565,7 @@ export const appRouter = createRouter({
   seedServiceRecords: createRouter({
     list: publicQuery.query(async () => {
       const seedDataPath = getSeedDataPath();
-      const raw = await fs.readFile(seedDataPath, "utf-8");
-      const parsed = JSON.parse(raw) as SeedDataShape;
+      const parsed = await readSeedData();
       return { records: Array.isArray(parsed.serviceRecords) ? parsed.serviceRecords : [] };
     }),
 
@@ -550,8 +593,7 @@ export const appRouter = createRouter({
       )
       .mutation(async ({ input }) => {
         const seedDataPath = getSeedDataPath();
-        const raw = await fs.readFile(seedDataPath, "utf-8");
-        const parsed = JSON.parse(raw) as SeedDataShape;
+        const parsed = await readSeedData();
 
         const records: SeedServiceRecord[] = Array.isArray(parsed.serviceRecords)
           ? [...parsed.serviceRecords]
@@ -576,6 +618,7 @@ export const appRouter = createRouter({
           completedDate: z.string(),
           technician: z.string(),
           // Core record fields (used when creating a new record)
+
           seedEquipmentId: z.string().optional(),
           pmsConfigIndex: z.number().optional(),
           equipmentId: z.number().optional(),
@@ -616,66 +659,99 @@ export const appRouter = createRouter({
           endTime: z.string().nullable().optional(),
           duration: z.string().nullable().optional(),
           finalCost: z.number().nullable().optional(),
+          // Journey timestamps
+          travelStartTime: z.string().nullable().optional(),
+          arrivalTime: z.string().nullable().optional(),
+          completionTime: z.string().nullable().optional(),
+          // Location context
+          technicianAddress: z.string().nullable().optional(),
+          equipmentSiteAddress: z.string().nullable().optional(),
+          // Equipment PMS status at the moment of submission
+          equipmentStatusAtService: z.string().nullable().optional(),
+          // When true, atomically reset the equipment's usage metric to 0 in the same file write.
+          // Non-EQ-001 seed equipment always passes true; EQ-001 (GPS) passes true only when the
+          // "Reset Hours on Completion" toggle is ON (its hours come from GPS, handled client-side,
+          // but we still zero out the seed-data field so server status = OK).
+          resetMetricsOnComplete: z.boolean().optional(),
         })
       )
       .mutation(async ({ input }) => {
         const seedDataPath = getSeedDataPath();
-        const raw = await fs.readFile(seedDataPath, "utf-8");
-        const parsed = JSON.parse(raw) as SeedDataShape;
+        const parsed = await readSeedData();
 
         const records: SeedServiceRecord[] = Array.isArray(parsed.serviceRecords)
           ? [...parsed.serviceRecords]
           : [];
         const existingIdx = records.findIndex((r) => r.id === input.id);
 
-        if (existingIdx >= 0) {
-          records[existingIdx] = {
-            ...records[existingIdx],
-            ...input,
-            status: "completed",
-          } as SeedServiceRecord;
+        // Helper that builds a full SeedServiceRecord from the input, with a given id.
+        const buildRecord = (id: number, base?: SeedServiceRecord): SeedServiceRecord => ({
+          ...(base ?? {}),
+          ...input,
+          id,
+          status: "completed",
+          seedEquipmentId: input.seedEquipmentId ?? base?.seedEquipmentId ?? "",
+          pmsConfigIndex: input.pmsConfigIndex ?? base?.pmsConfigIndex ?? 0,
+          equipmentId: input.equipmentId ?? base?.equipmentId ?? 0,
+          clientId: input.clientId ?? base?.clientId ?? 0,
+          serviceCategory: input.serviceCategory ?? base?.serviceCategory ?? "",
+          scheduledDate: input.scheduledDate ?? base?.scheduledDate ?? input.completedDate,
+          description: input.description ?? base?.description ?? "",
+          startTime: input.startTime ?? null,
+          endTime: input.endTime ?? null,
+          duration: input.duration ?? null,
+          finalCost: input.finalCost ?? null,
+          travelStartTime: input.travelStartTime ?? null,
+          arrivalTime: input.arrivalTime ?? null,
+          completionTime: input.completionTime ?? null,
+          technicianAddress: input.technicianAddress ?? null,
+          equipmentSiteAddress: input.equipmentSiteAddress ?? null,
+          equipmentStatusAtService: input.equipmentStatusAtService ?? null,
+        } as SeedServiceRecord);
+
+        if (existingIdx >= 0 && records[existingIdx].status !== "completed") {
+          // Task existed in scheduled/in_progress state → mark it completed in-place.
+          records[existingIdx] = buildRecord(input.id, records[existingIdx]);
+        } else if (existingIdx >= 0 && records[existingIdx].status === "completed") {
+          // Task was ALREADY completed (a repeat service cycle) → create a fresh history entry
+          // with a unique timestamp-based id so the original record is preserved.
+          const newId = Date.now();
+          records.push(buildRecord(newId, records[existingIdx]));
         } else {
+          // No existing record at all → create new.
           records.push({
-            id: input.id,
-            seedEquipmentId: input.seedEquipmentId ?? "",
-            pmsConfigIndex: input.pmsConfigIndex ?? 0,
-            equipmentId: input.equipmentId ?? 0,
-            clientId: input.clientId ?? 0,
-            serviceCategory: input.serviceCategory ?? "",
-            status: "completed",
-            scheduledDate: input.scheduledDate ?? input.completedDate,
-            technician: input.technician,
-            description: input.description ?? "",
-            completedDate: input.completedDate,
-            findings: input.findings,
-            workDone: input.workDone,
-            recommendation: input.recommendation,
-            partsUsed: input.partsUsed,
-            cost: input.cost,
-            hoursAtService: input.hoursAtService,
-            equipmentName: input.equipmentName,
-            clientName: input.clientName,
-            equipmentType: input.equipmentType,
-            serialNumber: input.serialNumber,
-            serviceType: input.serviceType,
-            serviceInterval: input.serviceInterval,
-            serviceIntervalUnit: input.serviceIntervalUnit,
-            metricAtService: input.metricAtService,
-            safetyChecklist: input.safetyChecklist,
-            beforePhoto: input.beforePhoto,
-            beforeNotes: input.beforeNotes,
-            afterPhoto: input.afterPhoto,
-            afterNotes: input.afterNotes,
-            techSignature: input.techSignature,
-            clientSignature: input.clientSignature,
-            startTime: input.startTime ?? null,
-            endTime: input.endTime ?? null,
-            duration: input.duration ?? null,
-            finalCost: input.finalCost ?? null,
-          });
+            // No existing record — buildRecord handles all field defaults.
+            ...buildRecord(input.id),
+          } as SeedServiceRecord);
         }
 
         parsed.serviceRecords = records;
+
+        // ── Atomic metrics reset ──────────────────────────────────────────────────
+        // Reset the equipment's usage metric to 0 in the same file write.
+        // Doing this atomically avoids the race condition where two separate mutations
+        // both read/write seed-data.json and the second one overwrites the first.
+        if (input.resetMetricsOnComplete && input.seedEquipmentId && input.serviceIntervalUnit) {
+          const equipment = Array.isArray(parsed.equipment) ? parsed.equipment : [];
+          const eqIdx = equipment.findIndex((e) => e.id === input.seedEquipmentId);
+          if (eqIdx !== -1) {
+            const unit = input.serviceIntervalUnit.toLowerCase();
+            const entry = { ...equipment[eqIdx] };
+            if (unit === "hours") {
+              entry.hoursTotal = "0h 0m";
+              entry.hoursToday = "0h 0m";
+            } else if (unit === "km") {
+              entry.kmTotal = 0;
+              entry.kmToday = 0;
+            }
+            equipment[eqIdx] = entry;
+            parsed.equipment = equipment;
+          }
+        }
+
+        // Always recompute service statuses so the JSON reflects the latest state
+        // (especially important when metrics were just reset above).
+        applyComputedServiceStatuses(parsed);
         await fs.writeFile(seedDataPath, `${JSON.stringify(parsed, null, 4)}\n`, "utf-8");
         return { ok: true };
       }),

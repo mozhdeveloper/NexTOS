@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef, useMemo } from "react";
+import { useState, useCallback, useEffect, useRef, useMemo, Fragment } from "react";
 import { useLocation } from "react-router";
 import { useOperationsStore, type DraftExecution } from "@/stores/useOperationsStore";
 import { useCRMStore } from "@/stores/useCRMStore";
@@ -33,11 +33,12 @@ import {
   ClipboardList,
   ChevronRight,
   UserCheck,
-  TestTube,
   Trash2,
   MapPin,
   Clock,
   Settings,
+  Car,
+  Navigation,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -80,6 +81,9 @@ type ScheduledMaintenanceEntry = {
 };
 
 const SCHEDULED_MAINTENANCE_KEY = "nextos-user-scheduled-maintenance";
+const RESET_ON_COMPLETION_KEY = "nextos-reset-on-completion";
+const GPS001_HOURS_OFFSET_KEY = "nextos-gps001-hours-offset-ms";
+const METRICS_OVERRIDES_KEY = "nextos-metrics-overrides-v1";
 const PM_INTERVAL_UNITS = ["Hours", "KM", "Weeks", "Months", "Years"] as const;
 
 const serviceTypeOptions = [
@@ -100,11 +104,12 @@ function getPmsMetricLabel(unit: string): string {
   }
 }
 
-function getPmsMetricValue(seedEq: any, unit: string, gps001CacheMs: number): string {
+function getPmsMetricValue(seedEq: any, unit: string, gps001CacheMs: number, gps001HoursOffsetMs = 0): string {
   const u = unit.toLowerCase();
   if (u === "hours") {
     if (seedEq?.id === "EQ-001" && gps001CacheMs > 0) {
-      const totalMin = Math.floor(gps001CacheMs / (1000 * 60));
+      const effectiveMs = Math.max(0, gps001CacheMs - gps001HoursOffsetMs);
+      const totalMin = Math.floor(effectiveMs / (1000 * 60));
       return `${Math.floor(totalMin / 60)}h ${totalMin % 60}m`;
     }
     return seedEq?.hoursTotal ?? "—";
@@ -151,13 +156,14 @@ export default function Services() {
     serviceRecords,
     servicePhotos,
     draftExecutions,
+    pendingSubmissions,
     addServiceRecord,
     updateServiceRecord,
     addServicePhoto,
     updateDraftExecution,
     clearDraftExecution,
-    injectSimulationTask,
-    clearSimulationData: storeClearSimulationData
+    queuePendingSubmission,
+    removePendingSubmission,
   } = useOperationsStore();
 
   const { packages } = useBillingStore();
@@ -175,16 +181,6 @@ export default function Services() {
   // Tracks which seed equipment ID ("EQ-001" etc.) is visually selected in the Equipment table.
   const [selectedSeedId, setSelectedSeedId] = useState<string | null>(null);
 
-  const clearSimulationData = useCallback(() => {
-    storeClearSimulationData();
-    // Reset selected equipment if it was a simulation unit
-    if (selectedEquipment) {
-      const eq = equipment.find(e => e.id === selectedEquipment);
-      if (eq && (eq.notes?.includes("TEST DATA") || eq.unitId?.startsWith("SIM-"))) {
-        setSelectedEquipment(null);
-      }
-    }
-  }, [storeClearSimulationData, selectedEquipment, equipment]);
 
   const [qrSerial, setQrSerial] = useState("");
   const [showQR, setShowQR] = useState(false);
@@ -203,6 +199,7 @@ export default function Services() {
 
   // Modal State
   const [executionTask, setExecutionTask] = useState<ServiceRecord | null>(null);
+  const [confirmTask, setConfirmTask] = useState<ServiceRecord | null>(null);
   const [showReport, setShowReport] = useState<(ServiceRecord & Record<string, any>) | null>(null);
 
   // Form state (for Manual Log)
@@ -234,10 +231,39 @@ export default function Services() {
   const updatePmsConfigurationMutation = trpc.seedEquipment.updatePmsConfiguration.useMutation();
   const deletePmsConfigurationMutation = trpc.seedEquipment.deletePmsConfiguration.useMutation();
   const upsertSeedServiceRecord = trpc.seedServiceRecords.upsert.useMutation();
-  const completeSeedServiceRecord = trpc.seedServiceRecords.complete.useMutation();
+  // Retry mutation: replays any submission that failed to persist on a previous attempt.
+  const retryCompleteMutation = trpc.seedServiceRecords.complete.useMutation();
+
   const { data: seedServiceRecordsData } = trpc.seedServiceRecords.list.useQuery(undefined, {
     staleTime: 60_000,
   });
+
+  // Live equipment + clients — refetches every 15 s so the UI picks up seed-status-watcher
+  // changes (status, metrics) without requiring a page reload.
+  // Falls back to the static import until the first response arrives.
+  const trpcUtils = trpc.useUtils();
+  const { data: seedEquipmentQueryData } = trpc.seedEquipment.list.useQuery(undefined, {
+    staleTime: 10_000,
+    refetchInterval: 15_000,
+  });
+  const liveEquipment: any[] = seedEquipmentQueryData?.equipment ?? (seedData.equipment as any[]);
+  const liveClients: any[] = seedEquipmentQueryData?.clients ?? (seedData.clients as any[]);
+
+  // HMR bridge: Vite hot-reloads the JSON module the instant seed-data.json is saved,
+  // but liveEquipment uses the tRPC cache (not the module), so HMR changes are invisible
+  // to Services while Fleet (which reads seedData directly) updates immediately.
+  // Detect the new module reference and force an immediate tRPC refetch so both pages
+  // stay in sync — no more waiting 15 s for the polling interval.
+  const prevSeedEquipmentRef = useRef(seedData.equipment);
+  useEffect(() => {
+    if (prevSeedEquipmentRef.current !== seedData.equipment) {
+      prevSeedEquipmentRef.current = seedData.equipment;
+      void trpcUtils.seedEquipment.list.invalidate();
+    }
+  // seedData.equipment is a module-level reference; it changes identity on HMR reload
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seedData.equipment]);
+
   // processingPmsRef removed — deterministic task IDs are used for dedup instead.
   const seedRecordsInjectedRef = useRef(false);
 
@@ -290,6 +316,142 @@ export default function Services() {
     window.addEventListener("storage", refresh);
     return () => { clearInterval(id); window.removeEventListener("storage", refresh); };
   }, []);
+
+  // ── Reset-on-Completion toggle (EQ-001 / Excavator CAT 320 only) ─────────────
+  // Default ON: if no persisted value, the toggle starts enabled.
+  const [resetOnCompletion, setResetOnCompletion] = useState<boolean>(() => {
+    try { return window.localStorage.getItem(RESET_ON_COMPLETION_KEY) !== "false"; } catch { return true; }
+  });
+  const toggleResetOnCompletion = () => {
+    setResetOnCompletion((prev) => {
+      const next = !prev;
+      try { window.localStorage.setItem(RESET_ON_COMPLETION_KEY, String(next)); } catch {}
+      // Turning OFF: immediately clear the GPS hours offset so EQ-001 shows real accumulated hours.
+      if (!next) {
+        setGps001HoursOffsetMs(0);
+        try { window.localStorage.removeItem(GPS001_HOURS_OFFSET_KEY); } catch {}
+      }
+      return next;
+    });
+  };
+
+  // Hours offset for EQ-001 (GPS): effective hours = gps001CacheMs − offset
+  const [gps001HoursOffsetMs, setGps001HoursOffsetMs] = useState<number>(() => {
+    try { return Number(window.localStorage.getItem(GPS001_HOURS_OFFSET_KEY) ?? "0") || 0; } catch { return 0; }
+  });
+
+  // Per-equipment metrics overrides (for non-GPS equipment after hours-reset)
+  // Persisted to localStorage so they survive page reloads.
+  // At init time, immediately discard any override whose value is LOWER than the current
+  // seed-data.json metric — this handles the case where the user manually edited the JSON
+  // to a higher value while the app was closed (stale override would otherwise hide the update).
+  type MetricsOverride = { hoursTotal?: string; kmTotal?: number };
+  const [metricsOverrides, setMetricsOverrides] = useState<Map<string, MetricsOverride>>(() => {
+    try {
+      const raw = window.localStorage.getItem(METRICS_OVERRIDES_KEY);
+      if (!raw) return new Map();
+      const stored = new Map(JSON.parse(raw) as [string, MetricsOverride][]);
+      const parseH = (s: string): number => {
+        const m = String(s ?? "").match(/(\d+)\s*h\s*(\d+)\s*m/i);
+        return m ? Number(m[1]) + Number(m[2]) / 60 : 0;
+      };
+      let changed = false;
+      for (const eq of seedData.equipment as any[]) {
+        const ov = stored.get(eq.id);
+        if (!ov) continue;
+        if (ov.hoursTotal !== undefined && parseH(eq.hoursTotal ?? "0h 0m") > parseH(ov.hoursTotal) + 0.5) {
+          stored.delete(eq.id); changed = true; continue;
+        }
+        if (ov.kmTotal !== undefined) {
+          const liveKm = typeof eq.kmTotal === "number" ? eq.kmTotal : parseFloat(String(eq.kmTotal ?? "0").replace(/[^\d.]/g, ""));
+          if (Number.isFinite(liveKm) && liveKm > (ov.kmTotal ?? 0) + 1) {
+            stored.delete(eq.id); changed = true;
+          }
+        }
+      }
+      if (changed) window.localStorage.setItem(METRICS_OVERRIDES_KEY, JSON.stringify(Array.from(stored.entries())));
+      return stored;
+    } catch { return new Map(); }
+  });
+
+  // Called by ExecutionModal's onSuccess after completing a task.
+  // • EQ-001 (GPS): stores an hours offset in localStorage so the displayed hours appear as 0.
+  //   Called only when the "Reset Hours on Completion" toggle is ON.
+  // • All other seed equipment: sets an in-memory metricsOverrides entry so computeEntryStatus
+  //   sees 0 immediately — before the tRPC refetch returns the updated file from disk.
+  //   The actual JSON update was already done atomically inside completeSeedServiceRecordMutation.
+  const handleMetricsReset = useCallback((seedEqId: string, unit: string) => {
+    const u = unit.toLowerCase();
+    if (u !== "hours" && u !== "km") return; // days metric: never reset
+
+    if (seedEqId === "EQ-001") {
+      if (u === "hours") {
+        // Set offset = current GPS ms so effective displayed hours become 0.
+        const offsetMs = gps001CacheMs;
+        setGps001HoursOffsetMs(offsetMs);
+        try { window.localStorage.setItem(GPS001_HOURS_OFFSET_KEY, String(offsetMs)); } catch {}
+      }
+      // KM for EQ-001 is tracked separately via GPS; skip for now
+    } else {
+      // Non-GPS equipment: immediately apply in-memory override so the UI reflects 0
+      // without waiting for the server refetch.
+      const newOverride: MetricsOverride = u === "hours"
+        ? { hoursTotal: "0h 0m" }
+        : { kmTotal: 0 };
+
+      setMetricsOverrides((prev) => {
+        const next = new Map(prev);
+        next.set(seedEqId, { ...(next.get(seedEqId) ?? {}), ...newOverride });
+        try {
+          window.localStorage.setItem(METRICS_OVERRIDES_KEY, JSON.stringify(Array.from(next.entries())));
+        } catch {}
+        return next;
+      });
+      // No separate server mutation needed — the complete mutation already reset the
+      // seed-data.json entry atomically via resetMetricsOnComplete: true.
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gps001CacheMs]);
+
+  // Auto-clear stale metricsOverrides when live data diverges upward.
+  // When a service is completed with "Reset on Completion" ON, an override of { hoursTotal: "0h 0m" }
+  // (or kmTotal: 0) is stored in localStorage. This is intentional — it makes the display show
+  // "hours since last service" rather than lifetime hours. But if the user later manually increases
+  // the metric in seed-data.json (or the watcher updates it after usage accumulates), the override
+  // should be discarded so the live value takes effect again.
+  // Rule: if the live metric is HIGHER than the override by more than a small tolerance, the user
+  // has explicitly updated the JSON → drop the override and let the real value show.
+  useEffect(() => {
+    if (!seedEquipmentQueryData?.equipment || metricsOverrides.size === 0) return;
+    const parseH = (s: string): number => {
+      const m = String(s ?? "").match(/(\d+)\s*h\s*(\d+)\s*m/i);
+      return m ? Number(m[1]) + Number(m[2]) / 60 : 0;
+    };
+    let anyCleared = false;
+    const next = new Map(metricsOverrides);
+    for (const eq of seedEquipmentQueryData.equipment) {
+      const ov = next.get(eq.id);
+      if (!ov) continue;
+      if (ov.hoursTotal !== undefined) {
+        const liveH = parseH(eq.hoursTotal ?? "0h 0m");
+        const ovH = parseH(ov.hoursTotal);
+        if (liveH > ovH + 0.5) { next.delete(eq.id); anyCleared = true; continue; }
+      }
+      if (ov.kmTotal !== undefined) {
+        const liveKm = typeof eq.kmTotal === "number"
+          ? eq.kmTotal
+          : parseFloat(String(eq.kmTotal ?? "0").replace(/[^\d.]/g, ""));
+        if (Number.isFinite(liveKm) && liveKm > (ov.kmTotal ?? 0) + 1) {
+          next.delete(eq.id); anyCleared = true;
+        }
+      }
+    }
+    if (anyCleared) {
+      setMetricsOverrides(next);
+      try { window.localStorage.setItem(METRICS_OVERRIDES_KEY, JSON.stringify(Array.from(next.entries()))); } catch {}
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seedEquipmentQueryData]);
 
   const location = useLocation();
 
@@ -425,7 +587,7 @@ export default function Services() {
 
   const activeTasks = serviceRecords.filter(r => r.status === "scheduled" || r.status === "in_progress");
 
-  const filteredSeedEquipment = (seedData.equipment as any[]).filter((s) =>
+  const filteredSeedEquipment = liveEquipment.filter((s) =>
     searchQuery === "" ||
     (s.name ?? "").toLowerCase().includes(searchQuery.toLowerCase()) ||
     (s.serialNumber ?? "").toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -443,15 +605,21 @@ export default function Services() {
     const unit = String(pms?.serviceIntervalUnit ?? "Hours").toLowerCase();
     let usage: number | null = null;
 
+    // Apply per-equipment overrides set by the Reset-on-Completion feature
+    const override = metricsOverrides.get(eq.id);
+    const effectiveEq = override ? { ...eq, ...override } : eq;
+
     if (unit === "hours") {
       if (eq.id === "EQ-001" && gps001CacheMs > 0) {
-        usage = gps001CacheMs / (1000 * 60 * 60);
+        // Apply the service-reset offset for EQ-001 so hours-since-last-service is shown
+        const effectiveMs = Math.max(0, gps001CacheMs - gps001HoursOffsetMs);
+        usage = effectiveMs / (1000 * 60 * 60);
       } else {
-        const match = String(eq.hoursTotal ?? "").match(/(\d+)\s*h\s*(\d+)\s*m/i);
+        const match = String(effectiveEq.hoursTotal ?? "").match(/(\d+)\s*h\s*(\d+)\s*m/i);
         if (match) usage = Number(match[1]) + Number(match[2]) / 60;
       }
     } else if (unit === "km") {
-      const raw = eq.kmTotal;
+      const raw = effectiveEq.kmTotal;
       const parsed = typeof raw === "number" ? raw : parseFloat(String(raw ?? "").replace(/[^\d.]/g, ""));
       usage = Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
     } else {
@@ -481,15 +649,19 @@ export default function Services() {
     const unit = String(pms?.serviceIntervalUnit ?? "Hours").toLowerCase();
     let usage: number | null = null;
 
+    const override = metricsOverrides.get(eq.id);
+    const effectiveEq = override ? { ...eq, ...override } : eq;
+
     if (unit === "hours") {
       if (eq.id === "EQ-001" && gps001CacheMs > 0) {
-        usage = gps001CacheMs / (1000 * 60 * 60);
+        const effectiveMs = Math.max(0, gps001CacheMs - gps001HoursOffsetMs);
+        usage = effectiveMs / (1000 * 60 * 60);
       } else {
-        const match = String(eq.hoursTotal ?? "").match(/(\d+)\s*h\s*(\d+)\s*m/i);
+        const match = String(effectiveEq.hoursTotal ?? "").match(/(\d+)\s*h\s*(\d+)\s*m/i);
         if (match) usage = Number(match[1]) + Number(match[2]) / 60;
       }
     } else if (unit === "km") {
-      const raw = eq.kmTotal;
+      const raw = effectiveEq.kmTotal;
       const parsed = typeof raw === "number" ? raw : parseFloat(String(raw ?? "").replace(/[^\d.]/g, ""));
       usage = Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
     } else {
@@ -537,11 +709,11 @@ export default function Services() {
   const seedScheduledMaintenance = useMemo((): ScheduledMaintenanceEntry[] => {
     const entries: ScheduledMaintenanceEntry[] = [];
 
-    (seedData.equipment as any[]).forEach((eq) => {
+    liveEquipment.forEach((eq) => {
       const configs: any[] = Array.isArray(eq.pmsConfiguration) ? eq.pmsConfiguration : [];
       if (configs.length === 0) return;
 
-      const client = (seedData.clients as any[]).find((c) => c.id === eq.clientId);
+      const client = liveClients.find((c) => c.id === eq.clientId);
       const clientName = client?.companyName ?? "—";
 
       configs.forEach((pms: any, index: number) => {
@@ -563,7 +735,9 @@ export default function Services() {
     });
 
     return entries;
-  }, [gps001CacheMs]);
+  // seedEquipmentQueryData in deps so the memo recomputes whenever live equipment refreshes
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gps001CacheMs, gps001HoursOffsetMs, metricsOverrides, seedEquipmentQueryData]);
 
   // Merge seed entries (overridden by user edits) with any optimistic entries not yet in seed.
   const allScheduledMaintenance = useMemo(() => {
@@ -595,13 +769,22 @@ export default function Services() {
     seedRecordsInjectedRef.current = true;
 
     const seedIds = new Set(seedServiceRecordsData.records.map((r) => r.id));
+    // IDs whose canonical seed record is already completed — any Zustand copy of these
+    // is superseded (could be a stale in_progress/scheduled leftover from a failed mutation).
+    const seedCompletedIds = new Set(
+      seedServiceRecordsData.records.filter((r) => r.status === "completed").map((r) => r.id)
+    );
 
     // Step 1: purge stale records from the store.
+    // • Any record whose seed version is "completed" is superseded — remove from store so it
+    //   doesn't re-appear as an open task (handles manually-added or retried records).
     // • PMS tasks (deterministic ID range OR _src:"pms" description) must exist in seed-data.json.
-    // • Any completed record that is NOT a live task must also exist in seed-data.json.
+    // • Any completed Zustand record that is NOT a live task must also exist in seed-data.json.
     //   This removes leftover test/manual records that were never persisted to the JSON file.
     useOperationsStore.setState((state) => ({
       serviceRecords: state.serviceRecords.filter((r) => {
+        // Seed says this task is done — remove any non-completed Zustand copy
+        if (seedCompletedIds.has(r.id)) return false;
         const isPms =
           (r.id >= 9_000_000 && r.id < 10_000_000) ||
           (() => { try { return JSON.parse(r.description ?? "{}")._src === "pms"; } catch { return false; } })();
@@ -627,9 +810,41 @@ export default function Services() {
     }
   }, [seedServiceRecordsData]);
 
+  // Auto-retry any submissions that failed to persist to seed-data.json on a previous attempt.
+  // Runs whenever seedServiceRecordsData loads/refreshes. Processes one item per cycle so each
+  // retry gets its own invalidation + refetch, naturally draining the queue without collisions.
+  useEffect(() => {
+    if (!seedServiceRecordsData || pendingSubmissions.length === 0) return;
+
+    const persistedIds = new Set(seedServiceRecordsData.records.map((r) => r.id));
+
+    // Remove any that already made it to JSON (persisted despite the earlier error)
+    pendingSubmissions.forEach((sub) => {
+      if (persistedIds.has(sub.id)) removePendingSubmission(sub.id);
+    });
+
+    // Retry the first submission that still isn't in JSON
+    const toRetry = pendingSubmissions.find((s) => !persistedIds.has(s.id));
+    if (!toRetry || retryCompleteMutation.isPending) return;
+
+    retryCompleteMutation.mutate(toRetry.payload, {
+      onSuccess: () => {
+        removePendingSubmission(toRetry.id);
+        trpcUtils.seedServiceRecords.list.invalidate();
+        trpcUtils.seedEquipment.list.invalidate();
+      },
+      // onError: leave in queue — will retry next session
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seedServiceRecordsData]);
+
+  // Tracks which PMS task IDs have already triggered a toast this session.
+  // Prevents repeat notifications when allScheduledMaintenance re-references due to GPS cache ticks.
+  const toastedPmsTasksRef = useRef(new Set<number>());
+
   // Auto-create a scheduled task for every Overdue PMS entry.
-  // Uses a DETERMINISTIC task ID so the store itself is the dedup source —
-  // no ref needed, safe across remounts / React Strict Mode double-invocation.
+  // Deps: allScheduledMaintenance only — the effect should NOT re-run just because it
+  // wrote to serviceRecords itself (that would re-trigger on every store update).
   useEffect(() => {
     if (!equipment.length) return;
     const overdueEntries = allScheduledMaintenance.filter((e) => e.status === "Overdue");
@@ -643,10 +858,12 @@ export default function Services() {
       const eqNum = parseInt(seedEqId.replace(/\D/g, "") || "0");
       const taskId = 9_000_000 + (isLab ? 100_000 : 0) + eqNum * 100 + pmsIdx;
 
-      // Skip if an open (non-completed) task already exists with this exact ID.
-      if (serviceRecords.some((r) => r.id === taskId && r.status !== "completed")) continue;
+      // Read live store state (not the stale hook snapshot) so the check is always current
+      // even when the effect re-runs before the component has re-rendered.
+      const liveRecords = useOperationsStore.getState().serviceRecords;
+      if (liveRecords.some((r) => r.id === taskId && r.status !== "completed")) continue;
 
-      const seedEq = (seedData.equipment as any[]).find((s) => s.id === seedEqId);
+      const seedEq = liveEquipment.find((s) => s.id === seedEqId);
       if (!seedEq) continue;
 
       const storeEq =
@@ -663,6 +880,12 @@ export default function Services() {
         _seedEqId: seedEqId,
         _pmsIdx: pmsIdx,
         label: `${entry.serviceType} for ${entry.equipmentName}`,
+        // Snapshot the PMS config values at task-creation time so that if the user later
+        // edits the config (e.g. 200 h → 2000 h), completed records still show the interval
+        // that was actually in effect when the overdue task was triggered.
+        _serviceInterval: entry.serviceInterval,
+        _serviceIntervalUnit: entry.serviceIntervalUnit,
+        _serviceType: entry.serviceType,
       });
 
       // Replace any stale completed record with the same ID before inserting the new task.
@@ -710,14 +933,21 @@ export default function Services() {
         hoursAtService: storeEq.currentHours || 0,
       });
 
-      toast.info("PMS Task Auto-Created", {
-        description: `${entry.equipmentName} — ${entry.serviceType} is overdue.`,
-      });
+      // Only notify once per task ID per page session.
+      if (!toastedPmsTasksRef.current.has(taskId)) {
+        toastedPmsTasksRef.current.add(taskId);
+        toast.info("PMS Task Auto-Created", {
+          description: `${entry.equipmentName} — ${entry.serviceType} is overdue.`,
+        });
+      }
     }
-  }, [allScheduledMaintenance, serviceRecords]);
+  // serviceRecords intentionally omitted: the effect must not re-run because it
+  // modified the store itself — that would cause cascading re-triggers.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allScheduledMaintenance]);
 
   const handleDeleteEntry = async (entry: ScheduledMaintenanceEntry) => {
-    const seedEq = (seedData.equipment as any[]).find((e) => e.id === entry.equipmentId);
+    const seedEq = liveEquipment.find((e) => e.id === entry.equipmentId);
     if (seedEq && entry.scheduleIndex !== undefined) {
       try {
         await deletePmsConfigurationMutation.mutateAsync({
@@ -748,9 +978,9 @@ export default function Services() {
       return;
     }
 
-    const seedEq = (seedData.equipment as any[]).find((e) => e.id === scheduleEquipmentId);
+    const seedEq = liveEquipment.find((e) => e.id === scheduleEquipmentId);
     if (!seedEq) return;
-    const client = (seedData.clients as any[]).find((c) => c.id === seedEq.clientId);
+    const client = liveClients.find((c) => c.id === seedEq.clientId);
 
     const serviceTypeLabel =
       serviceTypeOptions.find((opt) => opt.value === scheduleServiceType)?.label ?? scheduleServiceType;
@@ -868,9 +1098,9 @@ export default function Services() {
       return;
     }
 
-    const seedEq = (seedData.equipment as any[]).find((e) => e.id === editEquipmentId);
+    const seedEq = liveEquipment.find((e) => e.id === editEquipmentId);
     if (!seedEq) return;
-    const client = (seedData.clients as any[]).find((c) => c.id === seedEq.clientId);
+    const client = liveClients.find((c) => c.id === seedEq.clientId);
 
     // Convert dropdown value ("pms") → label ("PMS (Preventative Maintenance)") for seed-data.json
     const serviceTypeLabel =
@@ -926,23 +1156,23 @@ export default function Services() {
           <h1 className="text-[32px] font-bold text-black tracking-[-0.02em]">Services</h1>
           <p className="text-sm text-gray-600 mt-0.5">Automated PMS, Task Management & Documentation</p>
         </div>
-        <div className="flex items-center gap-2">
-            <Button 
-                onClick={clearSimulationData} 
-                variant="ghost" 
-                className="text-red-500 hover:text-red-600 hover:bg-red-50 text-xs font-bold"
-            >
-                <Trash2 className="w-3.5 h-3.5 mr-1.5" />
-                Clear Test Data
-            </Button>
-            <Button 
-                onClick={injectSimulationTask} 
-                className="bg-[#66B2B2] text-white hover:bg-[#5A9E9E] font-bold shadow-lg shadow-[#66B2B2]/20"
-            >
-                <TestTube className="w-4 h-4 mr-2" />
-                Start Simulation Task
-            </Button>
-        </div>
+        <button
+          onClick={toggleResetOnCompletion}
+          className="flex items-center gap-2.5 px-3 py-2 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 transition-all group"
+          title={resetOnCompletion ? "Reset Hours on Completion: ON" : "Reset Hours on Completion: OFF"}
+        >
+          {/* Toggle pill */}
+          <div className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors duration-200 ${
+            resetOnCompletion ? "bg-[#66B2B2]" : "bg-gray-300"
+          }`}>
+            <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform duration-200 ${
+              resetOnCompletion ? "translate-x-4" : "translate-x-0.5"
+            }`} />
+          </div>
+          <span className="text-[11px] font-bold text-gray-700 whitespace-nowrap">
+            Reset Hours on Completion
+          </span>
+        </button>
       </div>
 
       {/* Tabs */}
@@ -990,13 +1220,13 @@ export default function Services() {
                 try { pmsMeta = JSON.parse(task.description ?? "{}"); } catch {}
                 const isPmsTask = pmsMeta._src === "pms";
                 const pmsSeedEq = isPmsTask
-                  ? (seedData.equipment as any[]).find((s) => s.id === pmsMeta._seedEqId) ?? null
+                  ? liveEquipment.find((s) => s.id === pmsMeta._seedEqId) ?? null
                   : null;
                 const pmsCfg = pmsSeedEq && pmsMeta._pmsIdx !== undefined
                   ? (Array.isArray(pmsSeedEq.pmsConfiguration) ? pmsSeedEq.pmsConfiguration[pmsMeta._pmsIdx] : null)
                   : null;
                 const pmsSeedClient = pmsSeedEq
-                  ? (seedData.clients as any[]).find((c) => c.id === pmsSeedEq.clientId) ?? null
+                  ? liveClients.find((c) => c.id === pmsSeedEq.clientId) ?? null
                   : null;
 
                 const displayName = isPmsTask
@@ -1009,13 +1239,15 @@ export default function Services() {
                   ? (pmsSeedClient?.companyName ?? client?.companyName ?? "Unknown Client")
                   : (client?.companyName ?? "Unknown Client");
                 const metricUnit = pmsCfg?.serviceIntervalUnit ?? "Hours";
-                const metricLabel = isPmsTask ? getPmsMetricLabel(metricUnit) : "Hours Logged";
                 const metricValue = isPmsTask
-                  ? getPmsMetricValue(pmsSeedEq, metricUnit, gps001CacheMs)
+                  ? getPmsMetricValue(pmsSeedEq, metricUnit, gps001CacheMs, gps001HoursOffsetMs)
                   : `${eq?.currentHours || 0}h`;
+                const serviceIntervalDisplay = (isPmsTask && pmsCfg)
+                  ? `${pmsCfg.serviceInterval} ${pmsCfg.serviceIntervalUnit}`
+                  : null;
 
                 return (
-                  <div key={task.id} className="data-card p-4 flex flex-col justify-between hover:border-[#66B2B2]/40 transition-all cursor-pointer group" onClick={() => setExecutionTask(task)}>
+                  <div key={task.id} className="data-card p-4 flex flex-col justify-between hover:border-[#66B2B2]/40 transition-all cursor-pointer group" onClick={() => setConfirmTask(task)}>
                      <div>
                         <div className="flex items-center justify-between mb-2">
                           {task.status === 'scheduled' && !isDraft ? (
@@ -1038,9 +1270,15 @@ export default function Services() {
                             <span className="text-gray-900">{displayClient}</span>
                           </div>
                           <div className="flex justify-between text-[11px]">
-                            <span className="text-gray-500">{metricLabel}:</span>
+                            <span className="text-gray-500">Metric at Service:</span>
                             <span className="text-gray-900 font-mono-tech">{metricValue}</span>
                           </div>
+                          {serviceIntervalDisplay && (
+                            <div className="flex justify-between text-[11px]">
+                              <span className="text-gray-500">Service Interval:</span>
+                              <span className="text-gray-900 font-mono-tech font-bold">{serviceIntervalDisplay}</span>
+                            </div>
+                          )}
                         </div>
                      </div>
 
@@ -1082,7 +1320,7 @@ export default function Services() {
                 size="sm"
                 onClick={() => {
                   if (selectedSeedId) {
-                    const seedEqForQr = (seedData.equipment as any[]).find(s => s.id === selectedSeedId);
+                    const seedEqForQr = liveEquipment.find(s => s.id === selectedSeedId);
                     if (seedEqForQr?.serialNumber) {
                       setQrSerial(seedEqForQr.serialNumber);
                       setShowQR(true);
@@ -1118,11 +1356,12 @@ export default function Services() {
                     <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider">Months</th>
                     <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider">Years</th>
                     <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider">Status</th>
+                    <th className="py-2.5 px-3 w-8"></th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredSeedEquipment.map((seedEq) => {
-                    const seedClient = (seedData.clients as any[]).find((c) => c.id === seedEq.clientId);
+                    const seedClient = liveClients.find((c) => c.id === seedEq.clientId);
                     const storeEq = equipment.find((e) => e.serialNumber === seedEq.serialNumber);
                     const storeId = storeEq?.id ?? null;
 
@@ -1131,12 +1370,19 @@ export default function Services() {
                     const hoursDisplay = isExcavator
                       ? formatGps001Hours()
                       : (seedEq.hoursTotal ?? "—");
+                    const hoursTodayDisplay = isExcavator ? "—" : (seedEq.hoursToday ?? "—");
 
                     const rawKm = isExcavator ? gps001KmTotal : seedEq.kmTotal;
                     const kmNum = rawKm !== undefined && rawKm !== null
                       ? (typeof rawKm === "number" ? rawKm : parseFloat(String(rawKm).replace(/[^\d.]/g, "")))
                       : null;
                     const kmDisplay = kmNum !== null && Number.isFinite(kmNum) ? `${kmNum.toFixed(2)} km` : "—";
+
+                    const rawKmToday = isExcavator ? null : seedEq.kmToday;
+                    const kmTodayNum = rawKmToday !== undefined && rawKmToday !== null
+                      ? (typeof rawKmToday === "number" ? rawKmToday : parseFloat(String(rawKmToday).replace(/[^\d.]/g, "")))
+                      : null;
+                    const kmTodayDisplay = kmTodayNum !== null && Number.isFinite(kmTodayNum) ? `${kmTodayNum.toFixed(2)} km` : "—";
 
                     const rawDays = isExcavator ? gps001WorkingDays : seedEq.days;
                     const daysNum = rawDays !== undefined && rawDays !== null
@@ -1152,71 +1398,217 @@ export default function Services() {
                     const isSelected = selectedSeedId === seedEq.id;
                     const isHighlighted = storeId !== null && highlightedEquipment === storeId;
 
+                    // Service history for this equipment (used in expanded panel)
+                    const rowSeedHistory = (seedServiceRecordsData?.records ?? [])
+                      .filter((r: any) => r.status === "completed" && r.seedEquipmentId === seedEq.id);
+
                     return (
-                      <tr
-                        key={seedEq.id}
-                        ref={(el) => {
-                          if (storeId !== null) {
-                            if (el) equipmentRefs.current.set(storeId, el);
-                            else equipmentRefs.current.delete(storeId);
-                          }
-                        }}
-                        className={`grid-table-row border-b border-gray-100 cursor-pointer hover:bg-[#66B2B2]/5 transition-all ${
-                          isSelected || isHighlighted ? 'bg-[#66B2B2]/10 border-[#66B2B2]/30' : ''
-                        }`}
-                        onClick={() => {
-                          if (selectedSeedId === seedEq.id) {
-                            setSelectedSeedId(null);
-                            setSelectedEquipment(null);
-                          } else {
-                            setSelectedSeedId(seedEq.id);
-                            setSelectedEquipment(storeId);
-                          }
-                        }}
-                      >
-                        <td className="py-3 px-3 text-black font-medium">{seedEq.name ?? "—"}</td>
-                        <td className="py-3 px-3 text-black">{seedClient?.companyName ?? "—"}</td>
-                        <td className="py-3 px-3 text-gray-600 font-mono-tech">{seedEq.serialNumber ?? "—"}</td>
-                        <td className="py-3 px-3 font-mono-tech text-gray-800">{hoursDisplay}</td>
-                        <td className="py-3 px-3 font-mono-tech text-gray-800">{kmDisplay}</td>
-                        <td className="py-3 px-3 font-mono-tech text-gray-800">{daysDisplay}</td>
-                        <td className="py-3 px-3 font-mono-tech text-gray-800">{weeksDisplay}</td>
-                        <td className="py-3 px-3 font-mono-tech text-gray-800">{monthsDisplay}</td>
-                        <td className="py-3 px-3 font-mono-tech text-gray-800">{yearsDisplay}</td>
-                        <td className="py-3 px-3">
-                          {worstStatus === "Overdue" ? (
-                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#EF4444]/20 text-[#EF4444] uppercase">Overdue</span>
-                          ) : worstStatus === "Near Service" ? (
-                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#F2A900]/20 text-[#F2A900] uppercase">Near Service</span>
-                          ) : worstStatus === "OK" ? (
-                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#10B981]/20 text-[#10B981] uppercase">OK</span>
-                          ) : (
-                            <span className="text-gray-400">—</span>
-                          )}
-                        </td>
-                      </tr>
+                      <Fragment key={seedEq.id}>
+                        {/* ── Main table row ── */}
+                        <tr
+                          ref={(el) => {
+                            if (storeId !== null) {
+                              if (el) equipmentRefs.current.set(storeId, el);
+                              else equipmentRefs.current.delete(storeId);
+                            }
+                          }}
+                          className={`grid-table-row border-b border-gray-100 cursor-pointer hover:bg-[#66B2B2]/5 transition-all ${
+                            isSelected || isHighlighted ? 'bg-[#66B2B2]/10 border-[#66B2B2]/30' : ''
+                          }`}
+                          onClick={() => {
+                            if (selectedSeedId === seedEq.id) {
+                              setSelectedSeedId(null);
+                              setSelectedEquipment(null);
+                            } else {
+                              setSelectedSeedId(seedEq.id);
+                              setSelectedEquipment(storeId);
+                            }
+                          }}
+                        >
+                          <td className="py-3 px-3 text-black font-medium">{seedEq.name ?? "—"}</td>
+                          <td className="py-3 px-3 text-black">{seedClient?.companyName ?? "—"}</td>
+                          <td className="py-3 px-3 text-gray-600 font-mono-tech">{seedEq.serialNumber ?? "—"}</td>
+                          <td className="py-3 px-3 font-mono-tech text-gray-800">{hoursDisplay}</td>
+                          <td className="py-3 px-3 font-mono-tech text-gray-800">{kmDisplay}</td>
+                          <td className="py-3 px-3 font-mono-tech text-gray-800">{daysDisplay}</td>
+                          <td className="py-3 px-3 font-mono-tech text-gray-800">{weeksDisplay}</td>
+                          <td className="py-3 px-3 font-mono-tech text-gray-800">{monthsDisplay}</td>
+                          <td className="py-3 px-3 font-mono-tech text-gray-800">{yearsDisplay}</td>
+                          <td className="py-3 px-3">
+                            {worstStatus === "Overdue" ? (
+                              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#EF4444]/20 text-[#EF4444] uppercase">Overdue</span>
+                            ) : worstStatus === "Near Service" ? (
+                              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#F2A900]/20 text-[#F2A900] uppercase">Near Service</span>
+                            ) : worstStatus === "OK" ? (
+                              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#10B981]/20 text-[#10B981] uppercase">OK</span>
+                            ) : (
+                              <span className="text-gray-400">—</span>
+                            )}
+                          </td>
+                          <td className="py-3 px-3 w-8 text-center">
+                            <ChevronDown className={`w-3.5 h-3.5 text-gray-400 transition-transform duration-200 ${isSelected ? 'rotate-180 text-[#66B2B2]' : ''}`} />
+                          </td>
+                        </tr>
+
+                        {/* ── Expanded detail panel ── */}
+                        {isSelected && (
+                          <tr>
+                            <td
+                              colSpan={11}
+                              className="p-0 border-b-2 border-[#66B2B2]/25 bg-gradient-to-b from-[#66B2B2]/5 to-white"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <div className="px-5 py-5 space-y-5 animate-in slide-in-from-top-1 duration-200">
+
+                                {/* ── Identity header ── */}
+                                <div className="flex items-start justify-between">
+                                  <div>
+                                    <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-[#66B2B2]/10 text-[#66B2B2] text-[9px] font-black uppercase tracking-[0.1em] mb-1.5">
+                                      <Package className="w-2.5 h-2.5" /> Managed Asset
+                                    </div>
+                                    <h3 className="text-lg font-black text-gray-900 tracking-tight">{seedEq.name ?? "—"}</h3>
+                                    <p className="text-[11px] text-gray-500 font-medium mt-0.5">{seedEq.equipmentType ?? "—"}</p>
+                                  </div>
+                                  <div className="flex flex-col items-end gap-1.5">
+                                    {worstStatus === "Overdue" && (
+                                      <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wide bg-red-100 text-red-700 border border-red-200">Overdue</span>
+                                    )}
+                                    {worstStatus === "Near Service" && (
+                                      <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wide bg-amber-100 text-amber-700 border border-amber-200">Near Service</span>
+                                    )}
+                                    {worstStatus === "OK" && (
+                                      <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wide bg-green-100 text-green-700 border border-green-200">OK</span>
+                                    )}
+                                    {seedEq.id && (
+                                      <span className="text-[9px] text-gray-400 font-mono-tech font-bold">{seedEq.id}</span>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {/* ── Info grid ── */}
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                  <div className="p-3 rounded-xl bg-white border border-gray-100 space-y-0.5">
+                                    <div className="text-[9px] text-gray-400 uppercase font-black tracking-widest">Client</div>
+                                    <div className="text-xs font-bold text-gray-900">{seedClient?.companyName ?? "—"}</div>
+                                  </div>
+                                  <div className="p-3 rounded-xl bg-white border border-gray-100 space-y-0.5">
+                                    <div className="text-[9px] text-gray-400 uppercase font-black tracking-widest">Serial Number</div>
+                                    <div className="text-xs font-bold font-mono-tech text-gray-900">{seedEq.serialNumber ?? "—"}</div>
+                                  </div>
+                                  <div className="p-3 rounded-xl bg-white border border-gray-100 space-y-0.5">
+                                    <div className="text-[9px] text-gray-400 uppercase font-black tracking-widest">Equipment Type</div>
+                                    <div className="text-xs font-bold text-gray-900">{seedEq.equipmentType ?? "—"}</div>
+                                  </div>
+                                  <div className="p-3 rounded-xl bg-white border border-gray-100 space-y-0.5">
+                                    <div className="text-[9px] text-gray-400 uppercase font-black tracking-widest">GPS Location</div>
+                                    <div className="text-xs font-bold font-mono-tech text-gray-900">
+                                      {(seedEq as any).lat != null && (seedEq as any).lng != null
+                                        ? `${Number((seedEq as any).lat).toFixed(5)}°N, ${Number((seedEq as any).lng).toFixed(5)}°E`
+                                        : "—"}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* ── Usage metrics ── */}
+                                <div>
+                                  <div className="text-[9px] text-gray-400 uppercase font-black tracking-widest mb-2">Usage Metrics</div>
+                                  <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
+                                    {[
+                                      { label: "Hours Today", value: hoursTodayDisplay },
+                                      { label: "Total Hours", value: hoursDisplay },
+                                      { label: "KM Today", value: kmTodayDisplay },
+                                      { label: "Total KM", value: kmDisplay },
+                                      { label: "Days Active", value: daysDisplay },
+                                      { label: "Weeks", value: weeksDisplay },
+                                    ].map(({ label, value }) => (
+                                      <div key={label} className="p-2.5 rounded-lg bg-white border border-gray-100 text-center space-y-0.5">
+                                        <div className="text-[9px] text-gray-400 uppercase font-black tracking-widest leading-tight">{label}</div>
+                                        <div className={`text-xs font-black font-mono-tech ${value === "—" ? "text-gray-300" : "text-gray-900"}`}>{value}</div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+
+                                {/* ── PMS Schedules ── */}
+                                {Array.isArray((seedEq as any).pmsConfiguration) && (seedEq as any).pmsConfiguration.length > 0 && (
+                                  <div>
+                                    <div className="text-[9px] text-gray-400 uppercase font-black tracking-widest mb-2">PMS Schedules</div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                                      {(seedEq as any).pmsConfiguration.map((cfg: any, i: number) => (
+                                        <div key={i} className="p-3 rounded-xl bg-white border border-gray-100 flex items-start justify-between gap-2">
+                                          <div className="space-y-0.5 min-w-0">
+                                            <div className="text-xs font-bold text-gray-900 truncate">{cfg.serviceType || `Schedule ${i + 1}`}</div>
+                                            <div className="text-[10px] text-gray-500 font-mono-tech">{cfg.serviceInterval} {cfg.serviceIntervalUnit}</div>
+                                          </div>
+                                          {cfg.estimatedCost > 0 && (
+                                            <div className="text-[10px] font-black text-[#66B2B2] whitespace-nowrap shrink-0">
+                                              ₱{Number(cfg.estimatedCost).toLocaleString("en-PH")}
+                                            </div>
+                                          )}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* ── Notes ── */}
+                                {(seedEq as any).notes && (
+                                  <div>
+                                    <div className="text-[9px] text-gray-400 uppercase font-black tracking-widest mb-1.5">Notes</div>
+                                    <p className="text-xs text-gray-700 leading-relaxed p-3 rounded-xl bg-white border border-gray-100">{(seedEq as any).notes}</p>
+                                  </div>
+                                )}
+
+                                {/* ── Maintenance History Timeline ── */}
+                                <div className="space-y-2.5">
+                                  <div className="text-[10px] text-gray-400 uppercase font-black tracking-[0.2em] flex items-center gap-2">
+                                    <History className="w-3.5 h-3.5" /> Maintenance History Timeline
+                                  </div>
+                                  {rowSeedHistory.length > 0 ? (
+                                    rowSeedHistory.slice(0, 5).map((record: any) => (
+                                      <div
+                                        key={record.id}
+                                        className="flex items-center justify-between p-4 rounded-xl border border-gray-100 bg-white hover:border-[#66B2B2]/30 hover:bg-[#66B2B2]/5 transition-all cursor-pointer group"
+                                        onClick={(e) => { e.stopPropagation(); setShowReport(record as any); }}
+                                      >
+                                        <div className="flex items-center gap-4">
+                                          <div className="w-9 h-9 rounded-full bg-green-50 border border-green-100 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
+                                            <Check className="w-4 h-4 text-green-500" />
+                                          </div>
+                                          <div>
+                                            <div className="text-xs font-bold text-gray-900 group-hover:text-[#66B2B2] transition-colors">
+                                              {record.serviceType || record.serviceCategory}
+                                            </div>
+                                            <div className="text-[10px] text-gray-400 font-medium uppercase mt-0.5">
+                                              {record.completedDate
+                                                ? new Date(record.completedDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+                                                : "—"}
+                                              <span className="mx-1">•</span>Tech: {record.technician}
+                                            </div>
+                                          </div>
+                                        </div>
+                                        <div className="w-7 h-7 rounded-full flex items-center justify-center bg-gray-50 border border-gray-100 text-gray-300 group-hover:text-[#66B2B2] transition-all shrink-0">
+                                          <ChevronRight className="w-3.5 h-3.5" />
+                                        </div>
+                                      </div>
+                                    ))
+                                  ) : (
+                                    <div className="text-center py-8 bg-white rounded-xl border border-dashed border-gray-200">
+                                      <div className="text-[10px] text-gray-400 font-bold uppercase tracking-[0.1em]">No prior service history</div>
+                                    </div>
+                                  )}
+                                </div>
+
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
                     );
                   })}
                 </tbody>
               </table>
             </div>
-
-            {selectedSeedId && (() => {
-              const detailStoreEq = equipment.find((e) => e.id === selectedEquipment) ?? equipment[0];
-              if (!detailStoreEq) return null;
-              // Service history comes exclusively from seed-data.json, matched by seedEquipmentId.
-              // This guarantees only real persisted records appear, never leftover test data.
-              const seedHistory = (seedServiceRecordsData?.records ?? [])
-                .filter((r) => r.status === "completed" && r.seedEquipmentId === selectedSeedId);
-              return (
-                <EquipmentDetail
-                  equipment={detailStoreEq}
-                  client={clients.find((c) => c.id === detailStoreEq.clientId)}
-                  serviceHistory={seedHistory as any}
-                  onViewReport={(record) => setShowReport(record as any)}
-                />
-              );
-            })()}
           </div>
         )}
 
@@ -1256,7 +1648,7 @@ export default function Services() {
                 </thead>
                 <tbody>
                   {allScheduledMaintenance.map((entry) => {
-                    const _seedEq = (seedData.equipment as any[]).find((e) => e.id === entry.equipmentId);
+                    const _seedEq = liveEquipment.find((e) => e.id === entry.equipmentId);
                     const nextService = _seedEq
                       ? computeNextService({ serviceInterval: entry.serviceInterval, serviceIntervalUnit: entry.serviceIntervalUnit }, _seedEq)
                       : "—";
@@ -1326,7 +1718,7 @@ export default function Services() {
                     <Select value={scheduleEquipmentId} onValueChange={(v) => { setScheduleEquipmentId(v); setScheduleMissingFields((p) => p.filter((f) => f !== "equipment")); }}>
                       <SelectTrigger className={`w-full bg-white text-black ${scheduleMissingFields.includes("equipment") ? "border-[#EF4444]" : "border-gray-200"}`}><SelectValue placeholder="Select equipment" /></SelectTrigger>
                       <SelectContent className="bg-white border-gray-200">
-                        {(seedData.equipment as any[]).map((eq) => <SelectItem key={eq.id} value={eq.id}>{eq.name}</SelectItem>)}
+                        {liveEquipment.map((eq) => <SelectItem key={eq.id} value={eq.id}>{eq.name}</SelectItem>)}
                       </SelectContent>
                     </Select>
                   </div>
@@ -1381,7 +1773,7 @@ export default function Services() {
                     <Select value={editEquipmentId} onValueChange={(v) => { setEditEquipmentId(v); setEditMissingFields((p) => p.filter((f) => f !== "equipment")); }}>
                       <SelectTrigger className={`w-full bg-white text-black ${editMissingFields.includes("equipment") ? "border-[#EF4444]" : "border-gray-200"}`}><SelectValue placeholder="Select equipment" /></SelectTrigger>
                       <SelectContent className="bg-white border-gray-200">
-                        {(seedData.equipment as any[]).map((eq) => <SelectItem key={eq.id} value={eq.id}>{eq.name}</SelectItem>)}
+                        {liveEquipment.map((eq) => <SelectItem key={eq.id} value={eq.id}>{eq.name}</SelectItem>)}
                       </SelectContent>
                     </Select>
                   </div>
@@ -1423,14 +1815,12 @@ export default function Services() {
 
         {/* Service Reports Tab */}
         {activeTab === "reports" && (() => {
-          // Merge in-memory completed records with any completed seed records not yet in the store.
-          // Store records take precedence (they're the live session truth).
-          const storeCompleted = serviceRecords.filter(r => r.status === "completed");
-          const storeIds = new Set(storeCompleted.map(r => r.id));
-          const seedCompleted = (seedServiceRecordsData?.records ?? []).filter(
-            r => r.status === "completed" && !storeIds.has(r.id)
-          );
-          const allCompleted = [...storeCompleted, ...seedCompleted];
+          // Seed-data.json is the single source of truth for completed records.
+          // All rich fields (metricAtService, equipmentStatusAtService, addresses, timestamps)
+          // only exist on persisted records. Failed submissions are queued in Zustand and
+          // retried automatically via the pendingSubmissions effect above — they never
+          // appear here as sparse phantom rows.
+          const allCompleted = (seedServiceRecordsData?.records ?? []).filter((r) => r.status === "completed");
 
           return (
           <div className="space-y-3 animate-in fade-in duration-300">
@@ -1453,27 +1843,44 @@ export default function Services() {
                 </thead>
                 <tbody>
                   {allCompleted.map((record) => {
-                    // Resolve display values: rich fields on seed records first, then store lookups, then seed JSON lookups
+                    // Resolve display values: rich fields on seed records first, then seed JSON lookups,
+                    // then store lookups as a last resort.
                     const r = record as any;
                     const storeEq = equipment.find(e => e.id === record.equipmentId);
-                    const seedEqRow = r.seedEquipmentId
-                      ? (seedData.equipment as any[]).find(s => s.id === r.seedEquipmentId)
-                      : storeEq
-                        ? (seedData.equipment as any[]).find(s => s.serialNumber === storeEq.serialNumber)
-                        : null;
+
+                    // Parse PMS meta from the task description — store-completed records don't
+                    // carry seedEquipmentId directly, but it's always in the description JSON.
+                    const descMeta = (() => { try { return JSON.parse(r.description ?? "{}"); } catch { return {}; } })();
+
+                    // Priority: explicit seedEquipmentId field → _seedEqId in description → serial match
+                    const seedEqRow: any = r.seedEquipmentId
+                      ? liveEquipment.find(s => s.id === r.seedEquipmentId)
+                      : descMeta._seedEqId
+                        ? liveEquipment.find(s => s.id === descMeta._seedEqId)
+                        : storeEq
+                          ? liveEquipment.find(s => s.serialNumber === storeEq.serialNumber)
+                          : null;
+
+                    // PMS config for interval / service type fallback
+                    const seedPmsCfg: any = seedEqRow && descMeta._pmsIdx !== undefined
+                      ? (Array.isArray(seedEqRow.pmsConfiguration) ? seedEqRow.pmsConfiguration[descMeta._pmsIdx] : null) ?? null
+                      : null;
+
                     const storeClient = clients.find(c => c.id === record.clientId);
-                    const seedClientRow = seedEqRow?.clientId
-                      ? (seedData.clients as any[]).find(c => c.id === seedEqRow.clientId)
+                    const seedClientRow: any = seedEqRow?.clientId
+                      ? liveClients.find(c => c.id === seedEqRow.clientId)
                       : null;
 
                     const rowEqName = r.equipmentName || seedEqRow?.name || storeEq?.unitId || "—";
                     const rowClientName = r.clientName || seedClientRow?.companyName || storeClient?.companyName || "—";
                     const rowSerial = r.serialNumber || seedEqRow?.serialNumber || storeEq?.serialNumber || "—";
                     const rowEqType = r.equipmentType || seedEqRow?.equipmentType || "—";
-                    const rowSvcType = r.serviceType || record.serviceCategory || "—";
-                    const rowInterval = r.serviceInterval && r.serviceIntervalUnit
+                    const rowSvcType = r.serviceType || seedPmsCfg?.serviceType || record.serviceCategory || "—";
+                    const rowInterval = (r.serviceInterval && r.serviceIntervalUnit)
                       ? `${r.serviceInterval} ${r.serviceIntervalUnit}`
-                      : "—";
+                      : seedPmsCfg
+                        ? `${seedPmsCfg.serviceInterval} ${seedPmsCfg.serviceIntervalUnit}`
+                        : "—";
                     const rowMetric = r.metricAtService || "—";
                     const recordCost = r.finalCost ?? record.cost ?? 0;
                     const rowCost = recordCost > 0
@@ -1660,11 +2067,34 @@ export default function Services() {
         )}
       </div>
 
+      {/* PRE-SERVICE CONFIRMATION MODAL */}
+      <PreServiceConfirmModal
+        task={confirmTask}
+        seedEquipment={liveEquipment}
+        onReady={(travelStartTime, techAddress, eqAddress) => {
+          if (confirmTask) {
+            updateDraftExecution(confirmTask.id, {
+              travelStartTime,
+              technicianAddress: techAddress || undefined,
+              equipmentSiteAddress: eqAddress || undefined,
+            });
+            const pending = confirmTask;
+            setConfirmTask(null);
+            setExecutionTask(pending);
+          }
+        }}
+        onCancel={() => setConfirmTask(null)}
+      />
+
       {/* NEW PERSISTENT EXECUTION MODAL */}
-      <ExecutionModal 
-        task={executionTask} 
-        onClose={() => setExecutionTask(null)} 
+      <ExecutionModal
+        task={executionTask}
+        seedEquipment={liveEquipment}
+        seedClients={liveClients}
+        onClose={() => setExecutionTask(null)}
         onFinish={() => { setExecutionTask(null); setActiveTab("reports"); }}
+        resetOnCompletion={resetOnCompletion}
+        onMetricsReset={handleMetricsReset}
       />
 
       {/* Service Report View Modal */}
@@ -1773,19 +2203,232 @@ export default function Services() {
   );
 }
 
-function ExecutionModal({ task, onClose, onFinish }: { task: ServiceRecord | null, onClose: () => void, onFinish: () => void }) {
-    const { 
-        equipment, 
-        draftExecutions, 
-        updateDraftExecution, 
+// ---------------------------------------------------------------------------
+// Pre-Service Confirmation Modal
+// ---------------------------------------------------------------------------
+function PreServiceConfirmModal({
+  task,
+  seedEquipment,
+  onReady,
+  onCancel,
+}: {
+  task: ServiceRecord | null;
+  seedEquipment: any[];
+  onReady: (travelStartTime: string, techAddress: string, eqAddress: string) => void;
+  onCancel: () => void;
+}) {
+  const [userLocation, setUserLocation] = useState<string>("Fetching your location…");
+  const [isAnimating, setIsAnimating] = useState(false);
+  const travelStartRef = useRef<string>("");
+
+  // Reset & fetch geolocation whenever a new task opens
+  useEffect(() => {
+    if (!task) {
+      setUserLocation("Fetching your location…");
+      setIsAnimating(false);
+      return;
+    }
+    if (!navigator.geolocation) {
+      setUserLocation("Location unavailable");
+      return;
+    }
+    setUserLocation("Fetching your location…");
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const { latitude: lat, longitude: lng } = pos.coords;
+        try {
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`,
+            { headers: { "Accept-Language": "en" } }
+          );
+          const data = await res.json();
+          setUserLocation(data.display_name ?? `${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+        } catch {
+          setUserLocation(`${lat.toFixed(5)}°N, ${lng.toFixed(5)}°E`);
+        }
+      },
+      () => setUserLocation("Location unavailable"),
+      { timeout: 10_000, enableHighAccuracy: false }
+    );
+  }, [task?.id]);
+
+  // Derive equipment address from seed data (lat/lng coords)
+  let equipmentAddress = "Not specified";
+  if (task) {
+    let meta: any = {};
+    try { meta = JSON.parse(task.description ?? "{}"); } catch {}
+    if (meta._src === "pms") {
+      const seedEq = seedEquipment.find((s: any) => s.id === meta._seedEqId);
+      if (seedEq?.lat != null && seedEq?.lng != null) {
+        equipmentAddress = `${Number(seedEq.lat).toFixed(5)}°N, ${Number(seedEq.lng).toFixed(5)}°E`;
+      }
+    }
+  }
+
+  const handleConfirm = () => {
+    travelStartRef.current = new Date().toISOString();
+    setIsAnimating(true);
+    setTimeout(() => {
+      onReady(travelStartRef.current, userLocation, equipmentAddress);
+    }, 2600);
+  };
+
+  return (
+    <>
+      <style>{`
+        @keyframes nextos-drive {
+          0%   { transform: translateX(-80px); opacity: 0; }
+          8%   { opacity: 1; }
+          88%  { opacity: 1; }
+          100% { transform: translateX(420px); opacity: 0; }
+        }
+        .nextos-car-drive { animation: nextos-drive 2.6s cubic-bezier(0.4,0,0.2,1) forwards; }
+        @keyframes nextos-road-scroll {
+          0%   { transform: translateX(0); }
+          100% { transform: translateX(-50%); }
+        }
+        .nextos-road-scroll { animation: nextos-road-scroll 0.6s linear infinite; }
+      `}</style>
+
+      <Dialog open={!!task} onOpenChange={(open) => { if (!open && !isAnimating) onCancel(); }}>
+        <DialogContent className="max-w-md bg-white border-gray-200 rounded-2xl shadow-2xl p-0 overflow-hidden">
+          {isAnimating ? (
+            /* ── Car Animation Screen ── */
+            <div className="p-8 space-y-6 text-center">
+              <div>
+                <p className="text-base font-bold text-gray-800 mb-1">On your way! 🎯</p>
+                <p className="text-xs text-gray-500">Travel started — opening service checklist…</p>
+              </div>
+
+              {/* Road scene */}
+              <div className="relative h-24 bg-gradient-to-b from-sky-100 to-sky-50 rounded-2xl overflow-hidden border border-sky-100 flex items-end">
+                {/* Ground */}
+                <div className="absolute bottom-0 left-0 right-0 h-10 bg-gray-200" />
+                {/* Road lane dashes */}
+                <div className="absolute bottom-4 left-0 flex nextos-road-scroll" style={{ width: "200%" }}>
+                  {[...Array(16)].map((_, i) => (
+                    <div key={i} className="h-1.5 w-8 bg-white rounded-full mx-3 shrink-0 opacity-70" />
+                  ))}
+                </div>
+                {/* Car */}
+                <div className="nextos-car-drive absolute bottom-3 left-0 text-4xl select-none">🚗</div>
+                {/* Sun */}
+                <div className="absolute top-3 right-6 text-xl select-none">☀️</div>
+              </div>
+
+              {/* Loading dots */}
+              <div className="flex gap-1.5 justify-center">
+                {[0, 1, 2].map((i) => (
+                  <div
+                    key={i}
+                    className="w-2 h-2 bg-[#66B2B2] rounded-full animate-bounce"
+                    style={{ animationDelay: `${i * 0.18}s` }}
+                  />
+                ))}
+              </div>
+            </div>
+          ) : (
+            /* ── Confirmation Screen ── */
+            <>
+              <DialogHeader className="p-6 border-b border-gray-50 bg-gradient-to-br from-[#66B2B2]/5 to-transparent rounded-t-2xl">
+                <DialogTitle className="flex items-center gap-2.5 text-gray-900 text-base font-bold">
+                  <div className="w-9 h-9 rounded-xl bg-[#66B2B2]/10 flex items-center justify-center">
+                    <Navigation className="w-4.5 h-4.5 text-[#66B2B2]" />
+                  </div>
+                  Pre-Service Confirmation
+                </DialogTitle>
+                <DialogDescription className="text-xs text-gray-500 mt-1">
+                  Confirm your readiness before starting the service execution.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="p-6 space-y-4">
+                {/* Location row */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="p-3 rounded-xl bg-blue-50 border border-blue-100 space-y-1.5">
+                    <div className="flex items-center gap-1.5">
+                      <MapPin className="w-3 h-3 text-blue-500 shrink-0" />
+                      <p className="text-[9px] font-black uppercase tracking-widest text-blue-600">Your Location</p>
+                    </div>
+                    <p className="text-[11px] text-blue-900 font-medium leading-snug break-words">{userLocation}</p>
+                  </div>
+                  <div className="p-3 rounded-xl bg-amber-50 border border-amber-100 space-y-1.5">
+                    <div className="flex items-center gap-1.5">
+                      <MapPin className="w-3 h-3 text-amber-500 shrink-0" />
+                      <p className="text-[9px] font-black uppercase tracking-widest text-amber-600">Equipment Site</p>
+                    </div>
+                    <p className="text-[11px] text-amber-900 font-medium leading-snug break-words">{equipmentAddress}</p>
+                  </div>
+                </div>
+
+                {/* Prompt */}
+                <div className="p-4 rounded-xl bg-gray-50 border border-gray-100 text-center">
+                  <p className="text-sm font-bold text-gray-800 leading-relaxed">
+                    Are you ready to travel to the equipment location and begin the service?
+                  </p>
+                </div>
+
+                {/* Action buttons */}
+                <div className="grid grid-cols-2 gap-3">
+                  <Button
+                    variant="outline"
+                    onClick={onCancel}
+                    className="h-11 border-gray-200 text-gray-600 font-bold text-xs hover:bg-gray-50 rounded-xl"
+                  >
+                    <X className="w-3.5 h-3.5 mr-1.5" />
+                    No, Cancel
+                  </Button>
+                  <Button
+                    onClick={handleConfirm}
+                    className="h-11 bg-[#66B2B2] text-white hover:bg-[#5A9E9E] font-bold text-xs shadow-lg shadow-[#66B2B2]/20 rounded-xl"
+                  >
+                    <Car className="w-3.5 h-3.5 mr-1.5" />
+                    Yes, Ready to Go
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Execution Modal
+// ---------------------------------------------------------------------------
+function ExecutionModal({
+  task,
+  seedEquipment,
+  seedClients,
+  onClose,
+  onFinish,
+  resetOnCompletion = false,
+  onMetricsReset,
+}: {
+  task: ServiceRecord | null;
+  seedEquipment: any[];
+  seedClients: any[];
+  onClose: () => void;
+  onFinish: () => void;
+  resetOnCompletion?: boolean;
+  onMetricsReset?: (seedEqId: string, unit: string) => void;
+}) {
+    const {
+        equipment,
+        draftExecutions,
+        updateDraftExecution,
         clearDraftExecution,
         updateServiceRecord,
-        addServicePhoto
+        addServicePhoto,
+        queuePendingSubmission,
     } = useOperationsStore();
     const { logPartUsage } = useInventoryStore();
     const { packages } = useBillingStore();
     const { clients } = useCRMStore();
     const completeSeedServiceRecordMutation = trpc.seedServiceRecords.complete.useMutation();
+    const trpcUtils = trpc.useUtils();
     
     const draft = task ? draftExecutions[task.id] || { currentStep: 1, partsUsed: "Pending" } : null;
     const currentStep = draft?.currentStep || 1;
@@ -1841,14 +2484,17 @@ function ExecutionModal({ task, onClose, onFinish }: { task: ServiceRecord | nul
         let _scanMeta: any = {};
         try { _scanMeta = JSON.parse(task?.description ?? "{}"); } catch {}
         const _scanSeedEq = _scanMeta._src === "pms"
-          ? (seedData.equipment as any[]).find((s) => s.id === _scanMeta._seedEqId) ?? null
+          ? seedEquipment.find((s: any) => s.id === _scanMeta._seedEqId) ?? null
           : null;
         const expectedSerial = _scanSeedEq?.serialNumber ?? currentEq?.serialNumber ?? "";
         if (decodedText.trim() === expectedSerial) {
             await stopScanning();
             setIsVerified(true);
             toast.success("Asset Verified Successfully!");
-            
+            // Capture arrival time when QR scan succeeds
+            if (task) {
+                updateDraftExecution(task.id, { arrivalTime: new Date().toISOString() });
+            }
             // Auto-advance after a brief delay to show success state
             setTimeout(() => {
                 if (currentEq) handleNext({ equipmentId: currentEq.id });
@@ -1876,7 +2522,8 @@ function ExecutionModal({ task, onClose, onFinish }: { task: ServiceRecord | nul
             return;
         }
 
-        const completedDate = new Date().toISOString();
+        const completionTime = new Date().toISOString();
+        const completedDate = completionTime;
         const effectiveEquipId = draft.equipmentId || task.equipmentId;
         const storeEq = equipment.find(e => e.id === effectiveEquipId);
 
@@ -1893,6 +2540,7 @@ function ExecutionModal({ task, onClose, onFinish }: { task: ServiceRecord | nul
 
         updateServiceRecord(task.id, {
             status: "completed",
+            technician: draft.techSignature ? "Technician (Signed)" : "Pending",
             findings: draft.findings,
             workDone: draft.workDone,
             recommendation: draft.recommendations,
@@ -1918,22 +2566,53 @@ function ExecutionModal({ task, onClose, onFinish }: { task: ServiceRecord | nul
             let meta: any = {};
             try { meta = JSON.parse(task.description ?? "{}"); } catch {}
             const seedEq = meta._src === "pms"
-                ? (seedData.equipment as any[]).find((s) => s.id === meta._seedEqId) ?? null
+                ? seedEquipment.find((s: any) => s.id === meta._seedEqId) ?? null
                 : null;
             const pmsCfg = seedEq?.pmsConfiguration?.[meta._pmsIdx] ?? null;
             const seedClient = seedEq?.clientId
-                ? (seedData.clients as any[]).find((c) => c.id === seedEq.clientId) ?? null
+                ? seedClients.find((c: any) => c.id === seedEq.clientId) ?? null
                 : null;
 
+            // Prefer values snapshotted at task-creation time (embedded in description) over the
+            // current static import. This ensures that if the PMS config was edited after the
+            // task was triggered (e.g. 200 h → 2000 h), the completed record still shows the
+            // interval that was actually in effect when the equipment went Overdue.
+            const snapshotInterval: number | undefined =
+                meta._serviceInterval !== undefined ? Number(meta._serviceInterval) : pmsCfg?.serviceInterval;
+            const snapshotIntervalUnit: string | undefined =
+                meta._serviceIntervalUnit ?? pmsCfg?.serviceIntervalUnit;
+            const snapshotServiceType: string | undefined =
+                meta._serviceType ?? pmsCfg?.serviceType;
+
             let metricAtService = "";
-            if (pmsCfg) {
-                const unit: string = pmsCfg.serviceIntervalUnit ?? "Hours";
+            if (pmsCfg || (snapshotIntervalUnit !== undefined)) {
+                const unit: string = snapshotIntervalUnit ?? "Hours";
                 let gps001Ms = 0;
                 try { gps001Ms = Number(window.localStorage.getItem("nextos-gps001-total-hours-ms") ?? "0") || 0; } catch {}
                 metricAtService = getPmsMetricValue(seedEq, unit, gps001Ms);
             }
 
-            completeSeedServiceRecordMutation.mutate({
+            // Decide whether the server should atomically reset this equipment's metrics.
+            // • Non-EQ-001 seed equipment: ALWAYS reset (hours/km only, not days).
+            //   These are static-JSON values, so the server must zero them so status = OK.
+            // • EQ-001 (Excavator CAT 320): only if the "Reset Hours on Completion" toggle is ON.
+            //   Its live hours come from GPS (localStorage), not seed-data.json; the server
+            //   resets the seed field so applyComputedServiceStatuses writes status = OK to disk.
+            const isEq001Task = meta._seedEqId === "EQ-001";
+            // Use snapshotted unit so a config change doesn't affect the reset decision either.
+            const pmsUnit = (snapshotIntervalUnit ?? "").toLowerCase();
+            const isHoursOrKmTask = pmsUnit === "hours" || pmsUnit === "km";
+            const hasPmsConfig = !!pmsCfg || (snapshotInterval !== undefined && snapshotIntervalUnit !== undefined);
+            const shouldResetMetrics =
+                meta._src === "pms" &&
+                !!meta._seedEqId &&
+                hasPmsConfig &&
+                isHoursOrKmTask &&
+                (!isEq001Task || resetOnCompletion); // non-EQ-001: always; EQ-001: only if toggle ON
+
+            // Build the full payload object before calling mutate so we can
+            // save it verbatim to the retry queue if the write fails.
+            const submissionPayload = {
                 id: task.id,
                 completedDate,
                 technician: draft.techSignature ? "Technician (Signed)" : "Pending",
@@ -1957,9 +2636,9 @@ function ExecutionModal({ task, onClose, onFinish }: { task: ServiceRecord | nul
                 clientName: seedClient?.companyName ?? clients.find(c => c.id === task.clientId)?.companyName ?? "",
                 equipmentType: seedEq?.equipmentType ?? "",
                 serialNumber: seedEq?.serialNumber ?? storeEq?.serialNumber ?? "",
-                serviceType: pmsCfg?.serviceType ?? task.serviceCategory,
-                serviceInterval: pmsCfg?.serviceInterval,
-                serviceIntervalUnit: pmsCfg?.serviceIntervalUnit,
+                serviceType: snapshotServiceType ?? task.serviceCategory,
+                serviceInterval: snapshotInterval,
+                serviceIntervalUnit: snapshotIntervalUnit,
                 metricAtService,
                 safetyChecklist: draft.safetyChecklist,
                 beforePhoto: draft.beforePhoto,
@@ -1968,12 +2647,41 @@ function ExecutionModal({ task, onClose, onFinish }: { task: ServiceRecord | nul
                 afterNotes: draft.afterNotes,
                 techSignature: draft.techSignature,
                 clientSignature: draft.clientSignature,
-                startTime: null,
-                endTime: null,
+                startTime: draft.travelStartTime ?? null,
+                endTime: completionTime,
                 duration: null,
                 finalCost: draft.cost ?? null,
-            }, {
-                onError: () => toast.error("Report saved locally but failed to write to records. Please sync manually."),
+                travelStartTime: draft.travelStartTime ?? null,
+                arrivalTime: draft.arrivalTime ?? null,
+                completionTime,
+                technicianAddress: draft.technicianAddress ?? null,
+                equipmentSiteAddress: draft.equipmentSiteAddress ?? null,
+                equipmentStatusAtService: seedEq?.status ?? null,
+                // Tell the server to atomically zero out this equipment's metrics in the same
+                // file write (avoids the race condition of a separate chained mutation).
+                resetMetricsOnComplete: shouldResetMetrics,
+            } as const;
+
+            completeSeedServiceRecordMutation.mutate(submissionPayload, {
+                onSuccess: () => {
+                    // Refresh both queries so service reports and equipment status update immediately.
+                    trpcUtils.seedServiceRecords.list.invalidate();
+                    trpcUtils.seedEquipment.list.invalidate();
+                    // Apply the in-memory client-side override so the Scheduled Maintenance
+                    // table reflects 0 / OK immediately, before the refetch resolves.
+                    if (shouldResetMetrics) {
+                        onMetricsReset?.(meta._seedEqId as string, pmsCfg.serviceIntervalUnit ?? "Hours");
+                    }
+                },
+                onError: () => {
+                    // Persist the full payload so the auto-retry effect can replay it on next load.
+                    queuePendingSubmission({
+                        id: task.id,
+                        queuedAt: new Date().toISOString(),
+                        payload: submissionPayload,
+                    });
+                    toast.error("Couldn't write report to records — will retry automatically.");
+                },
             });
         } catch { /* silently skip — in-memory update already done */ }
 
@@ -1999,7 +2707,7 @@ function ExecutionModal({ task, onClose, onFinish }: { task: ServiceRecord | nul
     try { _pmsMeta = JSON.parse(task?.description ?? "{}"); } catch {}
     const _isPmsTask = _pmsMeta._src === "pms";
     const _pmsSeedEq = _isPmsTask
-      ? (seedData.equipment as any[]).find((s) => s.id === _pmsMeta._seedEqId) ?? null
+      ? seedEquipment.find((s: any) => s.id === _pmsMeta._seedEqId) ?? null
       : null;
 
     // Serial number used for QR verification and display
@@ -2008,7 +2716,7 @@ function ExecutionModal({ task, onClose, onFinish }: { task: ServiceRecord | nul
     const displayName = _pmsSeedEq?.name ?? currentEq?.unitId ?? `SIM-UNIT-${task?.id}`;
     const displaySubtitle = _pmsSeedEq?.equipmentType ?? (currentEq ? `${currentEq.manufacturer} ${currentEq.model}` : "");
     const displayClient = _pmsSeedEq?.clientId
-      ? ((seedData.clients as any[]).find((c) => c.id === _pmsSeedEq.clientId)?.companyName ?? null)
+      ? (seedClients.find((c: any) => c.id === _pmsSeedEq.clientId)?.companyName ?? null)
       : null;
     const _pmsCfg = _pmsSeedEq?.pmsConfiguration?.[_pmsMeta._pmsIdx] ?? null;
     // Operating time: GPS cache for EQ-001, seed hoursTotal otherwise
@@ -2016,8 +2724,10 @@ function ExecutionModal({ task, onClose, onFinish }: { task: ServiceRecord | nul
       if (_pmsSeedEq?.id === "EQ-001") {
         try {
           const ms = Number(window.localStorage.getItem("nextos-gps001-total-hours-ms") ?? "0") || 0;
+          const offsetMs = Number(window.localStorage.getItem(GPS001_HOURS_OFFSET_KEY) ?? "0") || 0;
+          const effectiveMs = Math.max(0, ms - offsetMs);
           if (ms > 0) {
-            const totalMin = Math.floor(ms / (1000 * 60));
+            const totalMin = Math.floor(effectiveMs / (1000 * 60));
             return `${Math.floor(totalMin / 60)}h ${totalMin % 60}m`;
           }
         } catch { /* fall through */ }
@@ -2211,6 +2921,7 @@ function ExecutionModal({ task, onClose, onFinish }: { task: ServiceRecord | nul
                                     client={clients.find(c => c.id === task.clientId)}
                                     packages={packages}
                                     seedEquipment={_pmsSeedEq}
+                                    seedClients={seedClients}
                                     pmsConfig={_pmsCfg}
                                     onSave={(data) => handleNext(data)}
                                     onBack={handleBack}
@@ -2390,7 +3101,7 @@ function VisualEvidence({ label, photo, notes, onSave, onBack }: { label: string
     );
 }
 
-function TechnicalWorkForm({ draft, equipment, client, packages, seedEquipment, pmsConfig, onSave, onBack }: { draft: DraftExecution, equipment?: Equipment, client?: Client, packages: any[], seedEquipment?: any, pmsConfig?: any, onSave: (d: Partial<DraftExecution>) => void, onBack: () => void }) {
+function TechnicalWorkForm({ draft, equipment, client, packages, seedEquipment, seedClients, pmsConfig, onSave, onBack }: { draft: DraftExecution, equipment?: Equipment, client?: Client, packages: any[], seedEquipment?: any, seedClients?: any[], pmsConfig?: any, onSave: (d: Partial<DraftExecution>) => void, onBack: () => void }) {
     const [fields, setFields] = useState({
         findings: draft.findings || "",
         workDone: draft.workDone || "",
@@ -2421,7 +3132,7 @@ function TechnicalWorkForm({ draft, equipment, client, packages, seedEquipment, 
     // Client name: prefer seed client lookup, fall back to CRM client
     const clientName = useMemo(() => {
         if (seedEquipment?.clientId) {
-            const sc = (seedData.clients as any[]).find((c) => c.id === seedEquipment.clientId);
+            const sc = (seedClients ?? []).find((c: any) => c.id === seedEquipment.clientId);
             if (sc?.companyName) return sc.companyName;
         }
         return client?.companyName ?? "—";
