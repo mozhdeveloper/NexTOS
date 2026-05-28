@@ -10,10 +10,130 @@ import {
   Search, 
   CheckCircle2,
   Activity,
-  Wallet 
-} from "lucide-react";
+  Wallet,
+  QrCode,
+  Printer
+  } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { QRCodeSVG } from "qrcode.react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+
+function QRModal({ equipment, isOpen, onClose }: { equipment: any; isOpen: boolean; onClose: () => void }) {
+  const handlePrint = () => {
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) return;
+
+    const qrSvg = document.getElementById(`qr-gen-${equipment.id}`)?.outerHTML;
+
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>Print QR Tag - ${equipment.unitId}</title>
+          <style>
+            @page { size: auto; margin: 0; }
+            body { 
+              font-family: 'Inter', sans-serif; 
+              display: flex; 
+              flex-direction: column; 
+              align-items: center; 
+              justify-content: center; 
+              height: 100vh; 
+              margin: 0; 
+              padding: 20px;
+              text-align: center;
+            }
+            .tag-container {
+              border: 2px solid #000;
+              padding: 30px;
+              border-radius: 20px;
+              width: 300px;
+            }
+            .brand { font-weight: 900; font-size: 24px; margin-bottom: 5px; color: #66B2B2; }
+            .unit-id { font-weight: 800; font-size: 32px; margin-bottom: 20px; letter-spacing: -0.05em; }
+            .qr-wrapper { margin-bottom: 20px; }
+            .meta { font-size: 12px; color: #666; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; }
+            svg { width: 200px; height: 200px; }
+          </style>
+        </head>
+        <body>
+          <div class="tag-container">
+            <div class="brand">NexTOS</div>
+            <div class="unit-id">${equipment.unitId}</div>
+            <div class="qr-wrapper">${qrSvg}</div>
+            <div class="meta">${equipment.manufacturer} ${equipment.model}</div>
+            <div class="meta" style="margin-top: 4px;">SN: ${equipment.serialNumber}</div>
+          </div>
+          <script>
+            window.onload = () => {
+              window.print();
+              setTimeout(() => window.close(), 500);
+            };
+          </script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="bg-white border-gray-200 sm:max-w-md rounded-[2.5rem] shadow-2xl p-8">
+        <DialogHeader className="items-center pb-4">
+          <DialogTitle className="text-2xl font-black tracking-tighter text-gray-900">Equipment QR Tag</DialogTitle>
+          <p className="text-sm text-gray-500 font-medium">Digital Identity for {equipment.unitId}</p>
+        </DialogHeader>
+
+        <div className="flex flex-col items-center gap-8 py-4">
+          <div className="relative group">
+            <div className="absolute -inset-4 bg-gradient-to-br from-[#66B2B2]/20 to-[#10B981]/20 rounded-[2rem] blur-xl opacity-50 group-hover:opacity-100 transition-opacity duration-500" />
+            <div className="relative p-6 bg-white rounded-[2rem] border-2 border-gray-50 shadow-sm flex items-center justify-center">
+              <QRCodeSVG
+                id={`qr-gen-${equipment.id}`}
+                value={JSON.stringify({
+                  id: equipment.id,
+                  unitId: equipment.unitId,
+                  serialNumber: equipment.serialNumber,
+                  type: "EQUIPMENT_TAG"
+                })}
+                size={220}
+                level="H"
+                includeMargin={false}
+              />
+            </div>
+          </div>
+
+          <div className="text-center space-y-1">
+            <h3 className="text-xl font-bold text-gray-900 font-mono-tech uppercase tracking-tight">{equipment.unitId}</h3>
+            <p className="text-xs text-gray-500 font-bold uppercase tracking-widest">{equipment.manufacturer} {equipment.model}</p>
+          </div>
+
+          <div className="w-full grid grid-cols-2 gap-3">
+             <Button 
+                variant="outline" 
+                onClick={onClose}
+                className="h-12 rounded-2xl font-black border-gray-200 text-gray-500 hover:bg-gray-50"
+             >
+                Close
+             </Button>
+             <Button 
+                onClick={handlePrint}
+                className="h-12 rounded-2xl font-black bg-[#66B2B2] text-white hover:bg-[#5A9E9E] shadow-lg shadow-[#66B2B2]/20 transition-all active:scale-95"
+             >
+                <Printer className="w-4 h-4 mr-2" />
+                Print Tag
+             </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 function KPICard({ title, value, subtext, icon: Icon, colorClass, iconBgClass }: {
   title: string;
@@ -47,6 +167,7 @@ export default function ClientEquipment() {
 
   const [searchQuery, setSearchQuery] = useState("");
   const [expanded, setExpanded] = useState<number | null>(null);
+  const [qrModalItem, setQrModalItem] = useState<any | null>(null);
   
   // Metrics calculation
   const allEqRecords = serviceRecords.filter((r) => r.clientId === clientId);
@@ -189,8 +310,7 @@ export default function ClientEquipment() {
                     <span className="px-1.5 py-0.5 rounded text-[10px] bg-[#EF4444]/20 text-[#EF4444] font-medium">Service Due</span>
                   )}
                   <span className="text-[10px] text-gray-500">{eqRecords.length} services</span>
-                  {isExpanded ? (
-                    <ChevronUp className="w-4 h-4 text-gray-500" />
+                  {isExpanded ? (                    <ChevronUp className="w-4 h-4 text-gray-500" />
                   ) : (
                     <ChevronDown className="w-4 h-4 text-gray-500" />
                   )}
@@ -314,6 +434,13 @@ export default function ClientEquipment() {
           );
         })}
       </div>
+      {qrModalItem && (
+        <QRModal 
+          equipment={qrModalItem} 
+          isOpen={!!qrModalItem} 
+          onClose={() => setQrModalItem(null)} 
+        />
+      )}
     </div>
   );
 }

@@ -570,18 +570,45 @@ export default function Services() {
     }
   };
 
-  const findAndHighlightEquipment = (serialNumber: string) => {
-    const foundEquipment = equipment.find(eq => eq.serialNumber === serialNumber);
-    if (foundEquipment) {
-      const element = equipmentRefs.current.get(foundEquipment.id);
-      if (element) element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      setSelectedEquipment(foundEquipment.id);
-      setHighlightedEquipment(foundEquipment.id);
+  const findAndHighlightEquipment = (scannedValue: string) => {
+    let serialToFind = scannedValue.trim();
+    
+    // Check if scanned value is JSON (from Client Portal tags)
+    try {
+      const parsed = JSON.parse(scannedValue);
+      if (parsed.serialNumber) {
+        serialToFind = parsed.serialNumber;
+      }
+    } catch (e) {
+      // Not JSON, use raw value
+    }
+
+    // Find in liveEquipment (the ones displayed in the table)
+    const seedEq = liveEquipment.find(eq => eq.serialNumber === serialToFind);
+    
+    if (seedEq) {
+      // Also find corresponding store equipment for highlighting/selection
+      const storeEq = equipment.find(eq => eq.serialNumber === serialToFind);
+      
+      // Expand the row in the table
+      setSelectedSeedId(seedEq.id);
+      
+      if (storeEq) {
+        setSelectedEquipment(storeEq.id);
+        setHighlightedEquipment(storeEq.id);
+        
+        // Scroll to the element
+        const element = equipmentRefs.current.get(storeEq.id);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }
+      
       setActiveTab("equipment");
       setTimeout(() => setHighlightedEquipment(null), 3000);
-      toast.success(`Found equipment: ${foundEquipment.unitId}`);
+      toast.success(`Found asset: ${seedEq.name || seedEq.unitId}`);
     } else {
-      toast.error(`Equipment not found`);
+      toast.error(`Equipment not found with serial: ${serialToFind}`);
     }
   };
 
@@ -1335,24 +1362,6 @@ export default function Services() {
                 />
               </div>
               <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  if (selectedSeedId) {
-                    const seedEqForQr = liveEquipment.find(s => s.id === selectedSeedId);
-                    if (seedEqForQr?.serialNumber) {
-                      setQrSerial(seedEqForQr.serialNumber);
-                      setShowQR(true);
-                    }
-                  }
-                }}
-                className="h-8 border-gray-200 bg-white text-gray-700 hover:bg-[#66B2B2] hover:text-white"
-                disabled={!selectedSeedId}
-              >
-                <QrCode className="w-3.5 h-3.5 mr-1.5" />
-                Generate QR
-              </Button>
-              <Button
                 onClick={startScanning}
                 className="bg-[#10B981] text-white hover:bg-[#10B981]/90 font-bold h-8 text-xs"
               >
@@ -1376,6 +1385,7 @@ export default function Services() {
                     <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider">Months</th>
                     <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider">Years</th>
                     <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider">Status</th>
+                    <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider">QR Code</th>
                     <th className="py-2.5 px-3 w-8"></th>
                   </tr>
                 </thead>
@@ -1473,6 +1483,25 @@ export default function Services() {
                             ) : (
                               <span className="text-gray-400">—</span>
                             )}
+                          </td>
+                          <td className="py-3 px-3">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setQrSerial(seedEq.serialNumber ?? "");
+                                setShowQR(true);
+                              }}
+                              className="p-1 rounded bg-white border border-gray-100 hover:border-[#66B2B2] transition-all shadow-sm active:scale-95 group/qr"
+                              title="View QR Tag"
+                            >
+                              <QRCodeSVG 
+                                value={seedEq.serialNumber ?? ""} 
+                                size={32} 
+                                level="L"
+                                includeMargin={false}
+                                className="opacity-80 group-hover:opacity-100 transition-opacity"
+                              />
+                            </button>
                           </td>
                           <td className="py-3 px-3 w-8 text-center">
                             <ChevronDown className={`w-3.5 h-3.5 text-gray-400 transition-transform duration-200 ${isSelected ? 'rotate-180 text-[#66B2B2]' : ''}`} />

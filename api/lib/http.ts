@@ -26,7 +26,15 @@ export class HttpClient {
       ...rest
     } = config;
 
-    const url = new URL(`${this.baseUrl}${endpoint}`);
+    let url: URL;
+    try {
+      url = new URL(`${this.baseUrl}${endpoint}`);
+    } catch (e) {
+      if (!this.baseUrl) {
+        throw new Error(`HttpClient error: baseUrl is not defined. Tried to fetch: ${endpoint}`);
+      }
+      throw new Error(`HttpClient error: Invalid URL created from "${this.baseUrl}" and "${endpoint}"`);
+    }
     if (params) {
       Object.entries(params).forEach(([key, value]) =>
         url.searchParams.append(key, value.toString()),

@@ -41,6 +41,13 @@ let _jwks: ReturnType<typeof jose.createRemoteJWKSet> | null = null;
 
 function getJWKS() {
   if (!_jwks) {
+<<<<<<< HEAD
+=======
+    if (!env.kimiAuthUrl) {
+      console.warn("[auth] KIMI_AUTH_URL is not defined. Authentication will not work.");
+      return null as any;
+    }
+>>>>>>> 0b1b295 ( fix all the bugs and added the qr code button)
     _jwks = jose.createRemoteJWKSet(
       new URL(`${env.kimiAuthUrl}/api/.well-known/jwks.json`),
     );
