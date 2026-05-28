@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { InventoryItem, PartUsage } from "@/types";
 import { toast } from "sonner";
+import seedData from "@/data/seed-data.json";
 
 interface InventoryState {
   items: InventoryItem[];
@@ -22,73 +23,20 @@ interface InventoryState {
   getItemByPartNumber: (partNumber: string) => InventoryItem | undefined;
 }
 
-const mockInventory: InventoryItem[] = [
-  {
-    id: 1,
-    partNumber: "FL-OIL-01",
-    name: "Engine Oil Filter (Primary)",
-    category: "Filter",
-    unit: "Pcs",
-    stockLevel: 45,
-    minThreshold: 10,
-    pricePerUnit: 1250,
-    compatibility: ["Excavator", "Generator"],
-    lastRestocked: new Date().toISOString(),
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 2,
-    partNumber: "FL-AIR-02",
-    name: "Heavy Duty Air Filter",
-    category: "Filter",
-    unit: "Pcs",
-    stockLevel: 12,
-    minThreshold: 15,
-    pricePerUnit: 3400,
-    compatibility: ["Excavator", "Boom Truck"],
-    lastRestocked: new Date().toISOString(),
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 3,
-    partNumber: "OIL-15W40",
-    name: "Premium Engine Oil 15W-40",
-    category: "Oil",
-    unit: "Liters",
-    stockLevel: 250,
-    minThreshold: 50,
-    pricePerUnit: 450,
-    compatibility: ["Heavy Equipment"],
-    lastRestocked: new Date().toISOString(),
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 4,
-    partNumber: "BLT-DRV-003",
-    name: "Main Drive Belt",
-    category: "Belt",
-    unit: "Pcs",
-    stockLevel: 5,
-    minThreshold: 8,
-    pricePerUnit: 5600,
-    compatibility: ["Generator", "Pump"],
-    lastRestocked: new Date().toISOString(),
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 5,
-    partNumber: "HW-BOLT-M12",
-    name: "Steel Bolt M12 (Grade 8)",
-    category: "Hardware",
-    unit: "Pcs",
-    stockLevel: 500,
-    minThreshold: 100,
-    pricePerUnit: 45,
-    compatibility: ["All"],
-    lastRestocked: new Date().toISOString(),
-    createdAt: new Date().toISOString()
-  }
-];
+// Map seed data to inventory items
+const mockInventory: InventoryItem[] = seedData.parts.map((part, index) => ({
+  id: index + 1,
+  partNumber: part.id,
+  name: part.name,
+  category: part.category,
+  unit: part.unitType,
+  stockLevel: part.quantity,
+  minThreshold: part.minQuantity,
+  pricePerUnit: part.unitPrice,
+  compatibility: [],
+  lastRestocked: new Date().toISOString(),
+  createdAt: new Date().toISOString()
+}));
 
 export const useInventoryStore = create<InventoryState>()(
   persist(

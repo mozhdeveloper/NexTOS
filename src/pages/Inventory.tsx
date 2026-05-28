@@ -133,10 +133,10 @@ export default function Inventory() {
                   </SelectTrigger>
                   <SelectContent className="bg-white border-gray-200">
                      <SelectItem value="all">All Categories</SelectItem>
-                     <SelectItem value="Filter">Filters</SelectItem>
-                     <SelectItem value="Oil">Oils & Fluids</SelectItem>
-                     <SelectItem value="Belt">Drive Belts</SelectItem>
-                     <SelectItem value="Hardware">Hardware</SelectItem>
+                     <SelectItem value="FILTER">Filters</SelectItem>
+                     <SelectItem value="OIL">Oils & Fluids</SelectItem>
+                     <SelectItem value="BELT">Drive Belts</SelectItem>
+                     <SelectItem value="HARDWARE">Hardware</SelectItem>
                   </SelectContent>
                </Select>
                <Button variant="outline" className="h-11 bg-white border-gray-200 font-bold px-4">
