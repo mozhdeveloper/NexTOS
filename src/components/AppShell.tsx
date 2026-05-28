@@ -37,8 +37,7 @@ const navItems: NavItem[] = [
   { label: "Dashboard", path: "/", icon: LayoutDashboard, roles: ["admin", "sales", "tech", "client"] },
   { label: "CRM", path: "/crm", icon: Users, roles: ["admin", "sales"] },
   { label: "Services", path: "/services", icon: Wrench, roles: ["admin", "tech"] },
-  
-  
+  { label: "Inventory", path: "/inventory", icon: Box, roles: ["admin", "tech"] },
   { label: "Fleet", path: "/fleet", icon: MapPin, roles: ["admin", "tech", "client"] },
   { label: "Client Portal", path: "/portal", icon: Shield, roles: ["admin", "client"] },
   { label: "Billing", path: "/billing", icon: CreditCard, roles: ["admin", "client"] },
