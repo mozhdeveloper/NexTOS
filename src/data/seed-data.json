@@ -119,7 +119,7 @@
             "lat": 14.56331,
             "lng": 121.04812,
             "hoursToday": "0h 0m",
-            "hoursTotal": "0h 0m",
+            "hoursTotal": "4500h 0m",
             "kmToday": 37,
             "kmTotal": 25410,
             "serialNumber": "GEN500-GBD-003",
@@ -136,7 +136,7 @@
                 }
             ],
             "days": 13,
-            "status": "OK"
+            "status": "Overdue"
         },
         {
             "id": "LAB-001",
