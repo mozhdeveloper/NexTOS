@@ -121,6 +121,17 @@ type HistoryDateStatus = "has-data" | "no-data" | "unknown";
 const GPS51_USERNAME = import.meta.env.VITE_GPS51_USERNAME ?? "";
 const GPS51_PASSWORD = import.meta.env.VITE_GPS51_PASSWORD ?? "";
 const FLEET_HISTORY_DEBUG = true;
+
+const FALLBACK_STATIC_HOURS = { today: "0h 0m", total: "0h 0m" };
+const STATIC_HOURS_BY_UNIT: Record<string, { today: string; total: string }> = {
+  "GPS-001": { today: "8h 15m", total: "1,450h 30m" },
+  "GPS-002": { today: "6h 45m", total: "892h 15m" },
+  "GPS-003": { today: "12h 00m", total: "3,210h 45m" },
+  "GPS-004": { today: "4h 30m", total: "215h 00m" },
+  "GPS-005": { today: "7h 15m", total: "542h 30m" },
+  "GPS-006": { today: "0h 0m", total: "120h 15m" },
+};
+
 const GPS001_TOTAL_HOURS_CACHE_KEY = "nextos-gps001-total-hours-ms";
 const GPS001_HOURS_TODAY_CACHE_KEY = "nextos-gps001-hours-today-ms";
 const GPS001_HOURS_TODAY_TIMESTAMP_KEY = "nextos-gps001-hours-today-timestamps";
