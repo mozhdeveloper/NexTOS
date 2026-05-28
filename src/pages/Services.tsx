@@ -1266,7 +1266,7 @@ export default function Services() {
                   : null;
 
                 return (
-                  <div key={task.id} className="data-card p-4 flex flex-col justify-between hover:border-[#66B2B2]/40 transition-all cursor-pointer group" onClick={() => setConfirmTask(task)}>
+                  <div key={task.id} className="data-card p-4 flex flex-col justify-between hover:border-[#66B2B2]/40 transition-all cursor-pointer group" onClick={() => draftExecutions[task.id]?.travelStartTime ? setExecutionTask(task) : setConfirmTask(task)}>
                      <div>
                         <div className="flex items-center justify-between mb-2">
                           {task.status === 'scheduled' && !isDraft ? (
@@ -1365,6 +1365,7 @@ export default function Services() {
               <table className="w-full text-xs">
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-200">
+                    <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider">Image</th>
                     <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider">Equipment</th>
                     <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider">Client</th>
                     <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider">Serial Number</th>
@@ -1444,6 +1445,15 @@ export default function Services() {
                             }
                           }}
                         >
+                          <td className="py-3 px-3">
+                            <div className="h-11 w-11 shrink-0 overflow-hidden rounded-md border bg-gray-100 flex items-center justify-center">
+                              {seedEq.image ? (
+                                <img src={seedEq.image} alt={seedEq.name ?? ""} className="h-full w-full object-cover" />
+                              ) : (
+                                <Wrench className="w-4 h-4 text-gray-400" />
+                              )}
+                            </div>
+                          </td>
                           <td className="py-3 px-3 text-black font-medium">{seedEq.name ?? "—"}</td>
                           <td className="py-3 px-3 text-black">{seedClient?.companyName ?? "—"}</td>
                           <td className="py-3 px-3 text-gray-600 font-mono-tech">{seedEq.serialNumber ?? "—"}</td>
