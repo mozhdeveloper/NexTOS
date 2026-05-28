@@ -1,6 +1,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { watch } from "node:fs";
+import { writeSeedData } from "./seed-writer";
 
 interface PmsConfigEntry {
   serviceInterval: number;
@@ -147,7 +148,7 @@ async function recalculateAndPersistStatuses(): Promise<void> {
 
     if (hasChanges) {
       parsed.equipment = updated;
-      await fs.writeFile(seedDataPath, `${JSON.stringify(parsed, null, 4)}\n`, "utf-8");
+      await writeSeedData(parsed);
       console.log("[SeedStatusWatcher] Status values updated in seed-data.json");
     }
   } catch (error) {

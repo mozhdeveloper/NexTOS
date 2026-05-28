@@ -2,7 +2,7 @@ import { authRouter } from "./auth-router";
 import { createRouter, publicQuery } from "./middleware";
 import { z } from "zod";
 import { promises as fs } from "node:fs";
-import path from "node:path";
+import { getSeedDataPath, writeSeedData } from "./lib/seed-writer";
 
 type PmsConfigEntry = {
   serviceInterval: number;
@@ -27,7 +27,7 @@ type SeedEquipmentEntry = {
   kmTotal?: number | string;
   days?: number | string;
   status?: "OK" | "Near Service" | "Overdue";
-  pmsConfiguration?: PmsConfigEntry[]; // array — each entry is an independent schedule
+  pmsConfiguration?: PmsConfigEntry[]; // array â€” each entry is an independent schedule
 };
 
 type SeedServiceRecord = {
@@ -87,14 +87,10 @@ type SeedDataShape = {
   [key: string]: unknown;
 };
 
-function getSeedDataPath(): string {
-  return path.resolve(process.cwd(), "src/data/seed-data.json");
-}
-
 /** Read and parse seed-data.json, stripping any UTF-8 BOM that editors like VS Code may add. */
 async function readSeedData(): Promise<SeedDataShape> {
   const raw = await fs.readFile(getSeedDataPath(), "utf-8");
-  // U+FEFF (BOM) at position 0 causes JSON.parse to throw — strip it defensively.
+  // U+FEFF (BOM) at position 0 causes JSON.parse to throw - strip it defensively.
   const stripped = raw.charCodeAt(0) === 0xFEFF ? raw.slice(1) : raw;
   return JSON.parse(stripped) as SeedDataShape;
 }
@@ -222,10 +218,9 @@ export const appRouter = createRouter({
   ping: publicQuery.query(() => ({ ok: true, ts: Date.now() })),
   auth: authRouter,
   seedEquipment: createRouter({
-    // Live read — returns the latest equipment + clients arrays from disk so the
+    // Live read â€” returns the latest equipment + clients arrays from disk so the
     // frontend doesn't depend on the module-level static JSON import for status-sensitive data.
     list: publicQuery.query(async () => {
-      const seedDataPath = getSeedDataPath();
       const parsed = await readSeedData();
       return {
         equipment: Array.isArray(parsed.equipment) ? parsed.equipment : [],
@@ -265,7 +260,7 @@ export const appRouter = createRouter({
 
         parsed.equipment = [...equipment, newEntry];
         applyComputedServiceStatuses(parsed);
-        await fs.writeFile(seedDataPath, `${JSON.stringify(parsed, null, 4)}\n`, "utf-8");
+        await writeSeedData(parsed);
 
         return { ok: true, entry: newEntry };
       }),
@@ -309,7 +304,7 @@ export const appRouter = createRouter({
         equipment[existingIndex] = updatedEntry;
         parsed.equipment = equipment;
         applyComputedServiceStatuses(parsed);
-        await fs.writeFile(seedDataPath, `${JSON.stringify(parsed, null, 4)}\n`, "utf-8");
+        await writeSeedData(parsed);
 
         return { ok: true, entry: updatedEntry };
       }),
@@ -329,7 +324,7 @@ export const appRouter = createRouter({
 
         parsed.equipment = equipment.filter((item) => item.id !== input.id);
         applyComputedServiceStatuses(parsed);
-        await fs.writeFile(seedDataPath, `${JSON.stringify(parsed, null, 4)}\n`, "utf-8");
+        await writeSeedData(parsed);
 
         return { ok: true };
       }),
@@ -365,7 +360,7 @@ export const appRouter = createRouter({
         equipment[idx] = { ...entry, pmsConfiguration: [...existing, newConfig] };
         parsed.equipment = equipment;
         applyComputedServiceStatuses(parsed);
-        await fs.writeFile(seedDataPath, `${JSON.stringify(parsed, null, 4)}\n`, "utf-8");
+        await writeSeedData(parsed);
 
         return { ok: true, configIndex: existing.length };
       }),
@@ -403,7 +398,7 @@ export const appRouter = createRouter({
         equipment[idx] = { ...entry, pmsConfiguration: configs };
         parsed.equipment = equipment;
         applyComputedServiceStatuses(parsed);
-        await fs.writeFile(seedDataPath, `${JSON.stringify(parsed, null, 4)}\n`, "utf-8");
+        await writeSeedData(parsed);
 
         return { ok: true };
       }),
@@ -432,7 +427,7 @@ export const appRouter = createRouter({
         equipment[idx] = { ...entry, pmsConfiguration: configs };
         parsed.equipment = equipment;
         applyComputedServiceStatuses(parsed);
-        await fs.writeFile(seedDataPath, `${JSON.stringify(parsed, null, 4)}\n`, "utf-8");
+        await writeSeedData(parsed);
 
         return { ok: true };
       }),
@@ -463,7 +458,7 @@ export const appRouter = createRouter({
         equipment[idx] = entry;
         parsed.equipment = equipment;
         applyComputedServiceStatuses(parsed);
-        await fs.writeFile(seedDataPath, `${JSON.stringify(parsed, null, 4)}\n`, "utf-8");
+        await writeSeedData(parsed);
 
         return { ok: true };
       }),
@@ -479,7 +474,6 @@ export const appRouter = createRouter({
           })
         )
         .mutation(async ({ input }) => {
-          const seedDataPath = getSeedDataPath();
           const parsed = await readSeedData();
 
           const list = Array.isArray(parsed.pmsConfigurations) ? parsed.pmsConfigurations : [];
@@ -501,7 +495,7 @@ export const appRouter = createRouter({
 
           parsed.pmsConfigurations = [...list, newEntry];
           applyComputedServiceStatuses(parsed);
-          await fs.writeFile(seedDataPath, `${JSON.stringify(parsed, null, 4)}\n`, "utf-8");
+          await writeSeedData(parsed);
 
           return { ok: true, entry: newEntry };
         }),
@@ -516,7 +510,6 @@ export const appRouter = createRouter({
           })
         )
         .mutation(async ({ input }) => {
-          const seedDataPath = getSeedDataPath();
           const parsed = await readSeedData();
 
           const list = Array.isArray(parsed.pmsConfigurations) ? parsed.pmsConfigurations : [];
@@ -535,7 +528,7 @@ export const appRouter = createRouter({
           list[idx] = updated;
           parsed.pmsConfigurations = list;
           applyComputedServiceStatuses(parsed);
-          await fs.writeFile(seedDataPath, `${JSON.stringify(parsed, null, 4)}\n`, "utf-8");
+          await writeSeedData(parsed);
 
           return { ok: true, entry: updated };
         }),
@@ -543,7 +536,6 @@ export const appRouter = createRouter({
       delete: publicQuery
         .input(z.object({ id: z.string().min(1) }))
         .mutation(async ({ input }) => {
-          const seedDataPath = getSeedDataPath();
           const parsed = await readSeedData();
 
           const list = Array.isArray(parsed.pmsConfigurations) ? parsed.pmsConfigurations : [];
@@ -556,7 +548,7 @@ export const appRouter = createRouter({
 
           parsed.pmsConfigurations = filtered;
           applyComputedServiceStatuses(parsed);
-          await fs.writeFile(seedDataPath, `${JSON.stringify(parsed, null, 4)}\n`, "utf-8");
+          await writeSeedData(parsed);
 
           return { ok: true };
         }),
@@ -564,7 +556,6 @@ export const appRouter = createRouter({
 
   seedServiceRecords: createRouter({
     list: publicQuery.query(async () => {
-      const seedDataPath = getSeedDataPath();
       const parsed = await readSeedData();
       return { records: Array.isArray(parsed.serviceRecords) ? parsed.serviceRecords : [] };
     }),
@@ -592,7 +583,6 @@ export const appRouter = createRouter({
         })
       )
       .mutation(async ({ input }) => {
-        const seedDataPath = getSeedDataPath();
         const parsed = await readSeedData();
 
         const records: SeedServiceRecord[] = Array.isArray(parsed.serviceRecords)
@@ -607,7 +597,7 @@ export const appRouter = createRouter({
         }
 
         parsed.serviceRecords = records;
-        await fs.writeFile(seedDataPath, `${JSON.stringify(parsed, null, 4)}\n`, "utf-8");
+        await writeSeedData(parsed);
         return { ok: true };
       }),
 
@@ -676,7 +666,6 @@ export const appRouter = createRouter({
         })
       )
       .mutation(async ({ input }) => {
-        const seedDataPath = getSeedDataPath();
         const parsed = await readSeedData();
 
         const records: SeedServiceRecord[] = Array.isArray(parsed.serviceRecords)
@@ -710,24 +699,24 @@ export const appRouter = createRouter({
         } as SeedServiceRecord);
 
         if (existingIdx >= 0 && records[existingIdx].status !== "completed") {
-          // Task existed in scheduled/in_progress state → mark it completed in-place.
+          // Task existed in scheduled/in_progress state â†’ mark it completed in-place.
           records[existingIdx] = buildRecord(input.id, records[existingIdx]);
         } else if (existingIdx >= 0 && records[existingIdx].status === "completed") {
-          // Task was ALREADY completed (a repeat service cycle) → create a fresh history entry
+          // Task was ALREADY completed (a repeat service cycle) â†’ create a fresh history entry
           // with a unique timestamp-based id so the original record is preserved.
           const newId = Date.now();
           records.push(buildRecord(newId, records[existingIdx]));
         } else {
-          // No existing record at all → create new.
+          // No existing record at all â†’ create new.
           records.push({
-            // No existing record — buildRecord handles all field defaults.
+            // No existing record â€” buildRecord handles all field defaults.
             ...buildRecord(input.id),
           } as SeedServiceRecord);
         }
 
         parsed.serviceRecords = records;
 
-        // ── Atomic metrics reset ──────────────────────────────────────────────────
+        // â”€â”€ Atomic metrics reset â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         // Reset the equipment's usage metric to 0 in the same file write.
         // Doing this atomically avoids the race condition where two separate mutations
         // both read/write seed-data.json and the second one overwrites the first.
@@ -752,7 +741,7 @@ export const appRouter = createRouter({
         // Always recompute service statuses so the JSON reflects the latest state
         // (especially important when metrics were just reset above).
         applyComputedServiceStatuses(parsed);
-        await fs.writeFile(seedDataPath, `${JSON.stringify(parsed, null, 4)}\n`, "utf-8");
+        await writeSeedData(parsed);
         return { ok: true };
       }),
   }),

@@ -843,10 +843,16 @@ export default function Services() {
   const toastedPmsTasksRef = useRef(new Set<number>());
 
   // Auto-create a scheduled task for every Overdue PMS entry.
-  // Deps: allScheduledMaintenance only — the effect should NOT re-run just because it
-  // wrote to serviceRecords itself (that would re-trigger on every store update).
+  // Deps: allScheduledMaintenance + seedServiceRecordsData.
+  // serviceRecords intentionally omitted — the effect must not re-run because it wrote
+  // to the store itself (cascading re-trigger). seedServiceRecordsData is included so
+  // the effect re-runs once after the injection effect purges stale records on first load,
+  // giving alreadyCompletedInSeed a real value instead of the undefined-fallback false.
   useEffect(() => {
     if (!equipment.length) return;
+    // Wait for seed records to load before acting — without this guard the upsert fires
+    // before alreadyCompletedInSeed can be evaluated and would overwrite a completed record.
+    if (!seedServiceRecordsData) return;
     const overdueEntries = allScheduledMaintenance.filter((e) => e.status === "Overdue");
 
     for (const entry of overdueEntries) {
@@ -857,6 +863,13 @@ export default function Services() {
       const isLab = seedEqId.startsWith("LAB");
       const eqNum = parseInt(seedEqId.replace(/\D/g, "") || "0");
       const taskId = 9_000_000 + (isLab ? 100_000 : 0) + eqNum * 100 + pmsIdx;
+
+      // If seed already has a completed record for this taskId, still create the Zustand
+      // task so the next service cycle is actionable in My Tasks — but skip the upsert.
+      // Upsert would overwrite the completed record and erase the service report.
+      const alreadyCompletedInSeed = seedServiceRecordsData.records.some(
+        (r) => r.id === taskId && r.status === "completed"
+      );
 
       // Read live store state (not the stale hook snapshot) so the check is always current
       // even when the effect re-runs before the component has re-rendered.
@@ -914,24 +927,26 @@ export default function Services() {
         ],
       }));
 
-      upsertSeedServiceRecord.mutate({
-        id: taskId,
-        seedEquipmentId: seedEqId,
-        pmsConfigIndex: pmsIdx,
-        equipmentId: storeEq.id,
-        clientId,
-        serviceCategory,
-        status: "scheduled",
-        scheduledDate: new Date().toISOString(),
-        technician: "Pending Assignment",
-        description,
-        findings: "",
-        workDone: "",
-        recommendation: "",
-        partsUsed: "Pending Inspection",
-        cost: entry.estimatedCost || 0,
-        hoursAtService: storeEq.currentHours || 0,
-      });
+      if (!alreadyCompletedInSeed) {
+        upsertSeedServiceRecord.mutate({
+          id: taskId,
+          seedEquipmentId: seedEqId,
+          pmsConfigIndex: pmsIdx,
+          equipmentId: storeEq.id,
+          clientId,
+          serviceCategory,
+          status: "scheduled",
+          scheduledDate: new Date().toISOString(),
+          technician: "Pending Assignment",
+          description,
+          findings: "",
+          workDone: "",
+          recommendation: "",
+          partsUsed: "Pending Inspection",
+          cost: entry.estimatedCost || 0,
+          hoursAtService: storeEq.currentHours || 0,
+        });
+      }
 
       // Only notify once per task ID per page session.
       if (!toastedPmsTasksRef.current.has(taskId)) {
@@ -941,10 +956,8 @@ export default function Services() {
         });
       }
     }
-  // serviceRecords intentionally omitted: the effect must not re-run because it
-  // modified the store itself — that would cause cascading re-triggers.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allScheduledMaintenance]);
+  }, [allScheduledMaintenance, seedServiceRecordsData]);
 
   const handleDeleteEntry = async (entry: ScheduledMaintenanceEntry) => {
     const seedEq = liveEquipment.find((e) => e.id === entry.equipmentId);
@@ -1118,10 +1131,15 @@ export default function Services() {
         serviceType: serviceTypeLabel,
         ...(Number(editEstimatedCost) > 0 ? { estimatedCost: Number(editEstimatedCost) } : {}),
       });
+      void trpcUtils.seedEquipment.list.invalidate();
     } catch {
       toast.error("Failed to write to seed data. Changes are saved locally only.");
     }
 
+    const recomputedStatus = computeEntryStatus(
+      { serviceInterval: numericInterval, serviceIntervalUnit: editIntervalUnit },
+      seedEq
+    );
     const updatedEntry: ScheduledMaintenanceEntry = {
       ...editingEntry,
       equipmentId: seedEq.id,
@@ -1133,6 +1151,7 @@ export default function Services() {
       serviceInterval: numericInterval,
       serviceIntervalUnit: editIntervalUnit,
       estimatedCost: Number(editEstimatedCost) || 0,
+      status: recomputedStatus as ScheduledMaintenanceEntry["status"],
     };
 
     const existingIdx = userScheduledMaintenance.findIndex((e) => e.id === editingEntry.id);
@@ -2610,6 +2629,33 @@ function ExecutionModal({
                 isHoursOrKmTask &&
                 (!isEq001Task || resetOnCompletion); // non-EQ-001: always; EQ-001: only if toggle ON
 
+            // Compute equipment status fresh from live metrics so the service report
+            // reflects the true state at submission time, not a potentially stale cached value.
+            let computedEquipmentStatus: string | null = seedEq?.status ?? null;
+            if (seedEq && snapshotInterval && snapshotIntervalUnit) {
+                const _unit = snapshotIntervalUnit.toLowerCase();
+                let _usage: number | null = null;
+                if (_unit === "hours") {
+                    const _m = String(seedEq.hoursTotal ?? "").match(/(\d+)\s*h\s*(\d+)\s*m/i);
+                    if (_m) _usage = Number(_m[1]) + Number(_m[2]) / 60;
+                } else if (_unit === "km") {
+                    const _raw = seedEq.kmTotal;
+                    const _p = typeof _raw === "number" ? _raw : parseFloat(String(_raw ?? "").replace(/[^\d.]/g, ""));
+                    if (Number.isFinite(_p) && _p >= 0) _usage = _p;
+                } else {
+                    const _days = typeof seedEq.days === "number" ? seedEq.days : parseFloat(String(seedEq.days ?? ""));
+                    if (Number.isFinite(_days) && _days >= 0) {
+                        if (_unit === "weeks") _usage = _days / 7;
+                        else if (_unit === "months") _usage = _days / 30.44;
+                        else if (_unit === "years") _usage = _days / 365.25;
+                    }
+                }
+                if (_usage !== null && Number.isFinite(_usage) && _usage >= 0) {
+                    const _pct = (_usage / snapshotInterval) * 100;
+                    computedEquipmentStatus = _pct >= 100 ? "Overdue" : _pct >= 80 ? "Near Service" : "OK";
+                }
+            }
+
             // Build the full payload object before calling mutate so we can
             // save it verbatim to the retry queue if the write fails.
             const submissionPayload = {
@@ -2656,7 +2702,7 @@ function ExecutionModal({
                 completionTime,
                 technicianAddress: draft.technicianAddress ?? null,
                 equipmentSiteAddress: draft.equipmentSiteAddress ?? null,
-                equipmentStatusAtService: seedEq?.status ?? null,
+                equipmentStatusAtService: computedEquipmentStatus,
                 // Tell the server to atomically zero out this equipment's metrics in the same
                 // file write (avoids the race condition of a separate chained mutation).
                 resetMetricsOnComplete: shouldResetMetrics,
