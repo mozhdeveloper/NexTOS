@@ -1,190 +1,458 @@
-import { Printer, CheckCircle2, X } from "lucide-react";
+import { Printer, CheckCircle2, X, ShieldCheck, MapPin, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { ServiceRecord, Equipment, Client, ServicePhoto } from "@/types";
 
 interface ServiceReportViewProps {
-  record: ServiceRecord;
+  record: ServiceRecord & Record<string, any>;
   equipment?: Equipment;
   client?: Client;
   photos: ServicePhoto[];
 }
 
+// Format an ISO timestamp to a clean time string: "11:14 AM"
+function formatTime(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return null;
+    return d.toLocaleTimeString("en-PH", { hour: "numeric", minute: "2-digit", hour12: true });
+  } catch {
+    return null;
+  }
+}
+
+// Format the elapsed time between two ISO strings: "1h 30m" or "45m"
+function formatElapsed(fromIso: string | null | undefined, toIso: string | null | undefined): string | null {
+  if (!fromIso || !toIso) return null;
+  try {
+    const from = new Date(fromIso).getTime();
+    const to = new Date(toIso).getTime();
+    const diffMs = to - from;
+    if (!Number.isFinite(diffMs) || diffMs < 0) return null;
+    const totalMinutes = Math.round(diffMs / 60_000);
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    if (hours === 0) return `${minutes}m`;
+    if (minutes === 0) return `${hours}h`;
+    return `${hours}h ${minutes}m`;
+  } catch {
+    return null;
+  }
+}
+
 export function ServiceReportView({ record, equipment, client, photos }: ServiceReportViewProps) {
+  // Prefer rich fields saved directly on the record (from seed), fall back to looked-up store data
+  const eqName: string = record.equipmentName || equipment?.unitId || "";
+  const clientName: string = record.clientName || client?.companyName || "";
+  const serialNumber: string = record.serialNumber || equipment?.serialNumber || "";
+  const equipmentType: string = record.equipmentType || "";
+  const serviceType: string = record.serviceType || record.serviceCategory || "";
+  const metricAtService: string = record.metricAtService || (record.hoursAtService ? `${record.hoursAtService}h` : "");
+  const finalCost: number | null = record.finalCost ?? (record.cost > 0 ? record.cost : null);
+  const equipmentStatus: string | null = record.equipmentStatusAtService ?? null;
+
+  const statusBadgeClass =
+    equipmentStatus === "Overdue"
+      ? "bg-red-100 text-red-700 border-red-200"
+      : equipmentStatus === "Near Service"
+      ? "bg-amber-100 text-amber-700 border-amber-200"
+      : equipmentStatus === "OK"
+      ? "bg-green-100 text-green-700 border-green-200"
+      : "bg-gray-100 text-gray-500 border-gray-200";
+
+  // Journey fields
+  const travelStartTime: string | null = record.travelStartTime ?? null;
+  const arrivalTime: string | null = record.arrivalTime ?? null;
+  const completionTime: string | null = record.completionTime ?? null;
+  const technicianAddress: string | null = record.technicianAddress ?? null;
+  const equipmentSiteAddress: string | null = record.equipmentSiteAddress ?? null;
+
+  const travelTimeDisplay = formatElapsed(travelStartTime, arrivalTime);
+  const serviceTimeDisplay = formatElapsed(arrivalTime, completionTime);
+  const travelStartDisplay = formatTime(travelStartTime);
+  const arrivalDisplay = formatTime(arrivalTime);
+  const completionDisplay = formatTime(completionTime);
+
+  const hasJourney = !!(travelStartTime || arrivalTime || completionTime || technicianAddress || equipmentSiteAddress);
+
+  // Photos: prefer record-embedded URLs (from seed), augmented by servicePhotos store
+  const beforePhotoUrl: string =
+    record.beforePhoto || photos.find((p) => p.type === "before")?.url || "";
+  const afterPhotoUrl: string =
+    record.afterPhoto || photos.find((p) => p.type === "after")?.url || "";
+  const beforeNotes: string = record.beforeNotes || photos.find((p) => p.type === "before")?.caption || "";
+  const afterNotes: string = record.afterNotes || photos.find((p) => p.type === "after")?.caption || "";
+
+  const hasFindings = !!record.findings?.trim();
+  const hasWorkDone = !!record.workDone?.trim();
+  const hasRecommendation = !!record.recommendation?.trim();
+  const hasSafety = !!record.safetyChecklist;
+  const hasBeforePhoto = !!beforePhotoUrl;
+  const hasAfterPhoto = !!afterPhotoUrl;
+  const hasPhotos = hasBeforePhoto || hasAfterPhoto;
+  const hasTechSig = !!record.techSignature;
+  const hasClientSig = !!record.clientSignature;
+  const hasSignatures = hasTechSig || hasClientSig;
+  const hasSummary = hasFindings || hasWorkDone || hasRecommendation;
+
+  const completedDateDisplay = record.completedDate
+    ? new Date(record.completedDate).toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" })
+    : null;
+
+  const serviceIntervalDisplay =
+    record.serviceInterval && record.serviceIntervalUnit
+      ? `${record.serviceInterval} ${record.serviceIntervalUnit}`
+      : null;
+
   return (
     <div className="p-2 animate-in fade-in zoom-in-95 duration-300">
-      <div className="flex items-center justify-between border-b-2 border-gray-900 pb-6 mb-8">
+      {/* ── Header ── */}
+      <div className="flex items-start justify-between border-b border-gray-200 pb-6 mb-8">
         <div>
-          <div className="inline-flex items-center gap-2 px-3 py-1 bg-black text-white rounded-full text-[9px] font-black uppercase tracking-[0.2em] mb-3">
-             <div className="w-2 h-2 rounded-full bg-[#66B2B2] animate-pulse" /> Official Document
+          <div className="inline-flex items-center gap-2 px-3 py-1 bg-gray-900 text-white rounded-full text-[9px] font-black uppercase tracking-[0.15em] mb-3">
+            <div className="w-1.5 h-1.5 rounded-full bg-[#66B2B2] animate-pulse" />
+            Official Document
           </div>
-          <h2 className="text-3xl font-black text-gray-900 tracking-tighter">TECHNICAL SERVICE REPORT</h2>
-          <p className="text-xs text-gray-400 font-bold tracking-widest mt-1 font-mono-tech">NEXVISION OPS SYSTEM RECORD <span className="text-gray-900 font-black">#SR-{record.id}</span></p>
+          <h2 className="text-2xl font-black text-gray-900 tracking-tight">Service Report</h2>
+          <p className="text-[11px] text-gray-400 font-bold tracking-wider mt-1 font-mono-tech">
+            NexTOS Record <span className="text-gray-700 font-black">#{record.id}</span>
+          </p>
         </div>
-        <Button onClick={() => window.print()} className="bg-gray-100 hover:bg-gray-200 text-gray-900 h-12 px-6 border border-gray-200 text-xs font-black rounded-xl transition-all active:scale-95 shadow-sm no-print">
-          <Printer className="w-5 h-5 mr-3" />
-          EXPORT SYSTEM COPY
+        <Button
+          onClick={() => window.print()}
+          className="bg-gray-100 hover:bg-gray-200 text-gray-900 h-9 px-4 border border-gray-200 text-[11px] font-bold rounded-xl transition-all no-print"
+        >
+          <Printer className="w-3.5 h-3.5 mr-2" />
+          Export Copy
         </Button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-12 mb-10">
-        <div className="space-y-8">
-          <section>
-            <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-[0.25em] mb-4 flex items-center gap-2">
-               <div className="w-1.5 h-4 bg-[#66B2B2]" /> ASSET SPECIFICATIONS
-            </h4>
-            <div className="space-y-3 px-3">
-              <div className="flex justify-between border-b border-gray-100 pb-2">
-                <span className="text-[11px] text-gray-400 font-bold uppercase">Identification ID:</span>
-                <span className="text-[11px] text-gray-900 font-black font-mono-tech tracking-wider">{equipment?.unitId}</span>
-              </div>
-              <div className="flex justify-between border-b border-gray-100 pb-2">
-                <span className="text-[11px] text-gray-400 font-bold uppercase">Manufacturer:</span>
-                <span className="text-[11px] text-gray-900 font-bold">{equipment?.manufacturer}</span>
-              </div>
-              <div className="flex justify-between border-b border-gray-100 pb-2">
-                <span className="text-[11px] text-gray-400 font-bold uppercase">Model Descriptor:</span>
-                <span className="text-[11px] text-gray-900 font-bold">{equipment?.model}</span>
-              </div>
-              <div className="flex justify-between border-b border-gray-100 pb-2">
-                <span className="text-[11px] text-gray-400 font-bold uppercase">Runtime Meter:</span>
-                <span className="text-sm text-[#66B2B2] font-black font-mono-tech">{record.hoursAtService} HOURS</span>
-              </div>
-            </div>
-          </section>
+      {/* ── Body ── */}
+      <div className="space-y-6">
 
-          <section>
-             <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-[0.25em] mb-4 flex items-center gap-2">
-               <div className="w-1.5 h-4 bg-[#66B2B2]" /> LOGISTICAL CONTEXT
-            </h4>
-            <div className="space-y-3 px-3">
-              <div className="flex justify-between border-b border-gray-100 pb-2">
-                <span className="text-[11px] text-gray-400 font-bold uppercase">Service Category:</span>
-                <span className="text-[11px] text-gray-900 font-black uppercase tracking-tighter">{record.serviceCategory}</span>
-              </div>
-              <div className="flex justify-between border-b border-gray-100 pb-2">
-                <span className="text-[11px] text-gray-400 font-bold uppercase">Primary Technician:</span>
-                <span className="text-[11px] text-gray-900 font-bold">{record.technician}</span>
-              </div>
-              <div className="flex justify-between border-b border-gray-100 pb-2">
-                <span className="text-[11px] text-gray-400 font-bold uppercase">Completion Date:</span>
-                <span className="text-[11px] text-gray-900 font-bold">{record.completedDate ? new Date(record.completedDate).toLocaleDateString('en-PH', {year:'numeric', month:'long', day:'numeric'}) : "PENDING"}</span>
-              </div>
+        {/* Equipment + Service Details (two-column info grid) */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Equipment Info */}
+          <div className="p-4 rounded-xl bg-gray-50 border border-gray-100 space-y-1.5">
+            <div className="text-[10px] text-[#66B2B2] font-black uppercase tracking-widest mb-2 flex items-center gap-1.5">
+              <div className="w-1 h-3 bg-[#66B2B2] rounded-full" />
+              Equipment
             </div>
-          </section>
+            {eqName && (
+              <div className="flex justify-between text-xs">
+                <span className="text-gray-400 font-semibold">Equipment Name</span>
+                <span className="text-gray-800 font-bold text-right max-w-[60%]">{eqName}</span>
+              </div>
+            )}
+            {equipmentType && (
+              <div className="flex justify-between text-xs border-t border-gray-100 pt-1.5 mt-1.5">
+                <span className="text-gray-400 font-semibold">Equipment Type</span>
+                <span className="text-gray-800 font-bold">{equipmentType}</span>
+              </div>
+            )}
+            {serialNumber && (
+              <div className="flex justify-between text-xs border-t border-gray-100 pt-1.5">
+                <span className="text-gray-400 font-semibold">Serial Number</span>
+                <span className="text-gray-800 font-bold font-mono-tech">{serialNumber}</span>
+              </div>
+            )}
+            {clientName && (
+              <div className="flex justify-between text-xs border-t border-gray-100 pt-1.5">
+                <span className="text-gray-400 font-semibold">Client</span>
+                <span className="text-gray-800 font-bold text-right max-w-[60%]">{clientName}</span>
+              </div>
+            )}
+            {equipmentStatus && (
+              <div className="flex justify-between items-center text-xs border-t border-gray-100 pt-1.5">
+                <span className="text-gray-400 font-semibold">Status at Service</span>
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wide border ${statusBadgeClass}`}>
+                  {equipmentStatus}
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* Service Details */}
+          <div className="p-4 rounded-xl bg-gray-50 border border-gray-100 space-y-1.5">
+            <div className="text-[10px] text-[#66B2B2] font-black uppercase tracking-widest mb-2 flex items-center gap-1.5">
+              <div className="w-1 h-3 bg-[#66B2B2] rounded-full" />
+              Service Details
+            </div>
+            {serviceType && (
+              <div className="flex justify-between text-xs">
+                <span className="text-gray-400 font-semibold">Service Type</span>
+                <span className="text-gray-800 font-bold">{serviceType}</span>
+              </div>
+            )}
+            {serviceIntervalDisplay && (
+              <div className="flex justify-between text-xs border-t border-gray-100 pt-1.5">
+                <span className="text-gray-400 font-semibold">Service Interval</span>
+                <span className="text-gray-800 font-bold">{serviceIntervalDisplay}</span>
+              </div>
+            )}
+            {metricAtService && (
+              <div className="flex justify-between text-xs border-t border-gray-100 pt-1.5">
+                <span className="text-gray-400 font-semibold">Metric at Service</span>
+                <span className="text-[#66B2B2] font-black font-mono-tech">{metricAtService}</span>
+              </div>
+            )}
+            {record.technician && (
+              <div className="flex justify-between text-xs border-t border-gray-100 pt-1.5">
+                <span className="text-gray-400 font-semibold">Technician</span>
+                <span className="text-gray-800 font-bold">{record.technician}</span>
+              </div>
+            )}
+            {completedDateDisplay && (
+              <div className="flex justify-between text-xs border-t border-gray-100 pt-1.5">
+                <span className="text-gray-400 font-semibold">Completed</span>
+                <span className="text-gray-800 font-bold">{completedDateDisplay}</span>
+              </div>
+            )}
+            {finalCost !== null && (
+              <div className="flex justify-between text-xs border-t border-gray-100 pt-1.5">
+                <span className="text-gray-400 font-semibold">Service Cost</span>
+                <span className="text-gray-900 font-black font-mono-tech">
+                  ₱{Number(finalCost).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+            )}
+          </div>
         </div>
 
-        <div className="space-y-8">
-          <section>
-            <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-[0.25em] mb-4 flex items-center gap-2">
-               <div className="w-1.5 h-4 bg-amber-500" /> SAFETY & COMPLIANCE VERIFICATION
-            </h4>
-            <div className="grid grid-cols-2 gap-3 px-3">
+        {/* Journey & Location — only if any journey data exists */}
+        {hasJourney && (
+          <div className="p-4 rounded-xl bg-gray-50 border border-gray-100 space-y-3">
+            <div className="text-[10px] text-[#66B2B2] font-black uppercase tracking-widest flex items-center gap-1.5">
+              <div className="w-1 h-3 bg-[#66B2B2] rounded-full" />
+              Journey &amp; Location
+            </div>
+
+            {/* Addresses */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="p-3 rounded-xl bg-blue-50 border border-blue-100 space-y-1">
+                <div className="flex items-center gap-1.5">
+                  <MapPin className="w-3 h-3 text-blue-500 shrink-0" />
+                  <span className="text-[9px] font-black uppercase tracking-widest text-blue-600">Technician's Address</span>
+                </div>
+                <p className="text-[11px] text-blue-900 font-medium leading-snug break-words">
+                  {technicianAddress || "—"}
+                </p>
+              </div>
+              <div className="p-3 rounded-xl bg-amber-50 border border-amber-100 space-y-1">
+                <div className="flex items-center gap-1.5">
+                  <MapPin className="w-3 h-3 text-amber-500 shrink-0" />
+                  <span className="text-[9px] font-black uppercase tracking-widest text-amber-600">Equipment Site</span>
+                </div>
+                <p className="text-[11px] text-amber-900 font-medium leading-snug break-words">
+                  {equipmentSiteAddress || "—"}
+                </p>
+              </div>
+            </div>
+
+            {/* Timing breakdown */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+              {travelStartDisplay && (
+                <div className="p-2.5 rounded-lg bg-white border border-gray-100 space-y-0.5 text-center">
+                  <div className="flex items-center justify-center gap-1 mb-1">
+                    <Clock className="w-3 h-3 text-gray-400" />
+                    <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Departed</span>
+                  </div>
+                  <p className="text-xs font-bold text-gray-800 font-mono-tech">{travelStartDisplay}</p>
+                </div>
+              )}
+              {arrivalDisplay && (
+                <div className="p-2.5 rounded-lg bg-white border border-gray-100 space-y-0.5 text-center">
+                  <div className="flex items-center justify-center gap-1 mb-1">
+                    <Clock className="w-3 h-3 text-gray-400" />
+                    <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Arrived</span>
+                  </div>
+                  <p className="text-xs font-bold text-gray-800 font-mono-tech">{arrivalDisplay}</p>
+                </div>
+              )}
+              {travelTimeDisplay && (
+                <div className="p-2.5 rounded-lg bg-white border border-[#66B2B2]/30 space-y-0.5 text-center">
+                  <div className="flex items-center justify-center gap-1 mb-1">
+                    <Clock className="w-3 h-3 text-[#66B2B2]" />
+                    <span className="text-[9px] font-black uppercase tracking-widest text-[#66B2B2]">Travel Time</span>
+                  </div>
+                  <p className="text-xs font-black text-[#66B2B2] font-mono-tech">{travelTimeDisplay}</p>
+                </div>
+              )}
+              {serviceTimeDisplay && (
+                <div className="p-2.5 rounded-lg bg-white border border-[#66B2B2]/30 space-y-0.5 text-center">
+                  <div className="flex items-center justify-center gap-1 mb-1">
+                    <Clock className="w-3 h-3 text-[#66B2B2]" />
+                    <span className="text-[9px] font-black uppercase tracking-widest text-[#66B2B2]">Service Time</span>
+                  </div>
+                  <p className="text-xs font-black text-[#66B2B2] font-mono-tech">{serviceTimeDisplay}</p>
+                </div>
+              )}
+            </div>
+
+            {/* Completion time */}
+            {completionDisplay && (
+              <div className="flex justify-between items-center text-xs border-t border-gray-100 pt-2.5">
+                <span className="text-gray-400 font-semibold">Completed At</span>
+                <span className="text-gray-800 font-bold font-mono-tech">{completionDisplay}</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Safety Checklist — only if exists */}
+        {hasSafety && (
+          <div className="p-4 rounded-xl bg-amber-50 border border-amber-100">
+            <div className="text-[10px] text-amber-700 font-black uppercase tracking-widest mb-3 flex items-center gap-1.5">
+              <ShieldCheck className="w-3.5 h-3.5" />
+              Safety & Compliance Verification
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {[
-                { label: 'PPE Verified', value: record.safetyChecklist?.ppeChecked },
-                { label: 'Engine Isolated', value: record.safetyChecklist?.engineOff },
-                { label: 'Area Secured', value: record.safetyChecklist?.areaSecured },
-                { label: 'LOTO Applied', value: record.safetyChecklist?.lotoApplied },
+                { label: "PPE Verified", value: record.safetyChecklist?.ppeChecked },
+                { label: "Engine Isolated", value: record.safetyChecklist?.engineOff },
+                { label: "Area Secured", value: record.safetyChecklist?.areaSecured },
+                { label: "LOTO Applied", value: record.safetyChecklist?.lotoApplied },
               ].map((item, i) => (
-                <div key={i} className={`flex items-center gap-2 p-2 rounded-lg border ${item.value ? 'bg-green-50/50 border-green-100 text-green-700' : 'bg-gray-50 border-gray-100 text-gray-400'}`}>
-                  {item.value ? <CheckCircle2 className="w-3.5 h-3.5" /> : <X className="w-3.5 h-3.5" />}
-                  <span className="text-[9px] font-black uppercase tracking-tight">{item.label}</span>
+                <div
+                  key={i}
+                  className={`flex items-center gap-2 p-2.5 rounded-lg border text-[10px] font-bold ${
+                    item.value
+                      ? "bg-green-50 border-green-200 text-green-700"
+                      : "bg-white border-gray-200 text-gray-400"
+                  }`}
+                >
+                  {item.value
+                    ? <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                    : <X className="w-3.5 h-3.5 shrink-0" />}
+                  <span className="uppercase tracking-tight leading-tight">{item.label}</span>
                 </div>
               ))}
             </div>
-            <div className="mt-4 px-3">
-               <div className="p-2 rounded-lg bg-gray-900 text-[8px] text-white font-mono-tech uppercase tracking-widest text-center">
-                  Audit Pass: All protocols verified at {record.completedDate ? new Date(record.completedDate).toLocaleTimeString() : 'N/A'}
-               </div>
-            </div>
-          </section>
+          </div>
+        )}
 
-          <section className="h-full">
-             <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-[0.25em] mb-4 flex items-center gap-2">
-               <div className="w-1.5 h-4 bg-[#66B2B2]" /> EXECUTIVE SUMMARY
-            </h4>
-            <div className="p-6 rounded-2xl bg-gray-50 border border-gray-100 space-y-6 shadow-inner h-[calc(100%-2.5rem)]">
-              <div>
-                <span className="text-[10px] text-[#66B2B2] font-black uppercase tracking-widest mb-2 block">Fault Diagnosis / Findings:</span>
-                <p className="text-[12px] text-gray-900 font-medium leading-relaxed bg-white p-3 rounded-lg border border-gray-100">{record.findings || "Operational state nominal. No significant faults detected during primary inspection."}</p>
-              </div>
-              <div>
-                <span className="text-[10px] text-[#66B2B2] font-black uppercase tracking-widest mb-2 block">Technical Work Documentation:</span>
-                <p className="text-[12px] text-gray-900 font-medium leading-relaxed bg-white p-3 rounded-lg border border-gray-100">{record.workDone}</p>
-              </div>
-              <div>
-                <span className="text-[10px] text-[#66B2B2] font-black uppercase tracking-widest mb-2 block">Strategic Recommendations:</span>
-                <p className="text-[12px] text-gray-900 font-bold leading-relaxed italic bg-[#66B2B2]/5 p-3 rounded-lg border border-[#66B2B2]/10">{record.recommendation || "No immediate action required. Maintain standard PMS intervals."}</p>
-              </div>
+        {/* Findings, Work Done, Recommendations — only if at least one exists */}
+        {hasSummary && (
+          <div className="rounded-xl border border-gray-100 overflow-hidden">
+            <div className="px-4 py-3 bg-gray-50 border-b border-gray-100">
+              <span className="text-[10px] text-gray-600 font-black uppercase tracking-widest flex items-center gap-1.5">
+                <div className="w-1 h-3 bg-[#66B2B2] rounded-full" />
+                Technical Summary
+              </span>
             </div>
-          </section>
-        </div>
+            <div className="divide-y divide-gray-100">
+              {hasFindings && (
+                <div className="p-4">
+                  <div className="text-[10px] text-[#66B2B2] font-black uppercase tracking-widest mb-2">Fault Diagnosis / Findings</div>
+                  <p className="text-xs text-gray-800 leading-relaxed">{record.findings}</p>
+                </div>
+              )}
+              {hasWorkDone && (
+                <div className="p-4">
+                  <div className="text-[10px] text-[#66B2B2] font-black uppercase tracking-widest mb-2">Technical Work Performed</div>
+                  <p className="text-xs text-gray-800 leading-relaxed">{record.workDone}</p>
+                </div>
+              )}
+              {hasRecommendation && (
+                <div className="p-4 bg-[#66B2B2]/5">
+                  <div className="text-[10px] text-[#66B2B2] font-black uppercase tracking-widest mb-2">Strategic Recommendations</div>
+                  <p className="text-xs text-gray-800 leading-relaxed italic">{record.recommendation}</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Field Documentation (photos) — only if at least one photo exists */}
+        {hasPhotos && (
+          <div className="rounded-xl border border-gray-100 overflow-hidden">
+            <div className="px-4 py-3 bg-gray-50 border-b border-gray-100">
+              <span className="text-[10px] text-gray-600 font-black uppercase tracking-widest flex items-center gap-1.5">
+                <div className="w-1 h-3 bg-[#66B2B2] rounded-full" />
+                Field Documentation
+              </span>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-gray-100">
+              {hasBeforePhoto && (
+                <div className="p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-black text-gray-500 uppercase tracking-wider">Initial State Proof</span>
+                    <span className="text-[9px] font-bold text-[#66B2B2] uppercase">Before Service</span>
+                  </div>
+                  <div className="aspect-video rounded-xl overflow-hidden border border-gray-200 shadow-sm">
+                    <img src={beforePhotoUrl} className="w-full h-full object-cover" alt="Before service" />
+                  </div>
+                  {beforeNotes && (
+                    <p className="text-[11px] text-gray-500 italic">{beforeNotes}</p>
+                  )}
+                </div>
+              )}
+              {hasAfterPhoto && (
+                <div className="p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-black text-gray-500 uppercase tracking-wider">Completion Proof</span>
+                    <span className="text-[9px] font-bold text-green-500 uppercase">After Service</span>
+                  </div>
+                  <div className="aspect-video rounded-xl overflow-hidden border border-gray-200 shadow-sm">
+                    <img src={afterPhotoUrl} className="w-full h-full object-cover" alt="After service" />
+                  </div>
+                  {afterNotes && (
+                    <p className="text-[11px] text-gray-500 italic">{afterNotes}</p>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Signatures — only if at least one exists */}
+        {hasSignatures && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {hasTechSig && (
+              <div className="space-y-2">
+                <div className="text-[10px] text-gray-400 font-black uppercase tracking-widest ml-1">Technician Certification</div>
+                <div className="p-6 bg-gray-50 rounded-2xl border border-gray-100 flex flex-col items-center justify-center relative overflow-hidden min-h-[120px]">
+                  <img
+                    src={record.techSignature}
+                    className="h-16 object-contain contrast-125 mix-blend-multiply"
+                    alt="Technician signature"
+                  />
+                  <div className="mt-4 text-center">
+                    <div className="h-px w-2/3 mx-auto bg-gray-200 mb-1.5" />
+                    <span className="text-[9px] text-gray-500 font-bold uppercase tracking-tight">
+                      {record.technician}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+            {hasClientSig && (
+              <div className="space-y-2">
+                <div className="text-[10px] text-gray-400 font-black uppercase tracking-widest ml-1">Client Acknowledgment</div>
+                <div className="p-6 bg-gray-50 rounded-2xl border border-gray-100 flex flex-col items-center justify-center relative overflow-hidden min-h-[120px]">
+                  <img
+                    src={record.clientSignature}
+                    className="h-16 object-contain contrast-125 mix-blend-multiply"
+                    alt="Client signature"
+                  />
+                  <div className="mt-4 text-center">
+                    <div className="h-px w-2/3 mx-auto bg-gray-200 mb-1.5" />
+                    <span className="text-[9px] text-gray-500 font-bold uppercase tracking-tight">
+                      {clientName || "Authorized Rep"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
-      <section className="mb-10">
-        <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-[0.25em] mb-6 flex items-center gap-2">
-            <div className="w-1.5 h-4 bg-[#66B2B2]" /> FIELD DOCUMENTATION
-        </h4>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
-          <div className="space-y-3">
-            <div className="flex items-center justify-between px-2">
-                <span className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Initial State Proof</span>
-                <span className="text-[8px] font-bold text-[#66B2B2] uppercase">Before Service</span>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              {photos.filter((p: any) => p.type === 'before').map((p: any, i: number) => (
-                <div key={i} className="aspect-video rounded-xl overflow-hidden border-2 border-gray-100 shadow-md">
-                   <img src={p.url} className="w-full h-full object-cover" alt="Before" />
-                </div>
-              ))}
-              {photos.filter((p: any) => p.type === 'before').length === 0 && <div className="col-span-2 py-8 text-center bg-gray-50 rounded-xl border border-dashed text-[10px] text-gray-400 font-bold uppercase tracking-widest">No Before Documentation</div>}
-            </div>
-          </div>
-          <div className="space-y-3">
-            <div className="flex items-center justify-between px-2">
-                <span className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Completion Proof</span>
-                <span className="text-[8px] font-bold text-green-500 uppercase">After Service</span>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              {photos.filter((p: any) => p.type === 'after').map((p: any, i: number) => (
-                <div key={i} className="aspect-video rounded-xl overflow-hidden border-2 border-gray-100 shadow-md">
-                   <img src={p.url} className="w-full h-full object-cover" alt="After" />
-                </div>
-              ))}
-              {photos.filter((p: any) => p.type === 'after').length === 0 && <div className="col-span-2 py-8 text-center bg-gray-50 rounded-xl border border-dashed text-[10px] text-gray-400 font-bold uppercase tracking-widest">No After Documentation</div>}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-12 border-t-2 border-gray-100 pt-10 mb-6">
-        <div className="space-y-4">
-          <span className="text-[10px] text-gray-400 font-black uppercase tracking-[0.3em] block ml-1">Technician Certification</span>
-          <div className="p-8 bg-gray-50/50 rounded-3xl border border-gray-100 flex items-center justify-center shadow-inner relative overflow-hidden">
-            {record.techSignature ? (
-               <img src={record.techSignature} className="h-24 object-contain contrast-125 mix-blend-multiply transition-all hover:scale-105 duration-500" alt="Tech Sig" />
-            ) : <div className="h-24 flex items-center justify-center text-gray-300 italic text-[11px] font-bold uppercase tracking-widest">Digital Stamp Missing</div>}
-            <div className="absolute bottom-4 left-0 right-0 text-center">
-                <div className="h-[1px] w-2/3 mx-auto bg-gray-200 mb-2" />
-                <span className="text-[9px] text-gray-500 font-black uppercase tracking-tighter">{record.technician} <span className="text-gray-300 mx-1">•</span> SENIOR TECHNICIAN</span>
-            </div>
-          </div>
-        </div>
-        <div className="space-y-4">
-          <span className="text-[10px] text-gray-400 font-black uppercase tracking-[0.3em] block ml-1">Client Acknowledgment</span>
-          <div className="p-8 bg-gray-50/50 rounded-3xl border border-gray-100 flex items-center justify-center shadow-inner relative overflow-hidden">
-            {record.clientSignature ? (
-               <img src={record.clientSignature} className="h-24 object-contain contrast-125 mix-blend-multiply transition-all hover:scale-105 duration-500" alt="Client Sig" />
-            ) : <div className="h-24 flex items-center justify-center text-gray-300 italic text-[11px] font-bold uppercase tracking-widest">Acknowledgment Missing</div>}
-            <div className="absolute bottom-4 left-0 right-0 text-center">
-                <div className="h-[1px] w-2/3 mx-auto bg-gray-200 mb-2" />
-                <span className="text-[9px] text-gray-500 font-black uppercase tracking-tighter">{client?.companyName} <span className="text-gray-300 mx-1">•</span> AUTHORIZED REP</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="text-center pt-8 opacity-20 hover:opacity-100 transition-opacity font-mono-tech uppercase tracking-[0.5em] text-[8px]">
-         Security Verified System Record • NexVision Operations OS • Built by NexTOS
+      {/* Footer */}
+      <div className="mt-8 pt-6 border-t border-gray-100 text-center">
+        <p className="text-[9px] text-gray-300 font-mono-tech uppercase tracking-[0.3em]">
+          Security Verified System Record • NexTOS Operations
+        </p>
       </div>
     </div>
   );

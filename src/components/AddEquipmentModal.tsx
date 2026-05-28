@@ -16,7 +16,7 @@ import type { Client } from "@/types";
 export type ServiceIntervalUnit = "Hours" | "KM" | "Weeks" | "Months" | "Years";
 
 export interface EquipmentPMSConfiguration {
-  serviceIntervalHours: number;
+  serviceInterval: number;
   serviceIntervalUnit: ServiceIntervalUnit;
   serviceType?: string;
 }
@@ -43,7 +43,6 @@ interface AddEquipmentModalProps {
   onSubmitEquipment: (equipment: Equipment) => void | Promise<void>;
   initialEquipment?: Equipment | null;
   equipmentTypeOptions?: Array<{ value: string; label: string }>;
-  serviceTypeOptions?: Array<{ value: string; label: string }>;
 }
 
 const EQUIPMENT_TYPES = [
@@ -55,9 +54,6 @@ const EQUIPMENT_TYPES = [
   { value: "power-tools", label: "Power Tools" },
   { value: "monitoring-equipment", label: "Monitoring Equipment" },
 ];
-
-const SERVICE_INTERVAL_UNITS: ServiceIntervalUnit[] = ["Hours", "KM", "Weeks", "Months", "Years"];
-const DEFAULT_SERVICE_TYPE = "PMS (Preventative Maintenance)";
 
 const HARD_CODED_HOURS_PRESETS = [
   { today: "4h 20m", total: "3890h 40m" },
@@ -74,18 +70,14 @@ export function AddEquipmentModal({
   onSubmitEquipment,
   initialEquipment,
   equipmentTypeOptions,
-  serviceTypeOptions,
 }: AddEquipmentModalProps) {
-  type RequiredFieldKey = "equipmentName" | "equipmentType" | "selectedClient" | "serialNumber" | "serviceType";
+  type RequiredFieldKey = "equipmentName" | "equipmentType" | "selectedClient" | "serialNumber";
   const [equipmentName, setEquipmentName] = useState("");
   const [equipmentType, setEquipmentType] = useState("");
   const [selectedClient, setSelectedClient] = useState("");
   const [serialNumber, setSerialNumber] = useState("");
   const [notes, setNotes] = useState("");
   const [image, setImage] = useState<string>("");
-  const [serviceType, setServiceType] = useState(DEFAULT_SERVICE_TYPE);
-  const [serviceIntervalValue, setServiceIntervalValue] = useState("");
-  const [serviceIntervalUnit, setServiceIntervalUnit] = useState<ServiceIntervalUnit>("Hours");
   const [missingFields, setMissingFields] = useState<RequiredFieldKey[]>([]);
 
   useEffect(() => {
@@ -100,13 +92,6 @@ export function AddEquipmentModal({
       setSerialNumber(initialEquipment.serialNumber);
       setNotes(initialEquipment.notes);
       setImage(initialEquipment.image ?? "");
-      setServiceType(initialEquipment.pmsConfiguration?.serviceType ?? DEFAULT_SERVICE_TYPE);
-      setServiceIntervalValue(
-        initialEquipment.pmsConfiguration?.serviceIntervalHours !== undefined
-          ? String(initialEquipment.pmsConfiguration.serviceIntervalHours)
-          : ""
-      );
-      setServiceIntervalUnit(initialEquipment.pmsConfiguration?.serviceIntervalUnit ?? "Hours");
       setMissingFields([]);
       return;
     }
@@ -117,9 +102,6 @@ export function AddEquipmentModal({
     setSerialNumber("");
     setNotes("");
     setImage("");
-    setServiceType(DEFAULT_SERVICE_TYPE);
-    setServiceIntervalValue("");
-    setServiceIntervalUnit("Hours");
     setMissingFields([]);
   }, [initialEquipment, open]);
 
@@ -129,7 +111,6 @@ export function AddEquipmentModal({
       { key: "equipmentType", value: equipmentType },
       { key: "selectedClient", value: selectedClient },
       { key: "serialNumber", value: serialNumber.trim() },
-      { key: "serviceType", value: serviceType.trim() },
     ];
 
     return requiredChecks.filter((field) => !field.value).map((field) => field.key);
@@ -142,18 +123,12 @@ export function AddEquipmentModal({
     equipmentType: "Equipment Type",
     selectedClient: "Client",
     serialNumber: "Serial Number",
-    serviceType: "Type of Service",
   };
 
   const availableEquipmentTypes =
     equipmentTypeOptions && equipmentTypeOptions.length > 0
       ? equipmentTypeOptions
       : EQUIPMENT_TYPES;
-
-  const availableServiceTypes =
-    serviceTypeOptions && serviceTypeOptions.length > 0
-      ? serviceTypeOptions
-      : [{ value: DEFAULT_SERVICE_TYPE, label: DEFAULT_SERVICE_TYPE }];
 
   const handleSubmit = async () => {
     const missing = getMissingRequiredFields();
@@ -165,17 +140,6 @@ export function AddEquipmentModal({
     const timestamp = Date.now();
     const randomSuffix = timestamp;
     const hoursPreset = HARD_CODED_HOURS_PRESETS[randomSuffix % HARD_CODED_HOURS_PRESETS.length];
-    const trimmedInterval = serviceIntervalValue.trim();
-    const numericInterval = trimmedInterval.length > 0 ? Number(trimmedInterval) : Number.NaN;
-    const selectedServiceType = serviceType.trim() || DEFAULT_SERVICE_TYPE;
-    const pmsConfiguration =
-      trimmedInterval.length > 0 && Number.isFinite(numericInterval)
-        ? {
-            serviceIntervalHours: numericInterval,
-            serviceIntervalUnit,
-            ...(selectedServiceType ? { serviceType: selectedServiceType } : {}),
-          }
-        : undefined;
 
     const equipmentToSave: Equipment = {
       id: initialEquipment?.id ?? `eq-${timestamp}`,
@@ -187,7 +151,6 @@ export function AddEquipmentModal({
       ...(image ? { image } : {}),
       hoursToday: initialEquipment?.hoursToday ?? hoursPreset.today,
       hoursTotal: initialEquipment?.hoursTotal ?? hoursPreset.total,
-      ...(pmsConfiguration ? { pmsConfiguration } : {}),
     };
 
     try {
@@ -205,25 +168,18 @@ export function AddEquipmentModal({
     setSerialNumber("");
     setNotes("");
     setImage("");
-    setServiceType(DEFAULT_SERVICE_TYPE);
-    setServiceIntervalValue("");
-    setServiceIntervalUnit("Hours");
     setMissingFields([]);
     onOpenChange(false);
   };
 
   const handleOpenChange = (newOpen: boolean) => {
     if (!newOpen) {
-      // Reset form when closing
       setEquipmentName("");
       setEquipmentType("");
       setSelectedClient("");
       setSerialNumber("");
       setNotes("");
       setImage("");
-      setServiceType(DEFAULT_SERVICE_TYPE);
-      setServiceIntervalValue("");
-      setServiceIntervalUnit("Hours");
       setMissingFields([]);
     }
     onOpenChange(newOpen);
@@ -231,18 +187,19 @@ export function AddEquipmentModal({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="bg-white border border-gray-200 w-[min(98vw,88rem)] max-w-7xl">
+      <DialogContent className="bg-white border border-gray-200 w-[min(98vw,60rem)] max-w-3xl">
         <DialogHeader>
           <DialogTitle className="text-black">{initialEquipment ? "Edit Equipment" : "Add Equipment"}</DialogTitle>
         </DialogHeader>
 
         <div className="py-4">
           {missingFields.length > 0 && (
-            <div className="rounded border border-[#EF4444]/40 bg-[#EF4444]/10 px-3 py-2 text-xs text-[#EF4444]">
+            <div className="mb-4 rounded border border-[#EF4444]/40 bg-[#EF4444]/10 px-3 py-2 text-xs text-[#EF4444]">
               Missing required fields: {missingFields.map((field) => missingFieldLabels[field]).join(", ")}
             </div>
           )}
-          <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.25fr)] gap-6 xl:grid-cols-[minmax(0,0.85fr)_minmax(0,1.3fr)]">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Left column */}
             <div className="space-y-4">
               {/* Equipment Name */}
               <div className="space-y-2">
@@ -329,28 +286,6 @@ export function AddEquipmentModal({
                 )}
               </div>
 
-              {/* Image Upload */}
-              <div className="space-y-2">
-                <Label className="text-sm text-black">Equipment Photo</Label>
-                <Input
-                  type="file"
-                  accept="image/*"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (!file) return;
-                    const reader = new FileReader();
-                    reader.onload = () => {
-                      const result = reader.result;
-                      if (typeof result === "string") {
-                        setImage(result);
-                      }
-                    };
-                    reader.readAsDataURL(file);
-                  }}
-                  className="bg-white border-gray-200 text-black placeholder:text-gray-400 focus-visible:border-[#66B2B2] focus-visible:ring-[#66B2B2]/30 cursor-pointer"
-                />
-              </div>
-
               {/* Serial Number */}
               <div className="space-y-2">
                 <Label className="text-sm text-black">Serial Number</Label>
@@ -373,74 +308,40 @@ export function AddEquipmentModal({
               </div>
             </div>
 
+            {/* Right column */}
             <div className="space-y-4">
-              {/* Notes */}
+              {/* Equipment Photo */}
               <div className="space-y-2">
+                <Label className="text-sm text-black">Equipment Photo</Label>
+                <Input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                      const result = reader.result;
+                      if (typeof result === "string") {
+                        setImage(result);
+                      }
+                    };
+                    reader.readAsDataURL(file);
+                  }}
+                  className="bg-white border-gray-200 text-black placeholder:text-gray-400 focus-visible:border-[#66B2B2] focus-visible:ring-[#66B2B2]/30 cursor-pointer"
+                />
+              </div>
+
+              {/* Notes */}
+              <div className="space-y-2 flex flex-col flex-1">
                 <Label className="text-sm text-black">Notes</Label>
                 <textarea
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
-                  placeholder="Add any additional notes"
-                  className="w-full h-40 rounded-md bg-white border border-gray-200 px-3 py-2 text-sm text-black placeholder:text-gray-400 focus-visible:border-[#66B2B2] focus-visible:ring-[#66B2B2]/30 outline-none transition-colors resize-none"
+                  placeholder="Add any additional notes about this equipment"
+                  className="w-full rounded-md bg-white border border-gray-200 px-3 py-2 text-sm text-black placeholder:text-gray-400 focus-visible:border-[#66B2B2] focus-visible:ring-[#66B2B2]/30 outline-none transition-colors resize-none"
+                  style={{ minHeight: "200px", flex: 1 }}
                 />
-              </div>
-
-              {/* PMS Configuration */}
-              <div className="space-y-2 pt-0">
-                <Label className="text-sm text-black">PMS Configuration</Label>
-                <div className="space-y-2">
-                  <Label className="text-sm text-black">Type of Service</Label>
-                  <Select
-                    value={serviceType}
-                    onValueChange={(value) => {
-                      setServiceType(value);
-                      if (missingFields.length > 0) {
-                        setMissingFields((prev) => prev.filter((field) => field !== "serviceType"));
-                      }
-                    }}
-                  >
-                    <SelectTrigger
-                      className={`w-full bg-white text-black ${
-                        isFieldMissing("serviceType") ? "border-[#EF4444]" : "border-gray-200"
-                      }`}
-                    >
-                      <SelectValue placeholder={DEFAULT_SERVICE_TYPE} />
-                    </SelectTrigger>
-                    <SelectContent className="bg-white border-gray-200">
-                      {availableServiceTypes.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {isFieldMissing("serviceType") && (
-                    <p className="text-xs text-[#EF4444]">Type of Service is required.</p>
-                  )}
-                </div>
-                <div className="grid grid-cols-[1.6fr_120px] gap-2">
-                  <Input
-                    type="number"
-                    min="0"
-                    step="any"
-                    value={serviceIntervalValue}
-                    onChange={(e) => setServiceIntervalValue(e.target.value)}
-                    placeholder="Service interval"
-                    className="bg-white border-gray-200 text-black placeholder:text-gray-400 focus-visible:border-[#66B2B2] focus-visible:ring-[#66B2B2]/30"
-                  />
-                  <Select value={serviceIntervalUnit} onValueChange={(value: ServiceIntervalUnit) => setServiceIntervalUnit(value)}>
-                    <SelectTrigger className="w-full bg-white border-gray-200 text-black">
-                      <SelectValue placeholder="Unit" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-white border-gray-200">
-                      {SERVICE_INTERVAL_UNITS.map((unit) => (
-                        <SelectItem key={unit} value={unit}>
-                          {unit}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
               </div>
             </div>
           </div>

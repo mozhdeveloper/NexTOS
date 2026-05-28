@@ -98,6 +98,8 @@ type SeedEquipmentDisplay = {
   clientName: string | null;
 };
 
+type ServiceStatus = "OK" | "Near Service" | "Overdue";
+
 interface HistoryRow {
   id: string;
   name: string;
@@ -127,23 +129,11 @@ const GPS001_TOTAL_KM_CACHE_KEY = "nextos-gps001-total-km";
 const GPS001_WORKING_DAYS_BY_DAY_CACHE_KEY = "fleet:gps001WorkingDaysByDay:v2";
 const ADDED_EQUIPMENT_STORAGE_KEY = "nextos-fleet-added-equipment";
 const HISTORY_DOT_STATUS_CACHE_KEY = "nextos-fleet-history-dot-statuses";
-const HISTORY_TABLE_DATA_CACHE_KEY = "nextos-fleet-history-table-data";
+const HISTORY_TABLE_DATA_CACHE_KEY = "nextos-fleet-history-table-data:v5";
 const HISTORY_TABLE_TODAY_TIMESTAMP_KEY = "nextos-fleet-history-table-today-timestamps";
 const PROTECTED_EQUIPMENT_NAME = "Excavator CAT 320";
 const DEFAULT_SERVICE_TYPE = "PMS (Preventative Maintenance)";
 const SERVICE_INTERVAL_TOAST_MILESTONES_KEY = "nextos-fleet-service-interval-toast-milestones";
-
-const STATIC_HOURS_BY_UNIT: Record<string, { today: string; total: string }> = {
-  "GPS-003": { today: "4h 20m", total: "3890h 40m" },
-  "GPS-004": { today: "6h 15m", total: "2100h 40m" },
-  "GPS-010": { today: "3h 50m", total: "3450h 40m" },
-  "GPS-007": { today: "7h 10m", total: "2100h 40m" },
-  "EXC-CAT-20": { today: "5h 05m", total: "2780h 30m" },
-  "LAB-STS-01": { today: "2h 40m", total: "1120h 20m" },
-  "TST-BEAM-02": { today: "3h 25m", total: "1655h 15m" },
-};
-
-const FALLBACK_STATIC_HOURS = { today: "4h 20m", total: "3890h 40m" };
 
 function readCachedGps001TotalHoursMs(): number {
   if (typeof window === "undefined") return 0;
@@ -342,9 +332,6 @@ function isLiveMappedSeedEquipmentEntry(entry: ModalEquipment): boolean {
   return Boolean(seedEntry && LIVE_SEED_EQUIPMENT_IDS.has(seedEntry.id));
 }
 
-function readCachedAddedEquipmentWithoutSeedDuplicates(): ModalEquipment[] {
-  return readCachedAddedEquipment().filter((entry) => !isLiveMappedSeedEquipmentEntry(entry));
-}
 
 function logFleetHistory(label: string, payload: unknown): void {
   if (!FLEET_HISTORY_DEBUG) return;
@@ -448,6 +435,111 @@ function parseSeedDays(value: unknown): number | null {
   return null;
 }
 
+// pmsConfiguration is now an array; handle both array and legacy single-object formats.
+function getPmsConfigs(entry: any): any[] {
+  const raw = entry?.pmsConfiguration;
+  if (!raw) return [];
+  return Array.isArray(raw) ? raw : [raw];
+}
+
+function worstServiceStatus(statuses: (ServiceStatus | null)[]): ServiceStatus | null {
+  const valid = statuses.filter((s): s is ServiceStatus => s !== null);
+  if (valid.includes("Overdue")) return "Overdue";
+  if (valid.includes("Near Service")) return "Near Service";
+  if (valid.includes("OK")) return "OK";
+  return null;
+}
+
+function parseMetricForPmsConfig(
+  pmsConfig: any,
+  entry: any,
+  hoursMetricOverride?: number | null
+): number | null {
+  const unit = String(pmsConfig?.serviceIntervalUnit ?? "Hours").toLowerCase();
+
+  if (unit === "hours") {
+    if (Number.isFinite(hoursMetricOverride) && (hoursMetricOverride as number) >= 0) {
+      return hoursMetricOverride as number;
+    }
+    return parseHoursTextToHours(entry?.hoursTotal);
+  }
+  if (unit === "km" || unit === "kms") return parseSeedKm(entry?.kmTotal);
+
+  const days = parseSeedDays(entry?.days);
+  if (days === null) return null;
+  const periods = convertDaysToPeriods(days);
+  if (unit === "weeks") return periods.weeks;
+  if (unit === "months") return periods.months;
+  if (unit === "years") return periods.years;
+  return null;
+}
+
+function parseServiceMetricFromSeedEntry(entry: any, hoursMetricOverride?: number | null): number | null {
+  const configs = getPmsConfigs(entry);
+  if (configs.length === 0) return null;
+  // Return metric for the primary (first) entry — used for sidebar display
+  return parseMetricForPmsConfig(configs[0], entry, hoursMetricOverride);
+}
+
+// Returns the WORST status across all pmsConfiguration entries — used for Fleet sidebar.
+function computeServiceStatusFromSeedEntry(entry: any, hoursMetricOverride?: number | null): ServiceStatus | null {
+  if (!entry) return null;
+  const configs = getPmsConfigs(entry);
+  if (configs.length === 0) return null;
+
+  const statuses = configs.map((pmsConfig) => {
+    const interval = Number(pmsConfig?.serviceInterval ?? 0);
+    if (!Number.isFinite(interval) || interval <= 0) return null;
+    const metric = parseMetricForPmsConfig(pmsConfig, entry, hoursMetricOverride);
+    if (metric === null || !Number.isFinite(metric) || metric < 0) return null;
+    const progress = (metric / interval) * 100;
+    if (progress >= 100) return "Overdue" as ServiceStatus;
+    if (progress >= 80) return "Near Service" as ServiceStatus;
+    return "OK" as ServiceStatus;
+  });
+
+  return worstServiceStatus(statuses);
+}
+
+// Worst status for added-equipment sidebar items (also handles array pmsConfiguration on seedEntry).
+function computeServiceStatusFromAddedEntry(entry: ModalEquipment, seedEntry?: any | null): ServiceStatus | null {
+  const sourceEntry = seedEntry ?? entry;
+  if (!sourceEntry) return null;
+  if (
+    sourceEntry.id === "EQ-001" ||
+    sourceEntry.id === "seed-EQ-001" ||
+    sourceEntry.name === PROTECTED_EQUIPMENT_NAME
+  ) return null;
+
+  const configs = getPmsConfigs(sourceEntry);
+  if (configs.length === 0) return null;
+
+  const statuses = configs.map((pmsConfig: any) => {
+    const interval = Number(pmsConfig?.serviceInterval ?? 0);
+    if (!Number.isFinite(interval) || interval <= 0) return null;
+    const metric = parseMetricForPmsConfig(pmsConfig, sourceEntry, undefined);
+    if (metric === null || !Number.isFinite(metric) || metric < 0) return null;
+    const progress = (metric / interval) * 100;
+    if (progress >= 100) return "Overdue" as ServiceStatus;
+    if (progress >= 80) return "Near Service" as ServiceStatus;
+    return "OK" as ServiceStatus;
+  });
+
+  return worstServiceStatus(statuses);
+}
+
+function serviceStatusTextClass(status: ServiceStatus): string {
+  if (status === "Overdue") return "text-[#EF4444]";
+  if (status === "Near Service") return "text-[#F2A900]";
+  return "text-[#10B981]";
+}
+
+function serviceStatusDotClass(status: ServiceStatus): string {
+  if (status === "Overdue") return "bg-[#EF4444]";
+  if (status === "Near Service") return "bg-[#F2A900]";
+  return "bg-[#10B981]";
+}
+
 function parseHoursTextToHours(value: string | undefined): number | null {
   if (!value) return null;
   const match = value.match(/(\d+)\s*h\s*(\d+)\s*m/i);
@@ -543,7 +635,7 @@ function buildHistoryRowFromSummary(id: string, name: string, summary: GPS51Dail
   const normalizeSpeedToKph = (value: number) => {
     const numeric = Number(value);
     if (!Number.isFinite(numeric)) return 0;
-    return Math.abs(numeric) > 1000 ? numeric / 1000 : numeric;
+    return numeric / 1000;
   };
   const parkingDuration =
     (summary.parkingText ?? "").trim() || formatDurationFromMs(summary.parkingMs);
@@ -629,14 +721,23 @@ const gpsNameMapping: Record<string, string> = {
   "GPS-004": "GPS-004",
 };
 
-const LIVE_SEED_EQUIPMENT_IDS = new Set(Object.values(unitIdToSeedEquipmentId));
+// Only the equipment IDs that are actually rendered as GPS tracker cards (GPS-001 and GPS-006).
+// Other seed equipment IDs (EQ-002, EQ-003, LAB-001, LAB-002, EQ-004) are NOT live GPS units
+// and must be allowed to appear in the addedEquipment panel.
+const GPS_TRACKER_SEED_IDS = new Set(["EQ-001", "LAB-003"]);
+const LIVE_SEED_EQUIPMENT_IDS = GPS_TRACKER_SEED_IDS;
 
-function getSeedDisplayForUnit(unitId: string): SeedEquipmentDisplay | null {
+function getSeedEquipmentForUnit(unitId: string): any | null {
   const normalizedUnitId = unitId.trim().toUpperCase();
   const seedEquipmentId = unitIdToSeedEquipmentId[normalizedUnitId];
   if (!seedEquipmentId) return null;
 
   const equipment = seedData.equipment.find((entry) => entry.id === seedEquipmentId);
+  return equipment ?? null;
+}
+
+function getSeedDisplayForUnit(unitId: string): SeedEquipmentDisplay | null {
+  const equipment = getSeedEquipmentForUnit(unitId);
   if (!equipment) return null;
 
   const client = seedData.clients.find((entry) => entry.id === equipment.clientId);
@@ -646,6 +747,23 @@ function getSeedDisplayForUnit(unitId: string): SeedEquipmentDisplay | null {
     equipmentType: equipment.equipmentType,
     clientName: client?.companyName ?? null,
   };
+}
+
+function buildDefaultEquipmentFromSeed(): ModalEquipment[] {
+  return (seedData.equipment as any[])
+    .filter((seed) => !GPS_TRACKER_SEED_IDS.has(seed.id))
+    .map((seed) => ({
+      id: `seed-${seed.id}`,
+      name: seed.name ?? "",
+      type: seed.equipmentType ?? "",
+      clientId: Number(String(seed.clientId ?? "").replace(/\D/g, "")) || 0,
+      serialNumber: seed.serialNumber ?? "",
+      notes: seed.notes ?? "",
+      hoursToday: seed.hoursToday ?? "0h 0m",
+      hoursTotal: seed.hoursTotal ?? "0h 0m",
+      pmsConfiguration: seed.pmsConfiguration,
+      image: seed.image,
+    } as ModalEquipment));
 }
 
 export default function Fleet() {
@@ -672,6 +790,10 @@ export default function Fleet() {
   const [gps001HoursTotalMs, setGps001HoursTotalMs] = useState(() => readCachedGps001TotalHoursMs());
   const [gps001KmTotal, setGps001KmTotal] = useState(() => readCachedGps001TotalKm());
   const [gps001WorkingDays, setGps001WorkingDays] = useState(0);
+  const gps001TotalHoursValue =
+    Number.isFinite(gps001HoursTotalMs) && gps001HoursTotalMs > 0
+      ? gps001HoursTotalMs / (1000 * 60 * 60)
+      : null;
 
   // Unique ID for this page load — resets on every full reload, preventing stale localStorage milestones
   // from blocking the toast when the same threshold is crossed again after editing seed data.
@@ -681,7 +803,15 @@ export default function Fleet() {
   const [addEquipmentOpen, setAddEquipmentOpen] = useState(false);
   
   // Equipment added through modal (in-memory)
-  const [addedEquipment, setAddedEquipment] = useState<ModalEquipment[]>(() => readCachedAddedEquipmentWithoutSeedDuplicates());
+  // On a fresh browser (empty localStorage), auto-seed from seedData so all equipment
+  // appears without requiring the user to manually re-add them on every new browser.
+  const [addedEquipment, setAddedEquipment] = useState<ModalEquipment[]>(() => {
+    const raw = readCachedAddedEquipment();
+    if (raw.length > 0) {
+      return raw.filter((entry) => !isLiveMappedSeedEquipmentEntry(entry));
+    }
+    return buildDefaultEquipmentFromSeed();
+  });
   const [selectedAddedEquipmentId, setSelectedAddedEquipmentId] = useState<string | null>(null);
   const [openCardMenuId, setOpenCardMenuId] = useState<string | null>(null);
   const [seedImageOverrides, setSeedImageOverrides] = useState<Record<string, string | undefined>>({});
@@ -697,6 +827,11 @@ export default function Fleet() {
   const selectedEquipment = equipment.find((e) => e.id === selectedUnit?.equipmentId);
   const selectedUnitLabel = selectedEquipment?.unitId || selectedUnit?.unitName || "Unit";
   const selectedSeedDisplay = getSeedDisplayForUnit(selectedUnitLabel);
+  const selectedSeedEquipment = getSeedEquipmentForUnit(selectedUnitLabel);
+  const selectedServiceStatus = computeServiceStatusFromSeedEntry(
+    selectedSeedEquipment,
+    (selectedSeedEquipment as any)?.id === "EQ-001" ? gps001TotalHoursValue : undefined
+  );
 
   const seedEquipmentTypeOptions = useMemo(
     () =>
@@ -814,8 +949,10 @@ export default function Fleet() {
     [selectedSeedEquipmentId, seedData.equipment]
   );
   const selectedSeedHoursTotalText = (selectedSeedEntry as any)?.hoursTotal;
-  const selectedSeedServiceIntervalHours = (selectedSeedEntry as any)?.pmsConfiguration?.serviceIntervalHours;
-  const selectedSeedServiceIntervalUnit = (selectedSeedEntry as any)?.pmsConfiguration?.serviceIntervalUnit;
+  const _selectedSeedPrimaryPms = getPmsConfigs(selectedSeedEntry)[0] ?? null;
+  const selectedSeedServiceInterval =
+    _selectedSeedPrimaryPms?.serviceInterval ?? _selectedSeedPrimaryPms?.serviceIntervalHours;
+  const selectedSeedServiceIntervalUnit = _selectedSeedPrimaryPms?.serviceIntervalUnit;
 
   // For PMS toast when an added-equipment sidebar item is selected (not a GPS unit)
   const selectedAddedEquipmentBackingSeedId = selectedAddedEquipmentId?.startsWith("seed-")
@@ -835,12 +972,13 @@ export default function Fleet() {
   const selectedAddedEquipmentHoursTotalText =
     (selectedAddedEquipmentSeedEntry as any)?.hoursTotal
     ?? selectedAddedEquipmentEntry?.hoursTotal;
-  const selectedAddedEquipmentIntervalHours =
-    (selectedAddedEquipmentSeedEntry as any)?.pmsConfiguration?.serviceIntervalHours
-    ?? selectedAddedEquipmentEntry?.pmsConfiguration?.serviceIntervalHours;
-  const selectedAddedEquipmentIntervalUnit =
-    (selectedAddedEquipmentSeedEntry as any)?.pmsConfiguration?.serviceIntervalUnit
-    ?? selectedAddedEquipmentEntry?.pmsConfiguration?.serviceIntervalUnit;
+  const _addedPrimaryPms =
+    getPmsConfigs(selectedAddedEquipmentSeedEntry)[0]
+    ?? getPmsConfigs(selectedAddedEquipmentEntry)[0]
+    ?? null;
+  const selectedAddedEquipmentInterval =
+    _addedPrimaryPms?.serviceInterval ?? _addedPrimaryPms?.serviceIntervalHours;
+  const selectedAddedEquipmentIntervalUnit = _addedPrimaryPms?.serviceIntervalUnit;
 
   const isGps51UnitSelected =
     selectedSeedEquipmentId === "EQ-001" ||
@@ -1047,92 +1185,170 @@ export default function Fleet() {
     };
   }, [selectedHistoryDay]);
 
+  // EQ-001: fire a toast for EACH pmsConfiguration entry using live GPS hours.
+  useEffect(() => {
+    if (!Array.isArray(seedData?.equipment)) return;
+
+    const excavatorEntry = seedData.equipment.find((equipment: any) => equipment.id === "EQ-001");
+    const excavatorConfigs = getPmsConfigs(excavatorEntry);
+    if (excavatorConfigs.length === 0) return;
+    if (gps001TotalHoursValue === null || gps001TotalHoursValue <= 0) return;
+
+    const milestoneStore = readServiceIntervalToastMilestones();
+    const currentMetricText = formatHoursFromMsForSidebar(gps001HoursTotalMs);
+
+    excavatorConfigs.forEach((pmsConfig: any, configIndex: number) => {
+      const interval = Number(pmsConfig?.serviceInterval ?? pmsConfig?.serviceIntervalHours);
+      const intervalUnit = String(pmsConfig?.serviceIntervalUnit ?? "Hours");
+      const intervalUnitLower = intervalUnit.toLowerCase();
+
+      if (!Number.isFinite(interval) || interval <= 0) return;
+      if (intervalUnitLower !== "hours") return;
+
+      const achievedMilestone = Math.floor(gps001TotalHoursValue / interval);
+      const milestoneKey = `${excavatorEntry.id}:${configIndex}:${interval}:${intervalUnitLower}`;
+      const stored = milestoneStore[milestoneKey];
+
+      const storedCount = typeof stored === "number" ? stored : (stored?.count ?? 0);
+      const storedHoursText = typeof stored === "object" && stored !== null ? stored.hoursText : undefined;
+      const storedSessionId = typeof stored === "object" && stored !== null ? stored.sessionId : undefined;
+      const previousMilestone =
+        storedSessionId === pmsToastSessionId && storedHoursText === currentMetricText ? storedCount : 0;
+
+      if (achievedMilestone <= 0) {
+        milestoneStore[milestoneKey] = { count: 0, hoursText: currentMetricText, sessionId: pmsToastSessionId };
+        return;
+      }
+      if (achievedMilestone <= previousMilestone) return;
+
+      const intervalUnitDisplay = intervalUnitLower === "km" ? "Km" : intervalUnit;
+      const serviceType =
+        typeof pmsConfig?.serviceType === "string" && pmsConfig.serviceType.trim().length > 0
+          ? pmsConfig.serviceType
+          : "Service";
+
+      toast(
+        `${interval} ${intervalUnitDisplay} achieved with ${excavatorEntry.name ?? "Equipment"} – ${serviceType} needed`,
+        { style: { color: "#FFFFFF" } }
+      );
+
+      milestoneStore[milestoneKey] = { count: achievedMilestone, hoursText: currentMetricText, sessionId: pmsToastSessionId };
+    });
+
+    writeServiceIntervalToastMilestones(milestoneStore);
+  }, [gps001HoursTotalMs, gps001TotalHoursValue, pmsToastSessionId]);
+
   useEffect(() => {
     // Fire for either a GPS unit or an added-equipment sidebar item
     if (!selectedUnit && !selectedAddedEquipmentId) return;
 
-    let pmsConfig: { serviceIntervalHours?: unknown; serviceIntervalUnit?: unknown } | undefined;
-    let hoursTotalForCalc: number;
-    let currentHoursText: string | undefined;
     let milestoneEntityId: string;
+    let equipmentNameForToast = "Equipment";
+    let configs: any[] = [];
+    let getMetricForConfig: (pmsConfig: any) => { value: number; text: string } | null;
 
     if (selectedUnit) {
-      // GPS unit path
+      if ((selectedSeedEntry as any)?.id === "EQ-001") return;
       const selectedUnitKey = selectedUnitLabel.toUpperCase();
-      pmsConfig = (selectedSeedEntry as any)?.pmsConfiguration;
-      const seedHoursText = (selectedSeedEntry as any)?.hoursTotal as string | undefined;
-      currentHoursText = seedHoursText
-        ?? STATIC_HOURS_BY_UNIT[selectedUnitKey]?.total
-        ?? FALLBACK_STATIC_HOURS.total;
-      hoursTotalForCalc = isGps51UnitSelected
-        ? gps001HoursTotalMs / (1000 * 60 * 60)
-        : (parseHoursTextToHours(currentHoursText) ?? 0);
+      configs = getPmsConfigs(selectedSeedEntry);
+      equipmentNameForToast = (selectedSeedEntry as any)?.name ?? selectedUnitLabel;
       milestoneEntityId = selectedSeedEntry?.id ?? `unit-${selectedUnit.id}`;
+
+      getMetricForConfig = (pmsConfig: any) => {
+        const unit = String(pmsConfig?.serviceIntervalUnit ?? "Hours").toLowerCase();
+        if (unit === "hours") {
+          const text = (selectedSeedEntry as any)?.hoursTotal
+            ?? STATIC_HOURS_BY_UNIT[selectedUnitKey]?.total
+            ?? FALLBACK_STATIC_HOURS.total;
+          return { value: parseHoursTextToHours(text) ?? 0, text };
+        }
+        if (unit === "km") {
+          const v = Number((selectedSeedEntry as any)?.kmTotal ?? 0);
+          return { value: Number.isFinite(v) ? v : 0, text: String(v) };
+        }
+        const days = parseSeedDays((selectedSeedEntry as any)?.days);
+        if (!Number.isFinite(days) || days === null) return null;
+        const periods = convertDaysToPeriods(days);
+        const v = unit === "weeks" ? periods.weeks : unit === "months" ? periods.months : unit === "years" ? periods.years : null;
+        return v !== null ? { value: v, text: String(v) } : null;
+      };
     } else {
-      // Added-equipment path
-      pmsConfig =
-        (selectedAddedEquipmentSeedEntry as any)?.pmsConfiguration
-        ?? (selectedAddedEquipmentEntry as any)?.pmsConfiguration;
-      currentHoursText = selectedAddedEquipmentHoursTotalText ?? undefined;
-      hoursTotalForCalc = parseHoursTextToHours(currentHoursText) ?? 0;
+      configs = getPmsConfigs(selectedAddedEquipmentSeedEntry).length > 0
+        ? getPmsConfigs(selectedAddedEquipmentSeedEntry)
+        : getPmsConfigs(selectedAddedEquipmentEntry);
+      equipmentNameForToast =
+        (selectedAddedEquipmentSeedEntry as any)?.name ?? selectedAddedEquipmentEntry?.name ?? "Equipment";
       milestoneEntityId = selectedAddedEquipmentId!;
+
+      getMetricForConfig = (pmsConfig: any) => {
+        const unit = String(pmsConfig?.serviceIntervalUnit ?? "Hours").toLowerCase();
+        if (unit === "hours") {
+          const text = selectedAddedEquipmentHoursTotalText ?? "";
+          return { value: parseHoursTextToHours(text) ?? 0, text };
+        }
+        if (unit === "km") {
+          const fromSeed = Number((selectedAddedEquipmentSeedEntry as any)?.kmTotal ?? Number.NaN);
+          const fromEntry = Number((selectedAddedEquipmentEntry as any)?.kmTotal ?? Number.NaN);
+          const v = Number.isFinite(fromSeed) ? fromSeed : (Number.isFinite(fromEntry) ? fromEntry : 0);
+          return { value: v, text: String(v) };
+        }
+        const days = parseSeedDays(
+          (selectedAddedEquipmentSeedEntry as any)?.days ?? (selectedAddedEquipmentEntry as any)?.days
+        );
+        if (!Number.isFinite(days) || days === null) return null;
+        const periods = convertDaysToPeriods(days);
+        const v = unit === "weeks" ? periods.weeks : unit === "months" ? periods.months : unit === "years" ? periods.years : null;
+        return v !== null ? { value: v, text: String(v) } : null;
+      };
     }
 
-    const intervalHours = Number(pmsConfig?.serviceIntervalHours);
-    const intervalUnit = typeof pmsConfig?.serviceIntervalUnit === "string"
-      ? pmsConfig.serviceIntervalUnit
-      : "Hours";
+    if (configs.length === 0) return;
 
-    if (!Number.isFinite(intervalHours) || intervalHours <= 0) return;
-    if (intervalUnit.toLowerCase() !== "hours") return;
-    if (!Number.isFinite(hoursTotalForCalc) || hoursTotalForCalc <= 0) return;
-
-    const achievedMilestone = Math.floor(hoursTotalForCalc / intervalHours);
     const milestoneStore = readServiceIntervalToastMilestones();
-    const milestoneKey = `${milestoneEntityId}:${intervalHours}`;
-    const stored = milestoneStore[milestoneKey];
 
-    // Parse the stored entry — support both old numeric format and new {count, hoursText} format.
-    // If hoursText is missing (old format) or differs from current, treat as a fresh start (previousMilestone = 0)
-    // so the toast re-fires whenever hours cross the threshold again.
-    const storedCount = typeof stored === "number" ? stored : (stored?.count ?? 0);
-    const storedHoursText = typeof stored === "object" && stored !== null ? stored.hoursText : undefined;
-    const storedSessionId = typeof stored === "object" && stored !== null ? stored.sessionId : undefined;
-    // previousMilestone = 0 unless: same page-load session AND same hoursText as when we last fired.
-    // A new sessionId (page reload) always resets to 0, so the toast re-fires even for the same hours value.
-    const previousMilestone =
-      storedSessionId === pmsToastSessionId && storedHoursText === currentHoursText
-        ? storedCount
-        : 0;
+    configs.forEach((pmsConfig: any, configIndex: number) => {
+      const interval = Number(pmsConfig?.serviceInterval ?? pmsConfig?.serviceIntervalHours);
+      const intervalUnit = typeof pmsConfig?.serviceIntervalUnit === "string" ? pmsConfig.serviceIntervalUnit : "Hours";
+      const intervalUnitDisplay = intervalUnit.toLowerCase() === "km" ? "Km" : intervalUnit;
+      const serviceType = typeof pmsConfig?.serviceType === "string" && pmsConfig.serviceType.trim().length > 0
+        ? pmsConfig.serviceType : "Service";
 
-    if (achievedMilestone <= 0) {
-      writeServiceIntervalToastMilestones({
-        ...milestoneStore,
-        [milestoneKey]: { count: 0, hoursText: currentHoursText ?? "", sessionId: pmsToastSessionId },
-      });
-      return;
-    }
+      if (!Number.isFinite(interval) || interval <= 0) return;
 
-    // Only fire toast when crossing upward to a new milestone
-    if (achievedMilestone <= previousMilestone) return;
+      const metricResult = getMetricForConfig(pmsConfig);
+      if (!metricResult || !Number.isFinite(metricResult.value) || metricResult.value <= 0) return;
 
-    toast(
-      achievedMilestone > 1
-        ? `PMS interval of ${intervalHours} Hours has been achieved (${achievedMilestone}x)`
-        : `PMS interval of ${intervalHours} Hours has been achieved`
-    );
+      const { value: metricValueForCalc, text: currentMetricText } = metricResult;
+      const achievedMilestone = Math.floor(metricValueForCalc / interval);
+      const milestoneKey = `${milestoneEntityId}:${configIndex}:${interval}:${intervalUnit.toLowerCase()}`;
+      const stored = milestoneStore[milestoneKey];
 
-    writeServiceIntervalToastMilestones({
-      ...milestoneStore,
-      [milestoneKey]: { count: achievedMilestone, hoursText: currentHoursText ?? "", sessionId: pmsToastSessionId },
+      const storedCount = typeof stored === "number" ? stored : (stored?.count ?? 0);
+      const storedHoursText = typeof stored === "object" && stored !== null ? stored.hoursText : undefined;
+      const storedSessionId = typeof stored === "object" && stored !== null ? stored.sessionId : undefined;
+      const previousMilestone =
+        storedSessionId === pmsToastSessionId && storedHoursText === currentMetricText ? storedCount : 0;
+
+      if (achievedMilestone <= 0) {
+        milestoneStore[milestoneKey] = { count: 0, hoursText: currentMetricText, sessionId: pmsToastSessionId };
+        return;
+      }
+      if (achievedMilestone <= previousMilestone) return;
+
+      toast(`${interval} ${intervalUnitDisplay} achieved with ${equipmentNameForToast} – ${serviceType} needed`,
+        { style: { color: "#FFFFFF" } });
+
+      milestoneStore[milestoneKey] = { count: achievedMilestone, hoursText: currentMetricText, sessionId: pmsToastSessionId };
     });
+
+    writeServiceIntervalToastMilestones(milestoneStore);
   }, [
     selectedUnit,
     selectedUnitLabel,
     selectedSeedEquipmentId,
     selectedSeedEntry,
     selectedSeedHoursTotalText,
-    selectedSeedServiceIntervalHours,
+    selectedSeedServiceInterval,
     selectedSeedServiceIntervalUnit,
     isGps51UnitSelected,
     gps001HoursTotalMs,
@@ -1140,10 +1356,80 @@ export default function Fleet() {
     selectedAddedEquipmentEntry,
     selectedAddedEquipmentSeedEntry,
     selectedAddedEquipmentHoursTotalText,
-    selectedAddedEquipmentIntervalHours,
+    selectedAddedEquipmentInterval,
     selectedAddedEquipmentIntervalUnit,
     pmsToastSessionId,
   ]);
+
+  // Global seed data watcher: fire a toast for each pmsConfiguration entry of every equipment.
+  useEffect(() => {
+    if (!Array.isArray(seedData?.equipment)) return;
+
+    const milestoneStore = readServiceIntervalToastMilestones();
+
+    seedData.equipment.forEach((equipment: any) => {
+      if (equipment.id === "EQ-001") return; // handled by dedicated GPS watcher
+      const configs = getPmsConfigs(equipment);
+      if (configs.length === 0) return;
+
+      const equipmentName = equipment.name ?? "Equipment";
+
+      configs.forEach((pmsConfig: any, configIndex: number) => {
+        const interval = Number(pmsConfig?.serviceInterval ?? pmsConfig?.serviceIntervalHours);
+        const intervalUnit = String(pmsConfig?.serviceIntervalUnit ?? "Hours");
+        const serviceType = String(pmsConfig?.serviceType ?? "Service");
+
+        if (!Number.isFinite(interval) || interval <= 0) return;
+
+        const intervalUnitDisplay = intervalUnit.toLowerCase() === "km" ? "Km" : intervalUnit;
+        let metricValueForCalc = 0;
+        let currentMetricText = "";
+
+        if (intervalUnit.toLowerCase() === "hours") {
+          const hoursText = equipment.hoursTotal ?? "";
+          currentMetricText = hoursText;
+          metricValueForCalc = parseHoursTextToHours(hoursText) ?? 0;
+        } else if (intervalUnit.toLowerCase() === "km") {
+          metricValueForCalc = Number(equipment.kmTotal ?? 0);
+          currentMetricText = String(metricValueForCalc);
+        } else {
+          const days = parseSeedDays(equipment.days);
+          if (!Number.isFinite(days) || days === null) return;
+          const periods = convertDaysToPeriods(days);
+          if (intervalUnit.toLowerCase() === "weeks") metricValueForCalc = periods.weeks;
+          else if (intervalUnit.toLowerCase() === "months") metricValueForCalc = periods.months;
+          else if (intervalUnit.toLowerCase() === "years") metricValueForCalc = periods.years;
+          else return;
+          currentMetricText = String(metricValueForCalc);
+        }
+
+        if (!Number.isFinite(metricValueForCalc) || metricValueForCalc <= 0) return;
+
+        const achievedMilestone = Math.floor(metricValueForCalc / interval);
+        const milestoneKey = `${equipment.id}:${configIndex}:${interval}:${intervalUnit.toLowerCase()}`;
+        const stored = milestoneStore[milestoneKey];
+
+        const storedCount = typeof stored === "number" ? stored : (stored?.count ?? 0);
+        const storedHoursText = typeof stored === "object" && stored !== null ? stored.hoursText : undefined;
+        const storedSessionId = typeof stored === "object" && stored !== null ? stored.sessionId : undefined;
+        const previousMilestone =
+          storedSessionId === pmsToastSessionId && storedHoursText === currentMetricText ? storedCount : 0;
+
+        if (achievedMilestone <= 0 || achievedMilestone <= previousMilestone) {
+          milestoneStore[milestoneKey] = { count: achievedMilestone, hoursText: currentMetricText, sessionId: pmsToastSessionId };
+          return;
+        }
+
+        toast(
+          `${interval} ${intervalUnitDisplay} achieved with ${equipmentName} – ${serviceType} needed`,
+          { style: { color: "#FFFFFF" } }
+        );
+        milestoneStore[milestoneKey] = { count: achievedMilestone, hoursText: currentMetricText, sessionId: pmsToastSessionId };
+      });
+    });
+
+    writeServiceIntervalToastMilestones(milestoneStore);
+  }, [seedData?.equipment, pmsToastSessionId]);
 
   useEffect(() => {
     let ignore = false;
@@ -1553,16 +1839,6 @@ export default function Fleet() {
     const isSeedEquipmentEdit = editingId.startsWith("seed-");
     const seedEquipmentId = isSeedEquipmentEdit ? editingId.replace(/^seed-/, "") : null;
     const isLiveMappedSeedEquipmentEdit = Boolean(seedEquipmentId && LIVE_SEED_EQUIPMENT_IDS.has(seedEquipmentId));
-    const pmsConfiguration = equipment.pmsConfiguration
-      ? {
-          serviceIntervalHours: equipment.pmsConfiguration.serviceIntervalHours,
-          serviceIntervalUnit: equipment.pmsConfiguration.serviceIntervalUnit,
-          ...(equipment.pmsConfiguration.serviceType
-            ? { serviceType: equipment.pmsConfiguration.serviceType }
-            : {}),
-        }
-      : undefined;
-
     const seedClient = seedData.clients.find((entry) =>
       Number(String(entry.id).replace(/\D/g, "")) === equipment.clientId
     );
@@ -1580,7 +1856,6 @@ export default function Fleet() {
         serialNumber: equipment.serialNumber?.trim() || undefined,
         notes: equipment.notes?.trim() || undefined,
         image: equipment.image,
-        ...(pmsConfiguration ? { pmsConfiguration } : {}),
       });
 
       if ((updateResult.entry as any)?.id) {
@@ -1617,7 +1892,6 @@ export default function Fleet() {
         serialNumber: equipment.serialNumber?.trim() || undefined,
         notes: equipment.notes?.trim() || undefined,
         image: equipment.image,
-        ...(pmsConfiguration ? { pmsConfiguration } : {}),
       });
       createdSeedEntry = {
         id: (addResult.entry as any).id,
@@ -1846,24 +2120,35 @@ export default function Fleet() {
                 {/* Simulated equipment markers */}
                 {addedEquipment
                   .filter((eq) => typeof eq.lat === "number" && typeof eq.lng === "number")
-                  .map((eq) => (
-                    <Marker
-                      key={`sim-${eq.id}`}
-                      position={[eq.lat!, eq.lng!]}
-                      icon={defaultIcon}
-                    >
-                      <Popup className="dark-popup">
-                        <div className="bg-[#121214] p-2 min-w-[180px]">
-                          <div className="text-xs font-bold text-[#EAEAEA] mb-1">{eq.name}</div>
-                          <div className="text-[10px] text-[#88888C] space-y-0.5">
-                            <div>Status: <span className="text-[#F2A900]">Simulated</span></div>
-                            {eq.type && <div>Type: {eq.type}</div>}
-                            <div>Hours: {eq.hoursTotal}</div>
+                  .map((eq) => {
+                    const addedSeedEntry = eq.id.startsWith("seed-")
+                      ? seedData.equipment.find((entry) => `seed-${entry.id}` === eq.id) ?? null
+                      : null;
+                    const addedServiceStatus = computeServiceStatusFromAddedEntry(eq, addedSeedEntry);
+
+                    return (
+                      <Marker
+                        key={`sim-${eq.id}`}
+                        position={[eq.lat!, eq.lng!]}
+                        icon={defaultIcon}
+                      >
+                        <Popup className="dark-popup">
+                          <div className="bg-[#121214] p-2 min-w-[180px]">
+                            <div className="text-xs font-bold text-[#EAEAEA] mb-1">{eq.name}</div>
+                            <div className="text-[10px] text-[#88888C] space-y-0.5">
+                              {addedServiceStatus && (
+                                <div>
+                                  Status: <span className={serviceStatusTextClass(addedServiceStatus)}>{addedServiceStatus}</span>
+                                </div>
+                              )}
+                              {eq.type && <div>Type: {eq.type}</div>}
+                              <div>Hours: {(addedSeedEntry as any)?.hoursTotal ?? eq.hoursTotal}</div>
+                            </div>
                           </div>
-                        </div>
-                      </Popup>
-                    </Marker>
-                  ))}
+                        </Popup>
+                      </Marker>
+                    );
+                  })}
                 {selectedUnit &&
                   typeof selectedUnit.telemetry.lat === "number" &&
                   typeof selectedUnit.telemetry.lng === "number" &&
@@ -1913,10 +2198,14 @@ export default function Fleet() {
                       <span className="text-[#88888C]">Engine Hours</span>
                       <span className="text-[#F2A900]">{formatHoursMinutes(selectedUnit.telemetry)}</span>
                     </div>
-                    {selectedUnit.serviceDue && (
+                    {selectedServiceStatus && (
                       <div className="flex items-center gap-1 mt-1 pt-1 border-t border-white/5">
-                        <AlertTriangle className="w-3 h-3 text-[#EF4444]" />
-                        <span className="text-[#EF4444]">Service Due</span>
+                        {selectedServiceStatus === "OK" ? (
+                          <span className={`h-2 w-2 rounded-full ${serviceStatusDotClass(selectedServiceStatus)}`} />
+                        ) : (
+                          <AlertTriangle className={`w-3 h-3 ${serviceStatusTextClass(selectedServiceStatus)}`} />
+                        )}
+                        <span className={serviceStatusTextClass(selectedServiceStatus)}>{selectedServiceStatus}</span>
                       </div>
                     )}
                   </div>
@@ -2119,6 +2408,10 @@ export default function Fleet() {
                 const seedEntry = displayEquipmentName
                   ? seedData.equipment.find((s) => s.name === displayEquipmentName)
                   : null;
+                const serviceStatus = computeServiceStatusFromSeedEntry(
+                  seedEntry,
+                  isGps001 && seedEntry?.id === "EQ-001" ? gps001TotalHoursValue : undefined
+                );
                 const seedEntryImage = seedEntry?.id
                   ? seedImageOverrides[seedEntry.id] ?? (seedEntry as any)?.image
                   : undefined;
@@ -2224,9 +2517,14 @@ export default function Fleet() {
                                     if (current === 0) {
                                       const pmsList = (seedData as any).pmsConfigurations || [];
                                       const labCfg = pmsList.find((c: any) => typeof c.equipmentType === "string" && c.equipmentType.toLowerCase().includes("lab"));
-                                      const hours = labCfg?.serviceIntervalHours ?? 4000;
+                                      const interval = labCfg?.serviceInterval ?? 4000;
                                       const unitText = labCfg?.serviceIntervalUnit ?? "Hours";
-                                      toast(`PMS interval of ${hours} ${unitText} has been achieved`);
+                                      const unitDisplay = String(unitText).toLowerCase() === "km" ? "Km" : unitText;
+                                      const serviceType = labCfg?.serviceType ?? "PMS (Preventative Maintenance)";
+                                      toast(
+                                        `${interval} ${unitDisplay} achieved with Concrete Strength Tester – ${serviceType} needed`,
+                                        { style: { color: "#FFFFFF" } }
+                                      );
                                     }
                                     setDemoStages((prev) => ({ ...prev, [unit.id]: next }));
                                   }
@@ -2328,10 +2626,14 @@ export default function Fleet() {
                             <div>Days: {daysText}</div>
                             {dayPeriodsText && <div>Approx: {dayPeriodsText}</div>}
                           </div>
-                          {unit.serviceDue && (
-                            <div className="flex items-center gap-1 text-[#EF4444]">
-                              <AlertTriangle className="w-2.5 h-2.5" />
-                              <span>Service due</span>
+                          {serviceStatus && (
+                            <div className={`flex items-center gap-1 ${serviceStatusTextClass(serviceStatus)}`}>
+                              {serviceStatus === "OK" ? (
+                                <span className={`h-2 w-2 rounded-full ${serviceStatusDotClass(serviceStatus)}`} />
+                              ) : (
+                                <AlertTriangle className="w-2.5 h-2.5" />
+                              )}
+                              <span>{serviceStatus}</span>
                             </div>
                           )}
                         </div>
@@ -2342,6 +2644,14 @@ export default function Fleet() {
               })}
               {addedEquipment.map((eq) => {
                 const eqClient = seedClientsForModal.find((c) => c.id === eq.clientId) || clients.find((c) => c.id === eq.clientId);
+                const addedSeedEntry = eq.id.startsWith("seed-")
+                  ? seedData.equipment.find((entry) => `seed-${entry.id}` === eq.id) ?? null
+                  : null;
+                const addedServiceStatus = computeServiceStatusFromAddedEntry(eq, addedSeedEntry);
+                const addedKmTodayValue = parseSeedKm((addedSeedEntry as any)?.kmToday ?? (eq as any)?.kmToday);
+                const addedKmTotalValue = parseSeedKm((addedSeedEntry as any)?.kmTotal ?? (eq as any)?.kmTotal);
+                const addedDaysValue = parseSeedDays((addedSeedEntry as any)?.days ?? (eq as any)?.days);
+                const addedDayPeriodsText = formatDayPeriodsForSidebar(addedDaysValue);
                 const isProtectedEquipment =
                   eq.name === PROTECTED_EQUIPMENT_NAME || eq.id === "seed-EQ-001" || eq.id === "EQ-001";
                 const isSelectedAddedEquipment = selectedAddedEquipmentId === eq.id;
@@ -2377,7 +2687,13 @@ export default function Fleet() {
                       <div className="min-w-0 flex-1">
                         <div className="mb-1 flex items-start justify-between gap-2">
                           <div className="flex min-w-0 items-center gap-1.5">
-                            <div className="w-2 h-2 rounded-full bg-[#F2A900]" />
+                            <div
+                              className={`w-2 h-2 rounded-full ${
+                                addedServiceStatus
+                                  ? serviceStatusDotClass(addedServiceStatus)
+                                  : "bg-[#F2A900]"
+                              }`}
+                            />
                             <span className="truncate text-xs font-medium text-[#EAEAEA]">{eq.name}</span>
                           </div>
                           <div className="relative" onClick={(e) => e.stopPropagation()}>
@@ -2431,9 +2747,21 @@ export default function Fleet() {
                           <div>{eqClient?.companyName || "—"}</div>
                           <div>Type: {eq.type}</div>
                           <div className="space-y-0.5 pt-0.5">
-                            <div>T: {eq.hoursToday || "—"} / —km</div>
-                            <div>Σ: {eq.hoursTotal || "—"} / —km</div>
+                            <div>Today: {((addedSeedEntry as any)?.hoursToday ?? eq.hoursToday) || "—"} / {addedKmTodayValue !== null ? formatSidebarKm(addedKmTodayValue) : "—km"}</div>
+                            <div>Total: {((addedSeedEntry as any)?.hoursTotal ?? eq.hoursTotal) || "—"} / {addedKmTotalValue !== null ? formatSidebarKm(addedKmTotalValue) : "—km"}</div>
+                            <div>Days: {formatDaysForSidebar(addedDaysValue)}</div>
+                            {addedDayPeriodsText && <div>Approx: {addedDayPeriodsText}</div>}
                           </div>
+                          {addedServiceStatus && (
+                            <div className={`flex items-center gap-1 ${serviceStatusTextClass(addedServiceStatus)}`}>
+                              {addedServiceStatus === "OK" ? (
+                                <span className={`h-2 w-2 rounded-full ${serviceStatusDotClass(addedServiceStatus)}`} />
+                              ) : (
+                                <AlertTriangle className="w-2.5 h-2.5" />
+                              )}
+                              <span>{addedServiceStatus}</span>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -2453,7 +2781,6 @@ export default function Fleet() {
         onSubmitEquipment={handleSubmitEquipment}
         initialEquipment={editingEquipment}
         equipmentTypeOptions={seedEquipmentTypeOptions}
-        serviceTypeOptions={seedServiceTypeOptions}
       />
 
       <AlertDialog

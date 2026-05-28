@@ -7,6 +7,7 @@ import { createContext } from "./context";
 import { env } from "./lib/env";
 import { createOAuthCallbackHandler } from "./kimi/auth";
 import { Paths } from "@contracts/constants";
+import { initializeSeedStatusWatcher } from "./lib/seed-status-watcher";
 
 const app = new Hono<{ Bindings: HttpBindings }>();
 
@@ -21,6 +22,9 @@ app.use("/api/trpc/*", async (c) => {
   });
 });
 app.all("/api/*", (c) => c.json({ error: "Not Found" }, 404));
+
+// Initialize seed status watcher to auto-update status when usage values change
+initializeSeedStatusWatcher();
 
 export default app;
 
