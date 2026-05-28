@@ -732,6 +732,8 @@ export const appRouter = createRouter({
             } else if (unit === "km") {
               entry.kmTotal = 0;
               entry.kmToday = 0;
+            } else if (unit === "weeks" || unit === "months" || unit === "years") {
+              entry.days = 0;
             }
             equipment[eqIdx] = entry;
             parsed.equipment = equipment;

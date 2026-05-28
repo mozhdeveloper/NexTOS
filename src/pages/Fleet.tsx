@@ -790,6 +790,24 @@ export default function Fleet() {
   const [gps001HoursTotalMs, setGps001HoursTotalMs] = useState(() => readCachedGps001TotalHoursMs());
   const [gps001KmTotal, setGps001KmTotal] = useState(() => readCachedGps001TotalKm());
   const [gps001WorkingDays, setGps001WorkingDays] = useState(0);
+  // Service-reset offset written by Services.tsx — mirrors the same localStorage keys.
+  const [gps001HoursOffsetMs, setGps001HoursOffsetMs] = useState<number>(() => {
+    try { return Number(window.localStorage.getItem("nextos-gps001-hours-offset-ms") ?? "0") || 0; } catch { return 0; }
+  });
+  const [resetOnCompletion, setResetOnCompletion] = useState<boolean>(() => {
+    try { return window.localStorage.getItem("nextos-reset-on-completion") !== "false"; } catch { return true; }
+  });
+
+  // Effective hours = raw GPS total when toggle OFF; GPS minus offset when toggle ON.
+  // Used for sidebar hours display and status — mirrors Services.tsx formatGps001Hours().
+  const gps001EffectiveTotalHoursMs = resetOnCompletion
+    ? Math.max(0, gps001HoursTotalMs - gps001HoursOffsetMs)
+    : gps001HoursTotalMs;
+  const gps001EffectiveTotalHoursValue: number | null =
+    Number.isFinite(gps001EffectiveTotalHoursMs) && gps001EffectiveTotalHoursMs >= 0
+      ? gps001EffectiveTotalHoursMs / (1000 * 60 * 60)
+      : null;
+
   const gps001TotalHoursValue =
     Number.isFinite(gps001HoursTotalMs) && gps001HoursTotalMs > 0
       ? gps001HoursTotalMs / (1000 * 60 * 60)
@@ -830,7 +848,7 @@ export default function Fleet() {
   const selectedSeedEquipment = getSeedEquipmentForUnit(selectedUnitLabel);
   const selectedServiceStatus = computeServiceStatusFromSeedEntry(
     selectedSeedEquipment,
-    (selectedSeedEquipment as any)?.id === "EQ-001" ? gps001TotalHoursValue : undefined
+    (selectedSeedEquipment as any)?.id === "EQ-001" ? gps001EffectiveTotalHoursValue : undefined
   );
 
   const seedEquipmentTypeOptions = useMemo(
@@ -1032,6 +1050,20 @@ export default function Fleet() {
   useEffect(() => {
     startLiveTracking();
     return () => stopLiveTracking();
+  }, []);
+
+  // Sync service-reset offset + toggle from localStorage so Fleet reflects Services changes instantly.
+  useEffect(() => {
+    const refresh = () => {
+      try {
+        const offset = Number(window.localStorage.getItem("nextos-gps001-hours-offset-ms") ?? "0") || 0;
+        setGps001HoursOffsetMs((prev) => prev !== offset ? offset : prev);
+        const toggle = window.localStorage.getItem("nextos-reset-on-completion") !== "false";
+        setResetOnCompletion((prev) => prev !== toggle ? toggle : prev);
+      } catch {}
+    };
+    window.addEventListener("storage", refresh);
+    return () => window.removeEventListener("storage", refresh);
   }, []);
 
   useEffect(() => {
@@ -2410,7 +2442,7 @@ export default function Fleet() {
                   : null;
                 const serviceStatus = computeServiceStatusFromSeedEntry(
                   seedEntry,
-                  isGps001 && seedEntry?.id === "EQ-001" ? gps001TotalHoursValue : undefined
+                  isGps001 && seedEntry?.id === "EQ-001" ? gps001EffectiveTotalHoursValue : undefined
                 );
                 const seedEntryImage = seedEntry?.id
                   ? seedImageOverrides[seedEntry.id] ?? (seedEntry as any)?.image
@@ -2448,7 +2480,7 @@ export default function Fleet() {
                 const hoursTotalText = isDemoZero
                   ? "0h 0m"
                   : isGps001
-                  ? formatHoursFromMsForSidebar(gps001HoursTotalMs)
+                  ? formatHoursFromMsForSidebar(gps001EffectiveTotalHoursMs)
                   : ((seedEntry as any)?.hoursTotal ?? STATIC_HOURS_BY_UNIT[unitLabel]?.total ?? FALLBACK_STATIC_HOURS.total);
 
                 const historyRowKmToday =
