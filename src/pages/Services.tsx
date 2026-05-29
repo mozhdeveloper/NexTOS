@@ -85,6 +85,7 @@ const RESET_ON_COMPLETION_KEY = "nextos-reset-on-completion";
 const GPS001_HOURS_OFFSET_KEY = "nextos-gps001-hours-offset-ms";
 const METRICS_OVERRIDES_KEY = "nextos-metrics-overrides-v1";
 const PM_INTERVAL_UNITS = ["Hours", "KM", "Weeks", "Months", "Years"] as const;
+const _toastedPmsMessages = new Set<string>();
 
 const serviceTypeOptions = [
   { value: "PMS (Preventative Maintenance)", label: "PMS (Preventative Maintenance)" },
@@ -889,7 +890,6 @@ export default function Services() {
 
   // Tracks which PMS task IDs have already triggered a toast this session.
   // Prevents repeat notifications when allScheduledMaintenance re-references due to GPS cache ticks.
-  const toastedPmsTasksRef = useRef(new Set<number>());
 
   // Auto-create a scheduled task for every Overdue PMS entry.
   // Deps: allScheduledMaintenance + seedServiceRecordsData.
@@ -997,11 +997,12 @@ export default function Services() {
         });
       }
 
-      // Only notify once per task ID per page session.
-      if (!toastedPmsTasksRef.current.has(taskId)) {
-        toastedPmsTasksRef.current.add(taskId);
+      const toastKey = `${entry.equipmentName}|||${entry.serviceType}|||${entry.serviceIntervalUnit}`;
+      if (!_toastedPmsMessages.has(toastKey)) {
+        _toastedPmsMessages.add(toastKey);
         toast.info("PMS Task Auto-Created", {
-          description: `${entry.equipmentName} — ${entry.serviceType} is overdue.`,
+          id: `pms-overdue-${taskId}`,
+          description: `${entry.equipmentName} — ${entry.serviceType} (${entry.serviceIntervalUnit}) is overdue.`,
         });
       }
     }
@@ -2811,6 +2812,11 @@ function ExecutionModal({
             workDone: draft.workDone,
             recommendation: draft.recommendations,
             partsUsed: draft.selectedParts?.map(p => `${p.name} (x${p.quantity})`).join(", ") || "None",
+            partsUsedDetails: draft.selectedParts?.map(p => ({
+                name: p.name,
+                quantity: p.quantity,
+                pricePerUnit: p.pricePerUnit,
+            })) ?? [],
             techSignature: draft.techSignature,
             clientSignature: draft.clientSignature,
             safetyChecklist: draft.safetyChecklist,
@@ -2934,6 +2940,11 @@ function ExecutionModal({
                 workDone: draft.workDone ?? "",
                 recommendation: draft.recommendations ?? "",
                 partsUsed: draft.selectedParts?.map((p) => `${p.name} (x${p.quantity})`).join(", ") || "",
+                partsUsedDetails: draft.selectedParts?.map((p) => ({
+                    name: p.name,
+                    quantity: p.quantity,
+                    pricePerUnit: p.pricePerUnit,
+                })) ?? [],
                 cost: draft.cost ?? pmsCfg?.estimatedCost ?? task.cost ?? 0,
                 hoursAtService: draft.hoursAtService ?? storeEq?.currentHours ?? 0,
                 // Rich completion fields
@@ -3407,6 +3418,10 @@ function VisualEvidence({ label, photo, notes, onSave, onBack }: { label: string
 }
 
 function TechnicalWorkForm({ draft, equipment, client, packages, seedEquipment, seedClients, pmsConfig, onSave, onBack }: { draft: DraftExecution, equipment?: Equipment, client?: Client, packages: any[], seedEquipment?: any, seedClients?: any[], pmsConfig?: any, onSave: (d: Partial<DraftExecution>) => void, onBack: () => void }) {
+    const { items: inventoryItems } = useInventoryStore();
+    const [selectedPartId, setSelectedPartId] = useState<number | "">("");
+    const [partQty, setPartQty] = useState<string>("1");
+
     const [fields, setFields] = useState({
         findings: draft.findings || "",
         workDone: draft.workDone || "",
@@ -3415,6 +3430,11 @@ function TechnicalWorkForm({ draft, equipment, client, packages, seedEquipment, 
         hoursAtService: draft.hoursAtService || equipment?.currentHours || 0,
         cost: draft.cost ?? 0,
     });
+
+    const partsTotal = (fields.selectedParts ?? []).reduce(
+        (sum, p) => sum + p.quantity * p.pricePerUnit,
+        0
+    );
 
     // Current metric value for the service context card
     const currentMetric = useMemo(() => {
@@ -3503,29 +3523,99 @@ function TechnicalWorkForm({ draft, equipment, client, packages, seedEquipment, 
                 </div>
 
                 <div className="p-4 rounded-xl bg-gray-50 border border-gray-100 space-y-3">
-                    <div className="flex items-center gap-2">
-                        <div className="text-[10px] font-black text-gray-600 uppercase tracking-widest">Final Service Cost</div>
-                        <div className="text-[9px] text-gray-400 font-medium">(Optional)</div>
+                  <div className="text-[10px] font-black text-gray-600 uppercase tracking-widest">Parts Used</div>
+
+                  <div className="flex gap-2 items-end">
+                    <div className="flex-1 space-y-1">
+                      <label className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Part</label>
+                      <Select
+                        value={selectedPartId === "" ? "" : String(selectedPartId)}
+                        onValueChange={(v) => setSelectedPartId(Number(v))}
+                      >
+                        <SelectTrigger className="h-9 bg-white border-gray-200 text-xs">
+                          <SelectValue placeholder="Select part…" />
+                        </SelectTrigger>
+                        <SelectContent className="bg-white border-gray-200">
+                          {inventoryItems.map((item) => (
+                            <SelectItem key={item.id} value={String(item.id)} className="text-xs">
+                              {item.name}
+                              <span className="text-gray-400 ml-1">— ₱{item.pricePerUnit}/{item.unit}</span>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
-                    <div className="flex items-center gap-3">
-                        <span className="text-sm font-bold text-gray-500 shrink-0">₱</span>
-                        <Input
-                            type="number"
-                            min={0}
-                            step={0.01}
-                            className="h-10 bg-white border-gray-200 font-bold font-mono-tech focus:ring-[#66B2B2]/20 focus:border-[#66B2B2]"
-                            placeholder="0.00"
-                            value={fields.cost === 0 ? "" : fields.cost}
-                            onChange={(e) => setFields({ ...fields, cost: parseFloat(e.target.value) || 0 })}
-                        />
+                    <div className="w-24 space-y-1">
+                      <label className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">
+                        Qty {selectedPartId !== "" ? `(${inventoryItems.find(i => i.id === selectedPartId)?.unit ?? ""})` : ""}
+                      </label>
+                      <Input
+                        type="number"
+                        min="1"
+                        step="1"
+                        className="h-9 bg-white border-gray-200 text-xs text-center"
+                        value={partQty}
+                        onChange={(e) => setPartQty(e.target.value)}
+                      />
                     </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-9 px-3 border-gray-200 text-[#66B2B2] hover:bg-[#66B2B2]/10 text-xs font-bold shrink-0"
+                      disabled={selectedPartId === "" || !partQty || Number(partQty) <= 0}
+                      onClick={() => {
+                        const item = inventoryItems.find(i => i.id === selectedPartId);
+                        if (!item) return;
+                        const qty = Math.max(1, Math.floor(Number(partQty)));
+                        const already = fields.selectedParts ?? [];
+                        const existing = already.find(p => p.inventoryItemId === item.id);
+                        const updated = existing
+                          ? already.map(p => p.inventoryItemId === item.id ? { ...p, quantity: p.quantity + qty } : p)
+                          : [...already, { inventoryItemId: item.id, name: item.name, quantity: qty, pricePerUnit: item.pricePerUnit }];
+                        setFields({ ...fields, selectedParts: updated });
+                        setSelectedPartId("");
+                        setPartQty("1");
+                      }}
+                    >
+                      + Add
+                    </Button>
+                  </div>
+
+                  {(fields.selectedParts ?? []).length > 0 && (
+                    <div className="space-y-1.5 mt-1">
+                      {(fields.selectedParts ?? []).map((part) => (
+                        <div key={part.inventoryItemId} className="flex items-center justify-between bg-white rounded-lg px-3 py-2 border border-gray-100">
+                          <div className="text-xs font-semibold text-gray-700 flex-1 min-w-0 truncate">{part.name}</div>
+                          <div className="text-[10px] text-gray-400 mx-3 shrink-0">
+                            {part.quantity} × ₱{part.pricePerUnit.toLocaleString("en-PH")}
+                          </div>
+                          <div className="text-xs font-bold text-[#66B2B2] shrink-0 mr-2">
+                            ₱{(part.quantity * part.pricePerUnit).toLocaleString("en-PH", { minimumFractionDigits: 2 })}
+                          </div>
+                          <button
+                            type="button"
+                            className="text-gray-300 hover:text-[#EF4444] transition-colors shrink-0"
+                            onClick={() => setFields({ ...fields, selectedParts: (fields.selectedParts ?? []).filter(p => p.inventoryItemId !== part.inventoryItemId) })}
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ))}
+                      <div className="flex justify-between items-center pt-1 border-t border-gray-200 mt-1">
+                        <span className="text-[10px] font-black text-gray-500 uppercase tracking-wider">Total</span>
+                        <span className="text-sm font-black text-gray-900 font-mono-tech">
+                          ₱{partsTotal.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                    </div>
+                  )}
                 </div>
             </div>
             <div className="flex gap-3 pt-2">
                 <Button variant="ghost" className="flex-1 h-12 rounded-xl text-gray-400 font-bold" onClick={onBack}>Previous</Button>
                 <Button
                     className="flex-[2] h-12 bg-[#66B2B2] text-white font-bold rounded-xl hover:bg-[#5A9E9E]"
-                    onClick={() => onSave(fields)}
+                    onClick={() => onSave({ ...fields, cost: partsTotal })}
                 >
                     Save Progress & Proceed
                 </Button>

@@ -1,6 +1,7 @@
 import { useCRMStore } from "@/stores/useCRMStore";
 import { useBillingStore } from "@/stores/useBillingStore";
 import { useAuthStore } from "@/stores/useAuthStore";
+import seedData from "@/data/seed-data.json";
 import { useState } from "react";
 import type { PackageTier, Package } from "@/types";
 import {
@@ -288,7 +289,8 @@ export default function Billing() {
           </thead>
           <tbody>
             {filteredInvoices.map((invoice) => {
-              const client = clients.find((c) => c.id === invoice.clientId);
+              const seedClientId = `CL-${invoice.clientId.toString().padStart(3, "0")}`;
+              const client = (seedData.clients as any[]).find((c) => c.id === seedClientId);
               return (
                 <tr key={invoice.id} className="grid-table-row border-b border-gray-200">
                   <td className="py-2.5 px-3 text-black font-mono-tech">{invoice.invoiceNumber}</td>

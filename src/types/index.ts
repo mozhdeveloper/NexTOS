@@ -164,6 +164,7 @@ export interface ServiceRecord {
   
   bookingId?: number;
   partsUsed: string;
+  partsUsedDetails?: { name: string; quantity: number; pricePerUnit: number }[];
   status: "scheduled" | "in_progress" | "completed" | "cancelled";
   scheduledDate: string;
   completedDate: string | null;

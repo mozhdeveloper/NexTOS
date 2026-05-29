@@ -79,6 +79,7 @@ export const serviceRecords = mysqlTable("service_records", {
   reportAttachment: varchar("reportAttachment", { length: 255 }),
   
   partsUsed: text("partsUsed"),
+  partsUsedDetails: text("partsUsedDetails"),
   status: mysqlEnum("status", ["scheduled", "in_progress", "completed", "cancelled"]).default("scheduled").notNull(),
   scheduledDate: timestamp("scheduledDate").notNull(),
   completedDate: timestamp("completedDate"),

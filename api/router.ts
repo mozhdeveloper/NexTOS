@@ -46,6 +46,7 @@ type SeedServiceRecord = {
   workDone?: string;
   recommendation?: string;
   partsUsed?: string;
+  partsUsedDetails?: { name: string; quantity: number; pricePerUnit: number }[];
   cost?: number;
   hoursAtService?: number;
   // Rich completion fields
@@ -578,6 +579,11 @@ export const appRouter = createRouter({
           workDone: z.string().optional(),
           recommendation: z.string().optional(),
           partsUsed: z.string().optional(),
+          partsUsedDetails: z.array(z.object({
+            name: z.string(),
+            quantity: z.number(),
+            pricePerUnit: z.number(),
+          })).optional(),
           cost: z.number().optional(),
           hoursAtService: z.number().optional(),
         })
@@ -621,6 +627,11 @@ export const appRouter = createRouter({
           workDone: z.string().optional(),
           recommendation: z.string().optional(),
           partsUsed: z.string().optional(),
+          partsUsedDetails: z.array(z.object({
+            name: z.string(),
+            quantity: z.number(),
+            pricePerUnit: z.number(),
+          })).optional(),
           cost: z.number().optional(),
           hoursAtService: z.number().optional(),
           // Rich completion fields

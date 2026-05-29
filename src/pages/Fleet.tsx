@@ -146,6 +146,7 @@ const HISTORY_TABLE_TODAY_TIMESTAMP_KEY = "nextos-fleet-history-table-today-time
 const PROTECTED_EQUIPMENT_NAME = "Excavator CAT 320";
 const DEFAULT_SERVICE_TYPE = "PMS (Preventative Maintenance)";
 const SERVICE_INTERVAL_TOAST_MILESTONES_KEY = "nextos-fleet-service-interval-toast-milestones";
+const pmsToastSessionId = Math.random().toString(36).slice(2);
 
 function readCachedGps001TotalHoursMs(): number {
   if (typeof window === "undefined") return 0;
@@ -832,7 +833,6 @@ export default function Fleet() {
 
   // Unique ID for this page load — resets on every full reload, preventing stale localStorage milestones
   // from blocking the toast when the same threshold is crossed again after editing seed data.
-  const [pmsToastSessionId] = useState<string>(() => Math.random().toString(36).slice(2));
 
   // Modal states
   const [addEquipmentOpen, setAddEquipmentOpen] = useState(false);

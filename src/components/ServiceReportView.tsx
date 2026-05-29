@@ -99,6 +99,10 @@ export function ServiceReportView({ record, equipment, client, photos }: Service
   const hasFindings = !!record.findings?.trim();
   const hasWorkDone = !!record.workDone?.trim();
   const hasRecommendation = !!record.recommendation?.trim();
+  const hasPartsUsed = !!(
+    (record.partsUsedDetails && record.partsUsedDetails.length > 0) ||
+    (record.partsUsed && record.partsUsed !== "None" && record.partsUsed.trim())
+  );
   const hasSafety = !!record.safetyChecklist;
   const hasBeforePhoto = !!beforePhotoUrl;
   const hasAfterPhoto = !!afterPhotoUrl;
@@ -106,7 +110,7 @@ export function ServiceReportView({ record, equipment, client, photos }: Service
   const hasTechSig = !!record.techSignature;
   const hasClientSig = !!record.clientSignature;
   const hasSignatures = hasTechSig || hasClientSig;
-  const hasSummary = hasFindings || hasWorkDone || hasRecommendation;
+  const hasSummary = hasFindings || hasWorkDone || hasRecommendation || hasPartsUsed;
 
   const completedDateDisplay = record.completedDate
     ? new Date(record.completedDate).toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" })
@@ -223,7 +227,7 @@ export function ServiceReportView({ record, equipment, client, photos }: Service
             )}
             {finalCost !== null && (
               <div className="flex justify-between text-xs border-t border-gray-100 pt-1.5">
-                <span className="text-gray-400 font-semibold">Service Cost</span>
+                <span className="text-gray-400 font-semibold">Total Cost</span>
                 <span className="text-gray-900 font-black font-mono-tech">
                   ₱{Number(finalCost).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </span>
@@ -364,6 +368,32 @@ export function ServiceReportView({ record, equipment, client, photos }: Service
                 <div className="p-4">
                   <div className="text-[10px] text-[#66B2B2] font-black uppercase tracking-widest mb-2">Technical Work Performed</div>
                   <p className="text-xs text-gray-800 leading-relaxed">{record.workDone}</p>
+                </div>
+              )}
+              {hasPartsUsed && (
+                <div className="p-4">
+                  <div className="text-[10px] text-[#66B2B2] font-black uppercase tracking-widest mb-2">Parts Used &amp; Cost</div>
+                  {record.partsUsedDetails && record.partsUsedDetails.length > 0 ? (
+                    <>
+                      {record.partsUsedDetails.map((part, i) => (
+                        <div key={i} className="flex items-center justify-between text-xs border-t border-gray-100 pt-1.5 mt-1.5">
+                          <span className="text-gray-700 font-semibold flex-1 min-w-0 truncate">{part.name}</span>
+                          <span className="text-gray-400 mx-3 shrink-0">x{part.quantity}</span>
+                          <span className="text-gray-900 font-black font-mono-tech shrink-0">
+                            ₱{(part.quantity * part.pricePerUnit).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                      ))}
+                      <div className="flex justify-between items-center text-xs border-t border-gray-200 pt-1.5 mt-2">
+                        <span className="text-gray-400 font-semibold">Total Cost</span>
+                        <span className="text-gray-900 font-black font-mono-tech">
+                          ₱{record.partsUsedDetails.reduce((sum, p) => sum + p.quantity * p.pricePerUnit, 0).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                    </>
+                  ) : (
+                    <p className="text-xs text-gray-800 leading-relaxed">{record.partsUsed}</p>
+                  )}
                 </div>
               )}
               {hasRecommendation && (

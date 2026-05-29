@@ -26,6 +26,7 @@ export interface DraftExecution {
     inventoryItemId: number;
     quantity: number;
     name: string;
+    pricePerUnit: number;
   }[];
   recommendations?: string;
   techSignature?: string;
