@@ -50,14 +50,11 @@
   }
 
   .data-card {
-    @apply bg-white border border-gray-200 rounded-lg shadow-sm;
+    @apply bg-white dark:bg-[#1A1A20] border border-gray-200 dark:border-white/10 rounded-lg shadow-sm;
   }
 
   .void-glass {
-    background: rgba(255, 255, 255, 0.95);
-    backdrop-filter: blur(12px) saturate(150%);
-    border: 1px solid rgba(102, 178, 178, 0.2);
-    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06), 0 0 0 1px rgba(102, 178, 178, 0.08);
+    @apply bg-white/95 dark:bg-[#050505]/80 backdrop-blur-md saturate-[150%] border border-[#66B2B2]/20 dark:border-white/10 shadow-lg;
   }
 
   .grid-table-row:nth-child(even) {
@@ -127,7 +124,7 @@
 }
 
 .leaflet-container {
-  background: #F3F4F6 !important;
+  background: #F3F4F6;
 }
 
 ::-webkit-scrollbar {

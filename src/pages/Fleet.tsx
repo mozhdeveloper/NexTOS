@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useTheme } from "next-themes";
 import type { Client } from "@/types";
 import { MapContainer, TileLayer, Marker, Popup, Circle, useMap } from "react-leaflet";
 import { useFleetStore } from "@/stores/useFleetStore";
@@ -779,6 +780,7 @@ function buildDefaultEquipmentFromSeed(): ModalEquipment[] {
 
 export default function Fleet() {
   useAuthStore();
+  const { resolvedTheme } = useTheme();
   const { units, selectedUnitId, selectUnit, startLiveTracking, stopLiveTracking } = useFleetStore();
   const { equipment } = useOperationsStore();
   const { clients } = useCRMStore();
@@ -833,6 +835,12 @@ export default function Fleet() {
   const addSeedEquipmentMutation = trpc.seedEquipment.add.useMutation();
   const updateSeedEquipmentMutation = trpc.seedEquipment.update.useMutation();
   const deleteSeedEquipmentMutation = trpc.seedEquipment.delete.useMutation();
+
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const selectedUnit = units.find((u) => u.id === selectedUnitId);
   const selectedEquipment = equipment.find((e) => e.id === selectedUnit?.equipmentId);
@@ -2042,7 +2050,7 @@ export default function Fleet() {
                 onClick={() => setViewMode("gps")}
                 className={`px-3 py-1.5 text-xs font-semibold rounded transition-colors ${
                   viewMode === "gps"
-                    ? "bg-[#F2A900] text-[#050505]"
+                    ? "bg-[#66B2B2] text-white"
                     : "text-[#EAEAEA] hover:bg-white/10"
                 }`}
               >
@@ -2053,7 +2061,7 @@ export default function Fleet() {
                 onClick={() => setViewMode("history")}
                 className={`px-3 py-1.5 text-xs font-semibold rounded transition-colors ${
                   viewMode === "history"
-                    ? "bg-[#F2A900] text-[#050505]"
+                    ? "bg-[#66B2B2] text-white"
                     : "text-[#EAEAEA] hover:bg-white/10"
                 }`}
               >
@@ -2080,102 +2088,113 @@ export default function Fleet() {
 
           {viewMode === "gps" ? (
             <>
-              <MapContainer
-                center={mapCenter}
-                zoom={13}
-                style={{ height: "100%", width: "100%", background: "#1A1A20" }}
-                zoomControl={false}
-              >
-                <TileLayer
-                  attribution='&copy; <a href="https://carto.com/">CARTO</a>'
-                  url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-                />
-                <MapCenter center={mapCenter} />
-                {units.filter((unit) => {
-                  const hasCoordinates = typeof unit.telemetry.lat === "number" && typeof unit.telemetry.lng === "number";
-                  if (!hasCoordinates) return false;
-                  if (isGps001Unit(unit) && hideGps001Pin) return false;
-                  return true;
-                }).map((unit) => {
-                  const eq = equipment.find((entry) => entry.id === unit.equipmentId);
-                  const unitLabelText = eq?.unitId || unit.unitName || "";
-                  const seedDisplay = getSeedDisplayForUnit(unitLabelText);
-
-                  return (
-                    <Marker
-                      key={unit.id}
-                      position={[unit.telemetry.lat, unit.telemetry.lng]}
-                      icon={statusIcon(getEffectiveStatus(unit.id, unit.telemetry.status))}
-                      eventHandlers={{
-                        click: () => {
-                          selectUnit(unit.id);
-                          setSelectedAddedEquipmentId(null);
-                        },
-                      }}
-                    >
-                      <Popup className="dark-popup">
-                        <div className="bg-[#121214] p-2 min-w-[180px]">
-                          <div className="text-xs font-bold text-[#EAEAEA] mb-1">{unit.unitName}</div>
-                          <div className="text-[10px] text-[#88888C] space-y-0.5">
-                            <div>Status: <span className={statusTextClass(getEffectiveStatus(unit.id, unit.telemetry.status))}>{getEffectiveStatus(unit.id, unit.telemetry.status)}</span></div>
-                            {seedDisplay?.equipmentType && <div>Type: {seedDisplay.equipmentType}</div>}
-                            <div>Speed: {unit.telemetry.speed} mph</div>
-                            <div>Hours: {formatHoursMinutes(unit.telemetry)}</div>
-                          </div>
-                        </div>
-                      </Popup>
-                    </Marker>
-                  );
-                })}
-                {/* Pulse effect for selected unit */}
-                {/* Simulated equipment markers */}
-                {addedEquipment
-                  .filter((eq) => typeof eq.lat === "number" && typeof eq.lng === "number")
-                  .map((eq) => {
-                    const addedSeedEntry = eq.id.startsWith("seed-")
-                      ? seedData.equipment.find((entry) => `seed-${entry.id}` === eq.id) ?? null
-                      : null;
-                    const addedServiceStatus = computeServiceStatusFromAddedEntry(eq, addedSeedEntry);
+              {mounted && (
+                <MapContainer
+                  center={mapCenter}
+                  zoom={13}
+                  style={{
+                    height: "100%",
+                    width: "100%",
+                    background: resolvedTheme === "dark" ? "#1A1A20" : "#F3F4F6",
+                  }}
+                  zoomControl={false}
+                >
+                  <TileLayer
+                    key={resolvedTheme}
+                    attribution='&copy; <a href="https://carto.com/">CARTO</a>'
+                    url={
+                      resolvedTheme === "dark"
+                        ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+                        : "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
+                    }
+                  />
+                  <MapCenter center={mapCenter} />
+                  {units.filter((unit) => {
+                    const hasCoordinates = typeof unit.telemetry.lat === "number" && typeof unit.telemetry.lng === "number";
+                    if (!hasCoordinates) return false;
+                    if (isGps001Unit(unit) && hideGps001Pin) return false;
+                    return true;
+                  }).map((unit) => {
+                    const eq = equipment.find((entry) => entry.id === unit.equipmentId);
+                    const unitLabelText = eq?.unitId || unit.unitName || "";
+                    const seedDisplay = getSeedDisplayForUnit(unitLabelText);
 
                     return (
                       <Marker
-                        key={`sim-${eq.id}`}
-                        position={[eq.lat!, eq.lng!]}
-                        icon={defaultIcon}
+                        key={unit.id}
+                        position={[unit.telemetry.lat, unit.telemetry.lng]}
+                        icon={statusIcon(getEffectiveStatus(unit.id, unit.telemetry.status))}
+                        eventHandlers={{
+                          click: () => {
+                            selectUnit(unit.id);
+                            setSelectedAddedEquipmentId(null);
+                          },
+                        }}
                       >
                         <Popup className="dark-popup">
                           <div className="bg-[#121214] p-2 min-w-[180px]">
-                            <div className="text-xs font-bold text-[#EAEAEA] mb-1">{eq.name}</div>
+                            <div className="text-xs font-bold text-[#EAEAEA] mb-1">{unit.unitName}</div>
                             <div className="text-[10px] text-[#88888C] space-y-0.5">
-                              {addedServiceStatus && (
-                                <div>
-                                  Status: <span className={serviceStatusTextClass(addedServiceStatus)}>{addedServiceStatus}</span>
-                                </div>
-                              )}
-                              {eq.type && <div>Type: {eq.type}</div>}
-                              <div>Hours: {(addedSeedEntry as any)?.hoursTotal ?? eq.hoursTotal}</div>
+                              <div>Status: <span className={statusTextClass(getEffectiveStatus(unit.id, unit.telemetry.status))}>{getEffectiveStatus(unit.id, unit.telemetry.status)}</span></div>
+                              {seedDisplay?.equipmentType && <div>Type: {seedDisplay.equipmentType}</div>}
+                              <div>Speed: {unit.telemetry.speed} mph</div>
+                              <div>Hours: {formatHoursMinutes(unit.telemetry)}</div>
                             </div>
                           </div>
                         </Popup>
                       </Marker>
                     );
                   })}
-                {selectedUnit &&
-                  typeof selectedUnit.telemetry.lat === "number" &&
-                  typeof selectedUnit.telemetry.lng === "number" &&
-                  !(isGps001Unit(selectedUnit) && hideGps001Pin) && (
-                  <Circle
-                    center={[selectedUnit.telemetry.lat, selectedUnit.telemetry.lng]}
-                    radius={500}
-                    pathOptions={{
-                      color: "#F2A900",
-                      fillColor: "#F2A900",
-                      fillOpacity: 0.1,
-                      weight: 1,
-                    }}
-                  />
-                )}
-              </MapContainer>
+                  {/* Pulse effect for selected unit */}
+                  {/* Simulated equipment markers */}
+                  {addedEquipment
+                    .filter((eq) => typeof eq.lat === "number" && typeof eq.lng === "number")
+                    .map((eq) => {
+                      const addedSeedEntry = eq.id.startsWith("seed-")
+                        ? seedData.equipment.find((entry) => `seed-${entry.id}` === eq.id) ?? null
+                        : null;
+                      const addedServiceStatus = computeServiceStatusFromAddedEntry(eq, addedSeedEntry);
+
+                      return (
+                        <Marker
+                          key={`sim-${eq.id}`}
+                          position={[eq.lat!, eq.lng!]}
+                          icon={defaultIcon}
+                        >
+                          <Popup className="dark-popup">
+                            <div className="bg-[#121214] p-2 min-w-[180px]">
+                              <div className="text-xs font-bold text-[#EAEAEA] mb-1">{eq.name}</div>
+                              <div className="text-[10px] text-[#88888C] space-y-0.5">
+                                {addedServiceStatus && (
+                                  <div>
+                                    Status: <span className={serviceStatusTextClass(addedServiceStatus)}>{addedServiceStatus}</span>
+                                  </div>
+                                )}
+                                {eq.type && <div>Type: {eq.type}</div>}
+                                <div>Hours: {(addedSeedEntry as any)?.hoursTotal ?? eq.hoursTotal}</div>
+                              </div>
+                            </div>
+                          </Popup>
+                        </Marker>
+                      );
+                    })}
+                  {selectedUnit &&
+                    typeof selectedUnit.telemetry.lat === "number" &&
+                    typeof selectedUnit.telemetry.lng === "number" &&
+                    !(isGps001Unit(selectedUnit) && hideGps001Pin) && (
+                    <Circle
+                      center={[selectedUnit.telemetry.lat, selectedUnit.telemetry.lng]}
+                      radius={500}
+                      pathOptions={{
+                        color: "#F2A900",
+                        fillColor: "#F2A900",
+                        fillOpacity: 0.1,
+                        weight: 1,
+                      }}
+                    />
+                  )}
+                </MapContainer>
+              )}
 
               {/* Telemetry overlay */}
               {selectedUnit && (
@@ -2224,8 +2243,8 @@ export default function Fleet() {
               )}
             </>
           ) : (
-            <div className="h-full overflow-auto p-4 pt-16 bg-[#121214]">
-              <div className="rounded border border-white/10 bg-[#1A1A20] p-3 mb-3">
+            <div className="h-full overflow-auto p-4 pt-16 bg-gray-50 dark:bg-[#121214]">
+              <div className="rounded border border-gray-200 dark:border-white/10 bg-white dark:bg-[#1A1A20] p-3 mb-3">
                 <div className="flex items-center justify-between mb-3">
                   <button
                     type="button"
@@ -2234,11 +2253,11 @@ export default function Fleet() {
                       setHistoryMonth(prevMonth);
                       setSelectedHistoryDate(prevMonth);
                     }}
-                    className="px-3 py-1.5 text-xs font-medium rounded border border-white/10 text-[#EAEAEA] hover:bg-white/10"
+                    className="px-3 py-1.5 text-xs font-medium rounded border border-gray-200 dark:border-white/10 text-gray-700 dark:text-[#EAEAEA] hover:bg-gray-50 dark:hover:bg-white/10"
                   >
                     Last Month
                   </button>
-                  <div className="text-sm font-semibold text-[#F2A900]">
+                  <div className="text-sm font-semibold text-black">
                     {historyMonth.toLocaleDateString(undefined, { month: "long", year: "numeric" })}
                   </div>
                   <button
@@ -2248,13 +2267,13 @@ export default function Fleet() {
                       setHistoryMonth(nextMonth);
                       setSelectedHistoryDate(nextMonth);
                     }}
-                    className="px-3 py-1.5 text-xs font-medium rounded border border-white/10 text-[#EAEAEA] hover:bg-white/10"
+                    className="px-3 py-1.5 text-xs font-medium rounded border border-gray-200 dark:border-white/10 text-gray-700 dark:text-[#EAEAEA] hover:bg-gray-50 dark:hover:bg-white/10"
                   >
                     Next Month
                   </button>
                 </div>
 
-                <div className="grid grid-cols-7 gap-1 text-center text-[10px] text-[#88888C] mb-1">
+                <div className="grid grid-cols-7 gap-1 text-center text-[10px] text-gray-500 dark:text-[#88888C] mb-1">
                   {[
                     "Sun",
                     "Mon",
@@ -2293,10 +2312,10 @@ export default function Fleet() {
                         onClick={() => setSelectedHistoryDate(dateValue)}
                         className={`h-8 rounded text-xs border transition-colors flex flex-col items-center justify-center gap-0.5 ${
                           isSelected
-                            ? "bg-[#F2A900] border-[#F2A900] text-[#050505] font-semibold"
+                            ? "bg-[#66B2B2] border-[#66B2B2] text-[#050505] font-semibold"
                             : isToday
                             ? "border-[#10B981] text-[#10B981]"
-                            : "border-white/10 text-[#EAEAEA] hover:bg-white/10"
+                            : "border-gray-200 dark:border-white/10 text-gray-700 dark:text-[#EAEAEA] hover:bg-gray-50 dark:hover:bg-white/10"
                         }`}
                       >
                         <span>{dateValue.getDate()}</span>
@@ -2307,9 +2326,9 @@ export default function Fleet() {
                 </div>
               </div>
 
-              <div className="rounded border border-white/10 bg-[#1A1A20] overflow-auto">
+              <div className="rounded border border-gray-200 dark:border-white/10 bg-white dark:bg-[#1A1A20] overflow-auto">
                 <table className="min-w-full text-[11px]">
-                  <thead className="bg-[#050505]/70 text-[#F2A900]">
+                  <thead className="bg-gray-100 dark:bg-[#050505]/70 text-black">
                     <tr>
                       <th className="px-3 py-2 text-left font-semibold">ID</th>
                       <th className="px-3 py-2 text-left font-semibold">Mileage</th>
@@ -2326,7 +2345,7 @@ export default function Fleet() {
                   <tbody>
                     {historyLoading && (
                       <tr>
-                        <td colSpan={10} className="px-3 py-6 text-center text-[#88888C]">
+                        <td colSpan={10} className="px-3 py-6 text-center text-gray-500 dark:text-[#88888C]">
                           Loading history data...
                         </td>
                       </tr>
@@ -2339,7 +2358,7 @@ export default function Fleet() {
                       </tr>
                     )}
                     {!historyLoading && !historyError && historyRows.map((row, index) => (
-                      <tr key={`${row.id}-${index}`} className="border-t border-white/5 text-[#EAEAEA]">
+                      <tr key={`${row.id}-${index}`} className="border-t border-gray-100 dark:border-white/5 text-gray-900 dark:text-[#EAEAEA]">
                         <td className="px-3 py-2">{row.id}</td>
                         <td className="px-3 py-2">{row.mileage}</td>
                         <td className="px-3 py-2">{row.maxSpeed}</td>
@@ -2349,18 +2368,18 @@ export default function Fleet() {
                         <td className="px-3 py-2">{row.working}</td>
                         <td className="px-3 py-2">{row.idle}</td>
                         <td className="px-3 py-2">
-                          <div>{row.startAddress}</div>
-                          <div className="text-[#88888C]">{row.startTime}</div>
+                          <div className="font-medium">{row.startAddress}</div>
+                          <div className="text-gray-500 dark:text-[#88888C]">{row.startTime}</div>
                         </td>
                         <td className="px-3 py-2">
-                          <div>{row.endAddress}</div>
-                          <div className="text-[#88888C]">{row.endTime}</div>
+                          <div className="font-medium">{row.endAddress}</div>
+                          <div className="text-gray-500 dark:text-[#88888C]">{row.endTime}</div>
                         </td>
                       </tr>
                     ))}
                     {!historyLoading && !historyError && historyRows.length === 0 && (
                       <tr>
-                        <td colSpan={10} className="px-3 py-6 text-center text-[#88888C]">
+                        <td colSpan={10} className="px-3 py-6 text-center text-gray-500 dark:text-[#88888C]">
                           No data for {toYmd(selectedHistoryDate)}
                         </td>
                       </tr>
@@ -2372,33 +2391,32 @@ export default function Fleet() {
           )}
         </div>
 
-        {/* Asset List Sidebar */}
         <div className="w-[280px] data-card flex h-full min-h-0 flex-col overflow-hidden">
-          <div className="p-3 border-b border-white/5">
+          <div className="p-3 border-b border-gray-100 dark:border-white/5">
             <div className="flex items-center justify-between gap-2">
-              <h3 className="text-sm font-semibold text-gray-900">Fleet Units</h3>
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-[#EAEAEA]">Fleet Units</h3>
               <span className="text-[10px] text-[#88888C]">{sidebarDateWithPrefix}</span>
             </div>
             <p className="text-[10px] text-[#88888C]">{seedData.equipment.length} units tracked</p>
           </div>
 
           {/* Action Buttons */}
-          <div className="p-3 border-b border-white/5 flex gap-2">
+          <div className="p-3 border-b border-gray-100 dark:border-white/5 flex gap-2">
             <Button
               onClick={() => {
                 setEditingEquipment(null);
                 setAddEquipmentOpen(true);
               }}
-              className="flex-1 bg-[#F2A900] text-[#050505] hover:bg-[#F2A900]/90 font-semibold text-xs h-8"
+              className="flex-1 bg-[#66B2B2] text-white hover:bg-[#F2A900]/90 font-semibold text-xs h-8"
             >
               <Plus className="w-3.5 h-3.5 mr-1" />
               Add Equipment
             </Button>
           </div>
 
-          <div className="flex flex-1 min-h-0 flex-col overflow-y-auto overscroll-contain divide-y divide-white/5">
+          <div className="flex flex-1 min-h-0 flex-col overflow-y-auto overscroll-contain divide-y divide-gray-100 dark:divide-white/5">
 
-            <div className="divide-y divide-white/5">
+            <div className="divide-y divide-gray-100 dark:divide-white/5">
                 {sortedUnits.map((unit) => {
                 const eq = equipment.find((e) => e.id === unit.equipmentId);
                 const client = clients.find((c) => c.id === eq?.clientId);
@@ -2494,11 +2512,11 @@ export default function Fleet() {
                       setSelectedAddedEquipmentId(null);
                     }}
                     className={`w-full p-3 text-left transition-colors ${
-                      isSelected ? "bg-[#F2A900]/10" : "hover:bg-white/5"
+                      isSelected ? "bg-[#F2A900]/10" : "hover:bg-gray-100 dark:hover:bg-white/5"
                     }`}
                   >
                     <div className="flex items-start gap-3">
-                      <div className="h-11 w-11 shrink-0 overflow-hidden rounded-md border border-white/10 bg-[#121214]">
+                      <div className="h-11 w-11 shrink-0 overflow-hidden rounded-md border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-[#121214]">
                         {seedEntryImage ? (
                           <img
                             src={seedEntryImage}
@@ -2506,7 +2524,7 @@ export default function Fleet() {
                             className="h-full w-full object-cover"
                           />
                         ) : (
-                          <div className="flex h-full w-full items-center justify-center text-[#6B7280]">
+                          <div className="flex h-full w-full items-center justify-center text-gray-400 dark:text-[#6B7280]">
                             <Wrench className="h-4 w-4" />
                           </div>
                         )}
@@ -2544,7 +2562,7 @@ export default function Fleet() {
                                 }
                               }}
                             />
-                            <span className="truncate text-xs font-medium text-gray-900">{displayHeader}</span>
+                            <span className="truncate text-xs font-medium text-gray-900 dark:text-[#EAEAEA]">{displayHeader}</span>
                           </div>
                           <div className="relative" onClick={(e) => e.stopPropagation()}>
                         <button
@@ -2555,15 +2573,15 @@ export default function Fleet() {
                             const menuId = `unit-${unit.id}`;
                             setOpenCardMenuId((prev) => (prev === menuId ? null : menuId));
                           }}
-                          className="flex h-6 w-6 items-center justify-center rounded text-[#88888C] hover:bg-white/10 hover:text-[#EAEAEA] transition-colors"
+                          className="flex h-6 w-6 items-center justify-center rounded text-[#88888C] hover:bg-gray-200 dark:hover:bg-white/10 hover:text-gray-900 dark:hover:text-[#EAEAEA] transition-colors"
                         >
                           <MoreVertical className="w-3.5 h-3.5" />
                         </button>
                         {openCardMenuId === `unit-${unit.id}` && (
-                          <div className="absolute right-0 top-7 z-50 min-w-[120px] rounded border border-white/10 bg-[#1A1A20] py-1 shadow-lg">
+                          <div className="absolute right-0 top-7 z-50 min-w-[120px] rounded border border-gray-200 dark:border-white/10 bg-white dark:bg-[#1A1A20] py-1 shadow-lg">
                             <button
                               type="button"
-                              className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-[#EAEAEA] hover:bg-white/10 transition-colors"
+                              className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-gray-700 dark:text-[#EAEAEA] hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
                               onClick={() => {
                                 setOpenCardMenuId(null);
                                 const eqEntry = equipment.find((e) => e.id === unit.equipmentId);
@@ -2678,11 +2696,11 @@ export default function Fleet() {
                       }
                     }}
                     className={`w-full p-3 text-left transition-colors ${
-                      isSelectedAddedEquipment ? "bg-[#F2A900]/10" : "hover:bg-white/5"
+                      isSelectedAddedEquipment ? "bg-[#F2A900]/10" : "hover:bg-gray-100 dark:hover:bg-white/5"
                     }`}
                   >
                     <div className="flex items-start gap-3">
-                      <div className="h-11 w-11 shrink-0 overflow-hidden rounded-md border border-white/10 bg-[#121214]">
+                      <div className="h-11 w-11 shrink-0 overflow-hidden rounded-md border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-[#121214]">
                         {eq.image ? (
                           <img
                             src={eq.image}
@@ -2690,7 +2708,7 @@ export default function Fleet() {
                             className="h-full w-full object-cover"
                           />
                         ) : (
-                          <div className="flex h-full w-full items-center justify-center text-[#6B7280]">
+                          <div className="flex h-full w-full items-center justify-center text-gray-400 dark:text-[#6B7280]">
                             <Wrench className="h-4 w-4" />
                           </div>
                         )}
@@ -2705,7 +2723,7 @@ export default function Fleet() {
                                   : "bg-[#F2A900]"
                               }`}
                             />
-                            <span className="truncate text-xs font-medium text-[#EAEAEA]">{eq.name}</span>
+                            <span className="truncate text-xs font-medium text-gray-900 dark:text-[#EAEAEA]">{eq.name}</span>
                           </div>
                           <div className="relative" onClick={(e) => e.stopPropagation()}>
                         <button
@@ -2716,15 +2734,15 @@ export default function Fleet() {
                             const menuId = `added-${eq.id}`;
                             setOpenCardMenuId((prev) => (prev === menuId ? null : menuId));
                           }}
-                          className="flex h-6 w-6 items-center justify-center rounded text-[#88888C] hover:bg-white/10 hover:text-[#EAEAEA] transition-colors"
+                          className="flex h-6 w-6 items-center justify-center rounded text-[#88888C] hover:bg-gray-200 dark:hover:bg-white/10 hover:text-gray-900 dark:hover:text-[#EAEAEA] transition-colors"
                         >
                           <MoreVertical className="w-3.5 h-3.5" />
                         </button>
                         {openCardMenuId === `added-${eq.id}` && (
-                          <div className="absolute right-0 top-7 z-50 min-w-[120px] rounded border border-white/10 bg-[#1A1A20] py-1 shadow-lg">
+                          <div className="absolute right-0 top-7 z-50 min-w-[120px] rounded border border-gray-200 dark:border-white/10 bg-white dark:bg-[#1A1A20] py-1 shadow-lg">
                             <button
                               type="button"
-                              className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-[#EAEAEA] hover:bg-white/10 transition-colors"
+                              className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-gray-700 dark:text-[#EAEAEA] hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
                               onClick={() => {
                                 setOpenCardMenuId(null);
                                 setEditingEquipment(eq);
@@ -2802,15 +2820,15 @@ export default function Fleet() {
           }
         }}
       >
-        <AlertDialogContent className="bg-[#1A1A20] border border-white/10 text-[#EAEAEA]">
+        <AlertDialogContent className="bg-white dark:bg-[#1A1A20] border border-gray-200 dark:border-white/10 text-gray-900 dark:text-[#EAEAEA]">
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-[#EAEAEA]">Delete Equipment</AlertDialogTitle>
-            <AlertDialogDescription className="text-[#88888C]">
+            <AlertDialogTitle className="text-gray-900 dark:text-[#EAEAEA]">Delete Equipment</AlertDialogTitle>
+            <AlertDialogDescription className="text-gray-500 dark:text-[#88888C]">
               This action is permanent and cannot be undone. Are you sure you want to delete this equipment entry?
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className="border-white/10 text-[#EAEAEA] hover:bg-white/10">
+            <AlertDialogCancel className="border-gray-200 dark:border-white/10 text-gray-700 dark:text-[#EAEAEA] hover:bg-gray-50 dark:hover:bg-white/10">
               Cancel
             </AlertDialogCancel>
             <AlertDialogAction
