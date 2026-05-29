@@ -87,7 +87,7 @@ const METRICS_OVERRIDES_KEY = "nextos-metrics-overrides-v1";
 const PM_INTERVAL_UNITS = ["Hours", "KM", "Weeks", "Months", "Years"] as const;
 
 const serviceTypeOptions = [
-  { value: "Heavy Equipment PMS", label: "Heavy Equipment PMS" },
+  { value: "PMS (Preventative Maintenance)", label: "PMS (Preventative Maintenance)" },
   { value: "Calibration PMS", label: "Calibration PMS" },
   { value: "Repair", label: "General Repair" },
   { value: "Inspection", label: "Standard Inspection" },
@@ -121,10 +121,23 @@ function getPmsMetricValue(seedEq: any, unit: string, gps001CacheMs: number, gps
   const raw = seedEq?.days;
   const d = typeof raw === "number" ? raw : parseFloat(String(raw ?? ""));
   if (!Number.isFinite(d) || d < 0) return "—";
-  if (u === "weeks") return `${(d / 7).toFixed(1)} wk`;
-  if (u === "months") return `${(d / 30.44).toFixed(1)} mo`;
-  if (u === "years") return `${(d / 365.25).toFixed(2)} yr`;
+  if (u === "weeks") return `${(d / 7).toFixed(1)} wk (${Math.round(d)}d)`;
+  if (u === "months") return `${(d / 30.44).toFixed(1)} mo (${Math.round(d)}d)`;
+  if (u === "years") return `${(d / 365.25).toFixed(2)} yr (${Math.round(d)}d)`;
   return "—";
+}
+
+function formatServiceInterval(interval: number, unit: string): string {
+  const u = unit.toLowerCase();
+  if (u === "hours") return `${interval}h`;
+  if (u === "km") return `${interval} km`;
+  const totalDays = Math.round(
+    u === "weeks" ? interval * 7 :
+    u === "months" ? interval * 30.44 :
+    u === "years" ? interval * 365.25 : 0
+  );
+  const abbr = u === "weeks" ? "w" : u === "months" ? "mo" : "yr";
+  return `${interval}${abbr} (${totalDays}d)`;
 }
 
 function mapPmsServiceCategory(serviceType?: string, equipmentType?: string): string {
@@ -201,7 +214,6 @@ export default function Services() {
   const [executionTask, setExecutionTask] = useState<ServiceRecord | null>(null);
   const [confirmTask, setConfirmTask] = useState<ServiceRecord | null>(null);
   const [showReport, setShowReport] = useState<(ServiceRecord & Record<string, any>) | null>(null);
-
   // Form state (for Manual Log)
   const [formClientId, setFormClientId] = useState("");
   const [formEquipmentId, setFormEquipmentId] = useState("");
@@ -731,10 +743,13 @@ export default function Services() {
     return null;
   };
 
-  // Format gps001CacheMs to a readable hours string for display.
+  // Format EQ-001 GPS hours for display, applying the service-reset offset so "0h 0m" is shown
+  // immediately after a PMS reset (offset = GPS ms at reset time; effective = GPS ms - offset).
   const formatGps001Hours = (): string => {
     if (!gps001CacheMs || gps001CacheMs <= 0) return "—";
-    const totalMin = Math.floor(gps001CacheMs / (1000 * 60));
+    const effectiveMs = Math.max(0, gps001CacheMs - gps001HoursOffsetMs);
+    if (effectiveMs <= 0) return "0h 0m";
+    const totalMin = Math.floor(effectiveMs / (1000 * 60));
     return `${Math.floor(totalMin / 60)}h ${totalMin % 60}m`;
   };
 
@@ -1035,18 +1050,14 @@ export default function Services() {
     const intervalUnit = scheduleIntervalUnit as "Hours" | "KM" | "Weeks" | "Months" | "Years";
     const numericCost = Number(scheduleEstimatedCost) || 0;
 
-    // Duplicate check — same equipment + same interval + unit + service type
-    const isDuplicate = allScheduledMaintenance.some(
+    // Unit-uniqueness check — each equipment may only have one config per interval unit
+    const unitTaken = allScheduledMaintenance.some(
       (e) =>
         e.equipmentId === scheduleEquipmentId &&
-        e.serviceInterval === numericInterval &&
-        e.serviceIntervalUnit.toLowerCase() === intervalUnit.toLowerCase() &&
-        e.serviceType.toLowerCase() === serviceTypeLabel.toLowerCase()
+        e.serviceIntervalUnit.toLowerCase() === intervalUnit.toLowerCase()
     );
-    if (isDuplicate) {
-      toast.error(
-        "A schedule with the same interval, unit, and service type already exists for this equipment."
-      );
+    if (unitTaken) {
+      toast.error(`This equipment already has a ${intervalUnit} schedule. Delete the existing one first to add a new one.`);
       return;
     }
 
@@ -1113,9 +1124,9 @@ export default function Services() {
     setEditEquipmentId(entry.equipmentId);
     // entry.serviceType may be stored as a label ("Installation") or a value ("installation") —
     // find the matching option by value first, then by label, so the Select pre-selects correctly.
-    const matchingOption = serviceTypeOptions.find(
-      (opt) => opt.value === entry.serviceType || opt.label === entry.serviceType
-    );
+    const matchingOption =
+      serviceTypeOptions.find((opt) => opt.value === entry.serviceType || opt.label === entry.serviceType) ??
+      (entry.serviceType === "Heavy Equipment PMS" ? serviceTypeOptions[0] : undefined);
     setEditServiceType(matchingOption?.value ?? entry.serviceType);
     setEditInterval(String(entry.serviceInterval));
     setEditIntervalUnit(entry.serviceIntervalUnit);
@@ -1154,6 +1165,18 @@ export default function Services() {
       serviceTypeOptions.find((opt) => opt.value === editServiceType)?.label ?? editServiceType;
     const numericInterval = Number(editInterval);
     const intervalUnit = editIntervalUnit as "Hours" | "KM" | "Weeks" | "Months" | "Years";
+
+    // Unit-uniqueness check — exclude the entry being edited (it owns its own unit)
+    const unitTakenByOther = allScheduledMaintenance.some(
+      (e) =>
+        e.equipmentId === editEquipmentId &&
+        e.id !== editingEntry.id &&
+        e.serviceIntervalUnit.toLowerCase() === intervalUnit.toLowerCase()
+    );
+    if (unitTakenByOther) {
+      toast.error(`This equipment already has a ${intervalUnit} schedule. Change or delete that entry first.`);
+      return;
+    }
 
     // All entries now have scheduleIndex (even index 0) — always use updatePmsConfigurationMutation
     try {
@@ -1296,11 +1319,11 @@ export default function Services() {
                   ? getPmsMetricValue(pmsSeedEq, metricUnit, gps001CacheMs, gps001HoursOffsetMs)
                   : `${eq?.currentHours || 0}h`;
                 const serviceIntervalDisplay = (isPmsTask && pmsCfg)
-                  ? `${pmsCfg.serviceInterval} ${pmsCfg.serviceIntervalUnit}`
+                  ? formatServiceInterval(pmsCfg.serviceInterval, pmsCfg.serviceIntervalUnit)
                   : null;
 
                 return (
-                  <div key={task.id} className="data-card p-4 flex flex-col justify-between hover:border-[#66B2B2]/40 transition-all cursor-pointer group" onClick={() => draftExecutions[task.id]?.travelStartTime ? setExecutionTask(task) : setConfirmTask(task)}>
+                  <div key={task.id} className="data-card p-4 flex flex-col justify-between hover:border-[#66B2B2]/40 transition-all cursor-pointer group" onClick={() => draftExecutions[task.id]?.travelStartTime ? setExecutionTask(task) : draftExecutions[task.id]?.travelStartTime ? setExecutionTask(task) : setConfirmTask(task)}>
                      <div>
                         <div className="flex items-center justify-between mb-2">
                           {task.status === 'scheduled' && !isDraft ? (
@@ -1462,6 +1485,15 @@ export default function Services() {
                             }
                           }}
                         >
+                          <td className="py-3 px-3">
+                            <div className="h-11 w-11 shrink-0 overflow-hidden rounded-md border bg-gray-100 flex items-center justify-center">
+                              {seedEq.image ? (
+                                <img src={seedEq.image} alt={seedEq.name ?? ""} className="h-full w-full object-cover" />
+                              ) : (
+                                <Wrench className="w-4 h-4 text-gray-400" />
+                              )}
+                            </div>
+                          </td>
                           <td className="py-3 px-3">
                             <div className="h-11 w-11 shrink-0 overflow-hidden rounded-md border bg-gray-100 flex items-center justify-center">
                               {seedEq.image ? (
@@ -1689,6 +1721,7 @@ export default function Services() {
                 size="sm"
                 onClick={() => setScheduleModalOpen(true)}
                 className="h-8 bg-[#66B2B2] text-white hover:bg-[#F2A900]/90 font-semibold text-xs"
+                className="h-8 bg-[#66B2B2] text-black hover:bg-[#66B2B2]/90 font-semibold text-xs"
               >
                 <Plus className="w-3.5 h-3.5 mr-1.5" />
                 Schedule Service
@@ -1780,7 +1813,17 @@ export default function Services() {
                   )}
                   <div className="space-y-1.5">
                     <Label className="text-sm text-black font-medium">Equipment</Label>
-                    <Select value={scheduleEquipmentId} onValueChange={(v) => { setScheduleEquipmentId(v); setScheduleMissingFields((p) => p.filter((f) => f !== "equipment")); }}>
+                    <Select value={scheduleEquipmentId} onValueChange={(v) => {
+                      setScheduleEquipmentId(v);
+                      setScheduleMissingFields((p) => p.filter((f) => f !== "equipment"));
+                      const taken = new Set(
+                        allScheduledMaintenance
+                          .filter((e) => e.equipmentId === v)
+                          .map((e) => e.serviceIntervalUnit.toLowerCase())
+                      );
+                      const firstAvailable = PM_INTERVAL_UNITS.find((u) => !taken.has(u.toLowerCase()));
+                      if (firstAvailable) setScheduleIntervalUnit(firstAvailable);
+                    }}>
                       <SelectTrigger className={`w-full bg-white text-black ${scheduleMissingFields.includes("equipment") ? "border-[#EF4444]" : "border-gray-200"}`}><SelectValue placeholder="Select equipment" /></SelectTrigger>
                       <SelectContent className="bg-white border-gray-200">
                         {liveEquipment.map((eq) => <SelectItem key={eq.id} value={eq.id}>{eq.name}</SelectItem>)}
@@ -1805,7 +1848,20 @@ export default function Services() {
                       <Label className="text-sm text-black font-medium">Unit</Label>
                       <Select value={scheduleIntervalUnit} onValueChange={setScheduleIntervalUnit}>
                         <SelectTrigger className="w-full bg-white border-gray-200 text-black"><SelectValue /></SelectTrigger>
-                        <SelectContent className="bg-white border-gray-200">{PM_INTERVAL_UNITS.map((u) => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
+                        <SelectContent className="bg-white border-gray-200">
+                          {(() => {
+                            const takenUnitsForAdd = new Set(
+                              allScheduledMaintenance
+                                .filter((e) => e.equipmentId === scheduleEquipmentId)
+                                .map((e) => e.serviceIntervalUnit.toLowerCase())
+                            );
+                            return PM_INTERVAL_UNITS.map((u) => (
+                              <SelectItem key={u} value={u} disabled={takenUnitsForAdd.has(u.toLowerCase())}>
+                                {u}
+                              </SelectItem>
+                            ));
+                          })()}
+                        </SelectContent>
                       </Select>
                     </div>
                   </div>
@@ -1816,7 +1872,7 @@ export default function Services() {
                 </div>
                 <div className="flex justify-end gap-2 pt-2">
                   <Button variant="outline" onClick={() => { resetScheduleModal(); setScheduleModalOpen(false); }} className="border-gray-200 text-gray-600 hover:bg-gray-50" disabled={addPmsConfigurationMutation.isPending}>Cancel</Button>
-                  <Button onClick={handleScheduleSubmit} className="bg-[#F2A900] text-black hover:bg-[#F2A900]/90 font-semibold" disabled={addPmsConfigurationMutation.isPending}>{addPmsConfigurationMutation.isPending ? "Saving…" : "Schedule →"}</Button>
+                  <Button onClick={handleScheduleSubmit} className="bg-[#66B2B2] text-black hover:bg-[#66B2B2]/90 font-semibold" disabled={addPmsConfigurationMutation.isPending}>{addPmsConfigurationMutation.isPending ? "Saving…" : "Schedule →"}</Button>
                 </div>
               </DialogContent>
             </Dialog>
@@ -1860,7 +1916,20 @@ export default function Services() {
                       <Label className="text-sm text-black font-medium">Unit</Label>
                       <Select value={editIntervalUnit} onValueChange={setEditIntervalUnit}>
                         <SelectTrigger className="w-full bg-white border-gray-200 text-black"><SelectValue /></SelectTrigger>
-                        <SelectContent className="bg-white border-gray-200">{PM_INTERVAL_UNITS.map((u) => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
+                        <SelectContent className="bg-white border-gray-200">
+                          {(() => {
+                            const takenUnitsForEdit = new Set(
+                              allScheduledMaintenance
+                                .filter((e) => e.equipmentId === editEquipmentId && e.id !== editingEntry?.id)
+                                .map((e) => e.serviceIntervalUnit.toLowerCase())
+                            );
+                            return PM_INTERVAL_UNITS.map((u) => (
+                              <SelectItem key={u} value={u} disabled={takenUnitsForEdit.has(u.toLowerCase())}>
+                                {u}
+                              </SelectItem>
+                            ));
+                          })()}
+                        </SelectContent>
                       </Select>
                     </div>
                   </div>
@@ -1898,8 +1967,6 @@ export default function Services() {
                     <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider whitespace-nowrap">Serial Number</th>
                     <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider whitespace-nowrap">Equipment Type</th>
                     <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider whitespace-nowrap">Service Type</th>
-                    <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider whitespace-nowrap">Service Interval</th>
-                    <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider whitespace-nowrap">Metric at Service</th>
                     <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider whitespace-nowrap">Cost</th>
                     <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider whitespace-nowrap">Technician</th>
                     <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider whitespace-nowrap">Completed Date</th>
@@ -1941,12 +2008,6 @@ export default function Services() {
                     const rowSerial = r.serialNumber || seedEqRow?.serialNumber || storeEq?.serialNumber || "—";
                     const rowEqType = r.equipmentType || seedEqRow?.equipmentType || "—";
                     const rowSvcType = r.serviceType || seedPmsCfg?.serviceType || record.serviceCategory || "—";
-                    const rowInterval = (r.serviceInterval && r.serviceIntervalUnit)
-                      ? `${r.serviceInterval} ${r.serviceIntervalUnit}`
-                      : seedPmsCfg
-                        ? `${seedPmsCfg.serviceInterval} ${seedPmsCfg.serviceIntervalUnit}`
-                        : "—";
-                    const rowMetric = r.metricAtService || "—";
                     const recordCost = r.finalCost ?? record.cost ?? 0;
                     const rowCost = recordCost > 0
                       ? `₱${Number(recordCost).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -1959,8 +2020,6 @@ export default function Services() {
                         <td className="py-3 px-3 text-gray-500 font-mono-tech whitespace-nowrap">{rowSerial}</td>
                         <td className="py-3 px-3 text-gray-600 whitespace-nowrap">{rowEqType}</td>
                         <td className="py-3 px-3 text-gray-700 whitespace-nowrap">{rowSvcType}</td>
-                        <td className="py-3 px-3 text-gray-500 font-mono-tech whitespace-nowrap">{rowInterval}</td>
-                        <td className="py-3 px-3 text-[#66B2B2] font-bold font-mono-tech whitespace-nowrap">{rowMetric}</td>
                         <td className="py-3 px-3 text-gray-700 font-mono-tech whitespace-nowrap">{rowCost}</td>
                         <td className="py-3 px-3 text-gray-700 whitespace-nowrap">{record.technician}</td>
                         <td className="py-3 px-3 text-gray-500 font-mono-tech whitespace-nowrap">
@@ -2446,6 +2505,7 @@ export default function Services() {
           </div>
         </DialogContent>
       </Dialog>
+
     </div>
   );
 }
@@ -2522,56 +2582,23 @@ function PreServiceConfirmModal({
 
   return (
     <>
-      <style>{`
-        @keyframes nextos-drive {
-          0%   { transform: translateX(-80px); opacity: 0; }
-          8%   { opacity: 1; }
-          88%  { opacity: 1; }
-          100% { transform: translateX(420px); opacity: 0; }
-        }
-        .nextos-car-drive { animation: nextos-drive 2.6s cubic-bezier(0.4,0,0.2,1) forwards; }
-        @keyframes nextos-road-scroll {
-          0%   { transform: translateX(0); }
-          100% { transform: translateX(-50%); }
-        }
-        .nextos-road-scroll { animation: nextos-road-scroll 0.6s linear infinite; }
-      `}</style>
-
       <Dialog open={!!task} onOpenChange={(open) => { if (!open && !isAnimating) onCancel(); }}>
         <DialogContent className="max-w-md bg-white border-gray-200 rounded-2xl shadow-2xl p-0 overflow-hidden">
           {isAnimating ? (
             /* ── Car Animation Screen ── */
-            <div className="p-8 space-y-6 text-center">
+            <div className="p-6 space-y-4 text-center">
+              <div className="rounded-2xl overflow-hidden">
+                <video
+                  src="/05f1ab3a-2610-4b4c-ae2e-45cbcb01e443.mp4"
+                  autoPlay
+                  muted
+                  playsInline
+                  className="w-full block"
+                />
+              </div>
               <div>
                 <p className="text-base font-bold text-gray-800 mb-1">On your way! 🎯</p>
                 <p className="text-xs text-gray-500">Travel started — opening service checklist…</p>
-              </div>
-
-              {/* Road scene */}
-              <div className="relative h-24 bg-gradient-to-b from-sky-100 to-sky-50 rounded-2xl overflow-hidden border border-sky-100 flex items-end">
-                {/* Ground */}
-                <div className="absolute bottom-0 left-0 right-0 h-10 bg-gray-200" />
-                {/* Road lane dashes */}
-                <div className="absolute bottom-4 left-0 flex nextos-road-scroll" style={{ width: "200%" }}>
-                  {[...Array(16)].map((_, i) => (
-                    <div key={i} className="h-1.5 w-8 bg-white rounded-full mx-3 shrink-0 opacity-70" />
-                  ))}
-                </div>
-                {/* Car */}
-                <div className="nextos-car-drive absolute bottom-3 left-0 text-4xl select-none">🚗</div>
-                {/* Sun */}
-                <div className="absolute top-3 right-6 text-xl select-none">☀️</div>
-              </div>
-
-              {/* Loading dots */}
-              <div className="flex gap-1.5 justify-center">
-                {[0, 1, 2].map((i) => (
-                  <div
-                    key={i}
-                    className="w-2 h-2 bg-[#66B2B2] rounded-full animate-bounce"
-                    style={{ animationDelay: `${i * 0.18}s` }}
-                  />
-                ))}
               </div>
             </div>
           ) : (
@@ -2848,7 +2875,7 @@ function ExecutionModal({
             const isEq001Task = meta._seedEqId === "EQ-001";
             // Use snapshotted unit so a config change doesn't affect the reset decision either.
             const pmsUnit = (snapshotIntervalUnit ?? "").toLowerCase();
-            const isHoursOrKmTask = pmsUnit === "hours" || pmsUnit === "km";
+            const isHoursOrKmTask = pmsUnit === "hours" || pmsUnit === "km" || pmsUnit === "weeks" || pmsUnit === "months" || pmsUnit === "years";
             const hasPmsConfig = !!pmsCfg || (snapshotInterval !== undefined && snapshotIntervalUnit !== undefined);
             const shouldResetMetrics =
                 meta._src === "pms" &&
@@ -2864,8 +2891,20 @@ function ExecutionModal({
                 const _unit = snapshotIntervalUnit.toLowerCase();
                 let _usage: number | null = null;
                 if (_unit === "hours") {
-                    const _m = String(seedEq.hoursTotal ?? "").match(/(\d+)\s*h\s*(\d+)\s*m/i);
-                    if (_m) _usage = Number(_m[1]) + Number(_m[2]) / 60;
+                    if (seedEq?.id === "EQ-001") {
+                        // EQ-001 hours live in GPS localStorage, not seedEq.hoursTotal.
+                        // Apply the same offset used everywhere else so the snapshot reflects
+                        // hours-since-last-service, not raw GPS lifetime hours.
+                        let _rawMs = 0;
+                        let _offsetMs = 0;
+                        try { _rawMs = Number(window.localStorage.getItem("nextos-gps001-total-hours-ms") ?? "0") || 0; } catch {}
+                        try { _offsetMs = Number(window.localStorage.getItem(GPS001_HOURS_OFFSET_KEY) ?? "0") || 0; } catch {}
+                        const _effectiveMs = Math.max(0, _rawMs - _offsetMs);
+                        _usage = _effectiveMs / (1000 * 60 * 60);
+                    } else {
+                        const _m = String(seedEq.hoursTotal ?? "").match(/(\d+)\s*h\s*(\d+)\s*m/i);
+                        if (_m) _usage = Number(_m[1]) + Number(_m[2]) / 60;
+                    }
                 } else if (_unit === "km") {
                     const _raw = seedEq.kmTotal;
                     const _p = typeof _raw === "number" ? _raw : parseFloat(String(_raw ?? "").replace(/[^\d.]/g, ""));

@@ -9,6 +9,19 @@ interface ServiceReportViewProps {
   photos: ServicePhoto[];
 }
 
+function formatServiceInterval(interval: number, unit: string): string {
+  const u = unit.toLowerCase();
+  if (u === "hours") return `${interval}h`;
+  if (u === "km") return `${interval} km`;
+  const totalDays = Math.round(
+    u === "weeks" ? interval * 7 :
+    u === "months" ? interval * 30.44 :
+    u === "years" ? interval * 365.25 : 0
+  );
+  const abbr = u === "weeks" ? "w" : u === "months" ? "mo" : "yr";
+  return `${interval}${abbr} (${totalDays}d)`;
+}
+
 // Format an ISO timestamp to a clean time string: "11:14 AM"
 function formatTime(iso: string | null | undefined): string | null {
   if (!iso) return null;
@@ -101,7 +114,7 @@ export function ServiceReportView({ record, equipment, client, photos }: Service
 
   const serviceIntervalDisplay =
     record.serviceInterval && record.serviceIntervalUnit
-      ? `${record.serviceInterval} ${record.serviceIntervalUnit}`
+      ? formatServiceInterval(Number(record.serviceInterval), record.serviceIntervalUnit)
       : null;
 
   return (
