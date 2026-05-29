@@ -769,7 +769,7 @@ function buildDefaultEquipmentFromSeed(): ModalEquipment[] {
 export default function Fleet() {
   useAuthStore();
   const { units, selectedUnitId, selectUnit, startLiveTracking, stopLiveTracking } = useFleetStore();
-  const { equipment } = useOperationsStore();
+  const { equipment, pruneStaleEquipment } = useOperationsStore();
   const { clients } = useCRMStore();
   const [mapCenter, setMapCenter] = useState<[number, number]>([41.4036, 2.1741]);
   const [viewMode, setViewMode] = useState<FleetViewMode>("gps");
@@ -1048,6 +1048,7 @@ export default function Fleet() {
   ];
 
   useEffect(() => {
+    pruneStaleEquipment();
     startLiveTracking();
     return () => stopLiveTracking();
   }, []);
