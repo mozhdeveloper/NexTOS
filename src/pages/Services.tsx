@@ -208,6 +208,13 @@ export default function Services() {
   const [formType, setFormType] = useState<string>("Heavy Equipment PMS");
   const [formTechnician, setFormTechnician] = useState(user?.name || "");
   const [formDescription, setFormDescription] = useState("");
+  const [formFindings, setFormFindings] = useState("");
+  const [formWorkDone, setFormWorkDone] = useState("");
+  const [formRecommendation, setFormRecommendation] = useState("");
+  const [formBeforePhoto, setFormBeforePhoto] = useState<string | null>(null);
+  const [formAfterPhoto, setFormAfterPhoto] = useState<string | null>(null);
+  const [formTechSign, setFormTechSign] = useState("");
+  const [formClientSign, setFormClientSign] = useState("");
 
   // Scheduled maintenance state
   const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
@@ -1363,7 +1370,7 @@ export default function Services() {
               </div>
               <Button
                 onClick={startScanning}
-                className="bg-[#10B981] text-white hover:bg-[#10B981]/90 font-bold h-8 text-xs"
+                className="bg-[#66B2B2] text-white hover:bg-[#10B981]/90 font-bold h-8 text-xs"
               >
                 <Camera className="w-3.5 h-3.5 mr-1.5" />
                 Scan QR
@@ -1681,7 +1688,7 @@ export default function Services() {
               <Button
                 size="sm"
                 onClick={() => setScheduleModalOpen(true)}
-                className="h-8 bg-[#F2A900] text-black hover:bg-[#F2A900]/90 font-semibold text-xs"
+                className="h-8 bg-[#66B2B2] text-white hover:bg-[#F2A900]/90 font-semibold text-xs"
               >
                 <Plus className="w-3.5 h-3.5 mr-1.5" />
                 Schedule Service
@@ -1998,127 +2005,309 @@ export default function Services() {
 
         {/* Manual Log Tab */}
         {activeTab === "new" && (
-          <div className="max-w-4xl space-y-4 animate-in fade-in duration-300">
-            <div className="data-card p-6 space-y-6 bg-white shadow-sm border border-gray-200 rounded-xl">
-              <div className="flex items-center gap-3 mb-2">
-                 <div className="w-10 h-10 rounded-full bg-[#66B2B2]/10 flex items-center justify-center">
-                    <PenTool className="w-5 h-5 text-[#66B2B2]" />
+          <div className="max-w-4xl mx-auto space-y-6 animate-in fade-in duration-300 pb-10">
+            <div className="data-card p-8 space-y-8 bg-white shadow-xl border border-gray-200 rounded-2xl">
+              {/* Header */}
+              <div className="flex items-center gap-4 mb-2">
+                 <div className="w-12 h-12 rounded-2xl bg-[#66B2B2]/10 flex items-center justify-center shadow-inner">
+                    <PenTool className="w-6 h-6 text-[#66B2B2]" />
                  </div>
                  <div>
-                    <h3 className="text-lg font-bold text-gray-900">Manual Service Entry</h3>
-                    <p className="text-xs text-gray-500">Record ad-hoc repairs and inspections directly</p>
+                    <h3 className="text-xl font-black text-gray-900 tracking-tight">Manual Service Documentation</h3>
+                    <p className="text-sm text-gray-500 font-medium">Generate a comprehensive service report for ad-hoc maintenance.</p>
                  </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-6 pt-4 border-t border-gray-50">
-                <div className="space-y-4">
-                  <div>
-                    <label className="text-[10px] text-gray-500 uppercase font-bold mb-1.5 block tracking-wider">Client Company</label>
-                    <Select value={formClientId} onValueChange={(v) => { setFormClientId(v); setFormEquipmentId(""); }}>
-                      <SelectTrigger className="h-11 bg-white border-gray-200 text-gray-900 focus:ring-[#66B2B2]/30">
-                        <SelectValue placeholder="Select client..." />
-                      </SelectTrigger>
-                      <SelectContent className="bg-white border-gray-200 z-50">
-                        {clients.length > 0 ? clients.map(c => (
-                          <SelectItem key={c.id} value={c.id.toString()} className="text-gray-900">{c.companyName}</SelectItem>
-                        )) : <div className="p-2 text-xs text-gray-400">No clients found</div>}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-gray-500 uppercase font-bold mb-1.5 block tracking-wider">Equipment Unit</label>
-                    <Select value={formEquipmentId} onValueChange={setFormEquipmentId} disabled={!formClientId}>
-                      <SelectTrigger className="h-11 bg-white border-gray-200 text-gray-900 focus:ring-[#66B2B2]/30 disabled:bg-gray-50">
-                        <SelectValue placeholder={formClientId ? "Select unit ID..." : "Select client first"} />
-                      </SelectTrigger>
-                      <SelectContent className="bg-white border-gray-200 z-50">
-                        {equipment.filter(e => e.clientId === parseInt(formClientId)).map(e => (
-                          <SelectItem key={e.id} value={e.id.toString()} className="text-gray-900">{e.unitId} — {e.manufacturer} {e.model}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+              {/* Step 1: Core Info */}
+              <div className="space-y-6">
+                <div className="flex items-center gap-2 border-b border-gray-100 pb-2">
+                   <Package className="w-4 h-4 text-[#66B2B2]" />
+                   <span className="text-xs font-black uppercase tracking-widest text-gray-400">Asset & Assignment</span>
                 </div>
-
-                <div className="space-y-4">
-                  <div>
-                    <label className="text-[10px] text-gray-500 uppercase font-bold mb-1.5 block tracking-wider">Service Category</label>
-                    <Select value={formType} onValueChange={setFormType}>
-                      <SelectTrigger className="h-11 bg-white border-gray-200 text-gray-900 focus:ring-[#66B2B2]/30">
-                        <SelectValue placeholder="Select type..." />
-                      </SelectTrigger>
-                      <SelectContent className="bg-white border-gray-200 z-50">
-                        <SelectItem value="Heavy Equipment PMS" className="text-gray-900">Heavy Equipment PMS</SelectItem>
-                        <SelectItem value="Calibration PMS" className="text-gray-900">Calibration PMS</SelectItem>
-                        <SelectItem value="Repair" className="text-gray-900">General Repair</SelectItem>
-                        <SelectItem value="Inspection" className="text-gray-900">Standard Inspection</SelectItem>
-                        <SelectItem value="Installation" className="text-gray-900">New Installation</SelectItem>
-                      </SelectContent>
-                    </Select>
+                <div className="grid grid-cols-2 gap-6">
+                  <div className="space-y-4">
+                    <div>
+                      <label className="text-[10px] text-gray-500 uppercase font-black mb-1.5 block tracking-widest">Client Company</label>
+                      <Select value={formClientId} onValueChange={(v) => { setFormClientId(v); setFormEquipmentId(""); }}>
+                        <SelectTrigger className="h-12 bg-gray-50 border-gray-100 text-gray-900 focus:ring-[#66B2B2]/30 rounded-xl font-bold">
+                          <SelectValue placeholder="Select client..." />
+                        </SelectTrigger>
+                        <SelectContent className="bg-white border-gray-200 z-50">
+                          {clients.length > 0 ? clients.map(c => (
+                            <SelectItem key={c.id} value={c.id.toString()} className="text-gray-900">{c.companyName}</SelectItem>
+                          )) : <div className="p-2 text-xs text-gray-400">No clients found</div>}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-gray-500 uppercase font-black mb-1.5 block tracking-widest">Equipment Unit</label>
+                      <Select value={formEquipmentId} onValueChange={setFormEquipmentId} disabled={!formClientId}>
+                        <SelectTrigger className="h-12 bg-gray-50 border-gray-100 text-gray-900 focus:ring-[#66B2B2]/30 disabled:bg-gray-50 rounded-xl font-bold">
+                          <SelectValue placeholder={formClientId ? "Select unit ID..." : "Select client first"} />
+                        </SelectTrigger>
+                        <SelectContent className="bg-white border-gray-200 z-50">
+                          {equipment.filter(e => e.clientId === parseInt(formClientId)).map(e => (
+                            <SelectItem key={e.id} value={e.id.toString()} className="text-gray-900 font-mono-tech">{e.unitId} — {e.manufacturer} {e.model}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
-                  <div>
-                    <label className="text-[10px] text-gray-500 uppercase font-bold mb-1.5 block tracking-wider">Performing Technician</label>
-                    <Input value={formTechnician} onChange={(e) => setFormTechnician(e.target.value)} className="h-11 bg-white border-gray-200 text-gray-900 focus:ring-[#66B2B2]/30" />
+
+                  <div className="space-y-4">
+                    <div>
+                      <label className="text-[10px] text-gray-500 uppercase font-black mb-1.5 block tracking-widest">Service Category</label>
+                      <Select value={formType} onValueChange={setFormType}>
+                        <SelectTrigger className="h-12 bg-gray-50 border-gray-100 text-gray-900 focus:ring-[#66B2B2]/30 rounded-xl font-bold">
+                          <SelectValue placeholder="Select type..." />
+                        </SelectTrigger>
+                        <SelectContent className="bg-white border-gray-200 z-50">
+                          <SelectItem value="Heavy Equipment PMS" className="text-gray-900">Heavy Equipment PMS</SelectItem>
+                          <SelectItem value="Calibration PMS" className="text-gray-900">Calibration PMS</SelectItem>
+                          <SelectItem value="Repair" className="text-gray-900">General Repair</SelectItem>
+                          <SelectItem value="Inspection" className="text-gray-900">Standard Inspection</SelectItem>
+                          <SelectItem value="Installation" className="text-gray-900">New Installation</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-gray-500 uppercase font-black mb-1.5 block tracking-widest">Performing Technician</label>
+                      <Input value={formTechnician} onChange={(e) => setFormTechnician(e.target.value)} className="h-12 bg-gray-50 border-gray-100 text-gray-900 focus:ring-[#66B2B2]/30 rounded-xl font-bold" />
+                    </div>
                   </div>
                 </div>
               </div>
 
-              <div className="space-y-4">
-                 <div>
-                    <label className="text-[10px] text-gray-500 uppercase font-bold mb-1.5 block tracking-wider">Work Description & Notes</label>
-                    <textarea 
-                      className="w-full p-4 rounded-xl border border-gray-200 text-sm text-gray-900 focus:border-[#66B2B2] focus:ring-2 focus:ring-[#66B2B2]/10 outline-none transition-all resize-none" 
-                      rows={5}
-                      value={formDescription}
-                      onChange={(e) => setFormDescription(e.target.value)}
-                      placeholder="Detail the work performed, findings, and any parts replaced..."
+              {/* Step 2: Visual Evidence */}
+              <div className="space-y-6">
+                 <div className="flex items-center gap-2 border-b border-gray-100 pb-2">
+                    <Camera className="w-4 h-4 text-[#66B2B2]" />
+                    <span className="text-xs font-black uppercase tracking-widest text-gray-400">Visual Evidence Documentation</span>
+                 </div>
+                 <div className="grid grid-cols-2 gap-6">
+                    <div className="space-y-3">
+                       <label className="text-[10px] text-gray-500 uppercase font-black block tracking-widest ml-1">Pre-Service State (Before)</label>
+                       <div className="relative aspect-video rounded-2xl bg-gray-50 border-2 border-dashed border-gray-200 overflow-hidden group hover:border-[#66B2B2]/50 transition-colors">
+                          {formBeforePhoto ? (
+                             <>
+                                <img src={formBeforePhoto} className="w-full h-full object-cover" alt="Before" />
+                                <button onClick={() => setFormBeforePhoto(null)} className="absolute top-2 right-2 bg-red-500 p-1.5 rounded-full text-white shadow-xl opacity-0 group-hover:opacity-100 transition-opacity">
+                                   <X className="w-4 h-4" />
+                                </button>
+                             </>
+                          ) : (
+                             <label className="absolute inset-0 flex flex-col items-center justify-center cursor-pointer hover:bg-[#66B2B2]/5 transition-colors">
+                                <Upload className="w-8 h-8 text-gray-300 mb-2" />
+                                <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Upload Photo</span>
+                                <input type="file" accept="image/*" className="hidden" onChange={(e) => {
+                                   const file = e.target.files?.[0];
+                                   if (file) {
+                                      const reader = new FileReader();
+                                      reader.onload = (ev) => setFormBeforePhoto(ev.target?.result as string);
+                                      reader.readAsDataURL(file);
+                                   }
+                                }} />
+                             </label>
+                          )}
+                       </div>
+                    </div>
+                    <div className="space-y-3">
+                       <label className="text-[10px] text-gray-500 uppercase font-black block tracking-widest ml-1">Post-Service State (After)</label>
+                       <div className="relative aspect-video rounded-2xl bg-gray-50 border-2 border-dashed border-gray-200 overflow-hidden group hover:border-[#66B2B2]/50 transition-colors">
+                          {formAfterPhoto ? (
+                             <>
+                                <img src={formAfterPhoto} className="w-full h-full object-cover" alt="After" />
+                                <button onClick={() => setFormAfterPhoto(null)} className="absolute top-2 right-2 bg-red-500 p-1.5 rounded-full text-white shadow-xl opacity-0 group-hover:opacity-100 transition-opacity">
+                                   <X className="w-4 h-4" />
+                                </button>
+                             </>
+                          ) : (
+                             <label className="absolute inset-0 flex flex-col items-center justify-center cursor-pointer hover:bg-[#66B2B2]/5 transition-colors">
+                                <Upload className="w-8 h-8 text-gray-300 mb-2" />
+                                <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Upload Photo</span>
+                                <input type="file" accept="image/*" className="hidden" onChange={(e) => {
+                                   const file = e.target.files?.[0];
+                                   if (file) {
+                                      const reader = new FileReader();
+                                      reader.onload = (ev) => setFormAfterPhoto(ev.target?.result as string);
+                                      reader.readAsDataURL(file);
+                                   }
+                                }} />
+                             </label>
+                          )}
+                       </div>
+                    </div>
+                 </div>
+              </div>
+
+              {/* Step 3: Technical Details */}
+              <div className="space-y-6">
+                 <div className="flex items-center gap-2 border-b border-gray-100 pb-2">
+                    <FileText className="w-4 h-4 text-[#66B2B2]" />
+                    <span className="text-xs font-black uppercase tracking-widest text-gray-400">Technical Report Details</span>
+                 </div>
+                 <div className="grid gap-6">
+                    <div>
+                      <label className="text-[10px] text-gray-500 uppercase font-black mb-1.5 block tracking-widest ml-1">Initial Findings & Diagnosed Faults</label>
+                      <textarea 
+                        className="w-full p-4 rounded-xl border border-gray-200 text-sm text-gray-900 focus:border-[#66B2B2] focus:ring-2 focus:ring-[#66B2B2]/10 outline-none transition-all resize-none bg-gray-50/50" 
+                        rows={2}
+                        value={formFindings}
+                        onChange={(e) => setFormFindings(e.target.value)}
+                        placeholder="Detail any damage, leaks, or identified issues before work started..."
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-gray-500 uppercase font-black mb-1.5 block tracking-widest ml-1">Technical Work & Operations Performed</label>
+                      <textarea 
+                        className="w-full p-4 rounded-xl border border-gray-200 text-sm text-gray-900 focus:border-[#66B2B2] focus:ring-2 focus:ring-[#66B2B2]/10 outline-none transition-all resize-none bg-gray-50/50" 
+                        rows={3}
+                        value={formWorkDone}
+                        onChange={(e) => setFormWorkDone(e.target.value)}
+                        placeholder="Detail all repairs, parts replaced, adjustments, and testing performed..."
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-gray-500 uppercase font-black mb-1.5 block tracking-widest ml-1">Strategic Maintenance Recommendations</label>
+                      <textarea 
+                        className="w-full p-4 rounded-xl border border-gray-200 text-sm text-gray-900 focus:border-[#66B2B2] focus:ring-2 focus:ring-[#66B2B2]/10 outline-none transition-all resize-none bg-gray-50/50" 
+                        rows={2}
+                        value={formRecommendation}
+                        onChange={(e) => setFormRecommendation(e.target.value)}
+                        placeholder="Next suggested service, preventative actions, or pending parts..."
+                      />
+                    </div>
+                 </div>
+              </div>
+
+              {/* Step 4: Verification */}
+              <div className="space-y-6">
+                 <div className="flex items-center gap-2 border-b border-gray-100 pb-2">
+                    <UserCheck className="w-4 h-4 text-[#66B2B2]" />
+                    <span className="text-xs font-black uppercase tracking-widest text-gray-400">Digital Seal & Verification</span>
+                 </div>
+                 <div className="grid grid-cols-2 gap-8">
+                    <SignaturePad 
+                       label="Technician Verification"
+                       value={formTechSign}
+                       onChange={setFormTechSign}
+                       caption="Technician's digital seal of work completion."
+                    />
+                    <SignaturePad 
+                       label="Client Representative Acceptance"
+                       value={formClientSign}
+                       onChange={setFormClientSign}
+                       caption="Customer's acknowledgment of service delivery."
                     />
                  </div>
               </div>
 
-              <div className="bg-amber-50 border border-amber-100 p-4 rounded-xl flex gap-3">
-                 <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
-                    <AlertTriangle className="w-4 h-4 text-amber-600" />
+              <div className="bg-[#66B2B2]/5 border border-[#66B2B2]/20 p-5 rounded-2xl flex gap-4">
+                 <div className="w-10 h-10 rounded-xl bg-[#66B2B2]/10 flex items-center justify-center flex-shrink-0 shadow-sm border border-[#66B2B2]/20">
+                    <AlertTriangle className="w-5 h-5 text-[#66B2B2]" />
                  </div>
-                 <p className="text-[11px] text-amber-800 leading-relaxed">
-                   <strong>Technician Protocol:</strong> Manual logs are intended for recording work that was not pre-scheduled via automated triggers. Note that manual entries bypass the mandatory "Before/After" photo and digital signature verification flow. Use <strong>"My Tasks"</strong> for automated compliance jobs.
+                 <p className="text-[11px] text-gray-700 leading-relaxed font-medium">
+                   <strong className="text-gray-900">Legal Compliance Notice:</strong> By submitting this manual log, you certify that all technical work listed was performed to NexTOS safety standards and has been visually verified. This record will be permanently sealed into the asset's maintenance history and available for client review.
                  </p>
               </div>
 
               <Button 
-                className="w-full h-12 bg-[#66B2B2] text-white font-bold hover:bg-[#5A9E9E] rounded-xl shadow-lg shadow-[#66B2B2]/20 transition-all active:scale-[0.98]"
+                className="w-full h-14 bg-[#66B2B2] text-white font-black hover:bg-[#5A9E9E] rounded-2xl shadow-xl shadow-[#66B2B2]/20 transition-all active:scale-[0.98] text-base uppercase tracking-widest"
                 onClick={() => {
-                  if (!formClientId || !formEquipmentId || !formDescription) {
-                    toast.error("Required fields missing", { description: "Please ensure Client, Equipment and Description are filled." });
+                  if (!formClientId || !formEquipmentId || !formWorkDone) {
+                    toast.error("Required documentation missing", { description: "Please ensure Client, Equipment, and Technical Work sections are filled." });
                     return;
                   }
+                  if (!formTechSign || !formClientSign) {
+                     toast.error("Signatures Required", { description: "Both Technician and Client signatures must be captured." });
+                     return;
+                  }
+
+                  const recordId = 8_000_000 + Date.now() % 1_000_000;
+                  const completedDate = new Date().toISOString();
+                  const targetEq = equipment.find(e => e.id === parseInt(formEquipmentId));
+
                   addServiceRecord({
+                    id: recordId,
                     equipmentId: parseInt(formEquipmentId),
                     clientId: parseInt(formClientId),
                     technician: formTechnician,
                     serviceCategory: formType as any,
-                    description: formDescription,
-                    partsUsed: "",
+                    description: formWorkDone,
+                    partsUsed: "Manually Logged",
                     status: "completed",
-                    scheduledDate: new Date().toISOString(),
-                    completedDate: new Date().toISOString(),
+                    scheduledDate: completedDate,
+                    completedDate,
                     cost: 0,
-                    findings: "Manually Logged Entry",
-                    workDone: formDescription,
-                    recommendation: "Regular monitoring advised",
-                    hoursAtService: equipment.find(e => e.id === parseInt(formEquipmentId))?.currentHours || 0
+                    findings: formFindings || "Manually Logged Entry",
+                    workDone: formWorkDone,
+                    recommendation: formRecommendation || "Regular monitoring advised",
+                    hoursAtService: targetEq?.currentHours || 0,
+                    techSignature: formTechSign,
+                    clientSignature: formClientSign
                   });
-                  toast.success("Service Logged Successfully", { description: "Manual entry has been added to service history." });
+
+                  if (formBeforePhoto) {
+                     addServicePhoto({ serviceRecordId: recordId, type: "before", url: formBeforePhoto, caption: "Manual Log: Before" });
+                  }
+                  if (formAfterPhoto) {
+                     addServicePhoto({ serviceRecordId: recordId, type: "after", url: formAfterPhoto, caption: "Manual Log: After" });
+                  }
+
+                  // Persist to seed data
+                  try {
+                     const seedEq = liveEquipment.find(s => s.serialNumber === targetEq?.serialNumber);
+                     const seedClient = liveClients.find(c => c.id === parseInt(formClientId));
+                     
+                     upsertSeedServiceRecord.mutate({
+                        id: recordId,
+                        seedEquipmentId: seedEq?.id || "",
+                        equipmentId: parseInt(formEquipmentId),
+                        clientId: parseInt(formClientId),
+                        serviceCategory: formType,
+                        status: "completed",
+                        scheduledDate: completedDate,
+                        completedDate,
+                        technician: formTechnician,
+                        description: formWorkDone,
+                        findings: formFindings,
+                        workDone: formWorkDone,
+                        recommendation: formRecommendation,
+                        partsUsed: "Manually Logged",
+                        cost: 0,
+                        hoursAtService: targetEq?.currentHours || 0,
+                        // Rich fields for PDF/View
+                        equipmentName: seedEq?.name || targetEq?.unitId || "",
+                        clientName: seedClient?.companyName || "",
+                        equipmentType: seedEq?.equipmentType || "",
+                        serialNumber: targetEq?.serialNumber || "",
+                        serviceType: formType,
+                        beforePhoto: formBeforePhoto,
+                        afterPhoto: formAfterPhoto,
+                        techSignature: formTechSign,
+                        clientSignature: formClientSign,
+                        completionTime: completedDate
+                     });
+                  } catch (e) {}
+
+                  toast.success("Manual Report Sealed", { description: "Service record has been officially added to history." });
                   
                   // Reset form
                   setFormClientId("");
                   setFormEquipmentId("");
                   setFormDescription("");
+                  setFormFindings("");
+                  setFormWorkDone("");
+                  setFormRecommendation("");
+                  setFormBeforePhoto(null);
+                  setFormAfterPhoto(null);
+                  setFormTechSign("");
+                  setFormClientSign("");
                   setActiveTab("reports");
                 }}
               >
-                 <CheckCircle2 className="w-4 h-4 mr-2" />
-                 Complete & Save Manual Entry
+                 <CheckCircle2 className="w-5 h-5 mr-3" />
+                 Seal & Submit Service Report
               </Button>
             </div>
           </div>
