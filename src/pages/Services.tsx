@@ -1494,15 +1494,7 @@ export default function Services() {
                               )}
                             </div>
                           </td>
-                          <td className="py-3 px-3">
-                            <div className="h-11 w-11 shrink-0 overflow-hidden rounded-md border bg-gray-100 flex items-center justify-center">
-                              {seedEq.image ? (
-                                <img src={seedEq.image} alt={seedEq.name ?? ""} className="h-full w-full object-cover" />
-                              ) : (
-                                <Wrench className="w-4 h-4 text-gray-400" />
-                              )}
-                            </div>
-                          </td>
+                          
                           <td className="py-3 px-3 text-black font-medium">{seedEq.name ?? "—"}</td>
                           <td className="py-3 px-3 text-black">{seedClient?.companyName ?? "—"}</td>
                           <td className="py-3 px-3 text-gray-600 font-mono-tech">{seedEq.serialNumber ?? "—"}</td>
