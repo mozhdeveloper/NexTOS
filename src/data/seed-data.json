@@ -83,7 +83,7 @@
         {
             "id": "EQ-002",
             "name": "Boom Truck X500",
-            "clientId": "CL-002",
+            "clientId": "CL-002",   
             "equipmentType": "Heavy Equipment",
             "lat": 14.59986,
             "lng": 121.03679,

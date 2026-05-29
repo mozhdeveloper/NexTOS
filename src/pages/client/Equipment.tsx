@@ -1,6 +1,8 @@
 import React, { useState } from "react";
 import { useAuthStore } from "@/stores/useAuthStore";
 import { useOperationsStore } from "@/stores/useOperationsStore";
+import { useClientPortalStore } from "@/stores/useClientPortalStore";
+import seedData from "@/data/seed-data.json";
 import { 
   Package, 
   ChevronDown, 
@@ -163,7 +165,11 @@ function KPICard({ title, value, subtext, icon: Icon, colorClass, iconBgClass }:
 export default function ClientEquipment() {
   const { user } = useAuthStore();
   const { equipment, serviceRecords, servicePhotos } = useOperationsStore();
-  const clientId = user?.clientId || 1;
+  const { selectedCompanyId } = useClientPortalStore();
+  
+  // Map seedData company ID to numeric clientId
+  const selectedCompanyIndex = seedData.clients.findIndex(c => c.id === selectedCompanyId);
+  const clientId = selectedCompanyIndex !== -1 ? selectedCompanyIndex + 1 : (user?.clientId || 1);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [expanded, setExpanded] = useState<number | null>(null);

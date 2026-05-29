@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate, useLocation } from "react-router";
 import { useAuthStore } from "@/stores/useAuthStore";
 import { useCRMStore } from "@/stores/useCRMStore";
+import { useClientPortalStore } from "@/stores/useClientPortalStore";
 import type { UserRole } from "@/types";
 import {
   LayoutDashboard,
@@ -52,10 +53,10 @@ const navItems: NavItem[] = [
 export default function ClientPortalShell({ children }: { children: React.ReactNode }) {
   const { user, switchRole, logout } = useAuthStore();
   const { clients } = useCRMStore();
+  const { selectedCompanyId, setSelectedCompanyId } = useClientPortalStore();
   const navigate = useNavigate();
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(false);
-  const [selectedCompanyId, setSelectedCompanyId] = useState(seedData.clients[0]?.id ?? "");
 
   const selectedCompany = seedData.clients.find((c) => c.id === selectedCompanyId);
   const companyName = selectedCompany?.companyName ?? "Select Company";

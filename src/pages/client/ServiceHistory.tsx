@@ -1,6 +1,8 @@
 import { Fragment, useMemo, useState } from "react";
 import { useAuthStore } from "@/stores/useAuthStore";
 import { useOperationsStore } from "@/stores/useOperationsStore";
+import { useClientPortalStore } from "@/stores/useClientPortalStore";
+import seedData from "@/data/seed-data.json";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -153,7 +155,11 @@ function getNextServiceState(currentHours: number, nextServiceDue: number) {
 export default function ClientServiceHistory() {
   const { user } = useAuthStore();
   const { equipment, serviceRecords, servicePhotos } = useOperationsStore();
-  const clientId = user?.clientId || 1;
+  const { selectedCompanyId } = useClientPortalStore();
+  
+  // Map seedData company ID to numeric clientId
+  const selectedCompanyIndex = seedData.clients.findIndex(c => c.id === selectedCompanyId);
+  const clientId = selectedCompanyIndex !== -1 ? selectedCompanyIndex + 1 : (user?.clientId || 1);
 
   const [expanded, setExpanded] = useState<number | null>(null);
   const [search, setSearch] = useState("");

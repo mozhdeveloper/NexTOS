@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useInventoryStore } from "@/stores/useInventoryStore";
+import { AddPartModal } from "@/components/AddPartModal";
 import { 
   Box, 
   Search, 
@@ -11,8 +12,7 @@ import {
   ArrowRight,
   Package,
   ArrowUpCircle,
-  MoreVertical,
-  Edit2
+  MoreVertical
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,11 +31,12 @@ import {
 } from "@/components/ui/dialog";
 
 export default function Inventory() {
-  const { items, usageHistory, restockItem, addItem } = useInventoryStore();
+  const { items, restockItem, addItem } = useInventoryStore();
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [showRestock, setShowRestock] = useState<number | null>(null);
   const [restockQty, setPartQty] = useState(1);
+  const [showAddPart, setShowAddPart] = useState(false);
 
   const filteredItems = items.filter(item => {
     const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
@@ -67,7 +68,9 @@ export default function Inventory() {
               <History className="w-4 h-4 mr-2" />
               Usage History
            </Button>
-           <Button className="bg-[#66B2B2] text-white hover:bg-[#5A9E9E] h-10 px-4 font-bold shadow-lg shadow-[#66B2B2]/20">
+           <Button 
+              onClick={() => setShowAddPart(true)}
+              className="bg-[#66B2B2] text-white hover:bg-[#5A9E9E] h-10 px-4 font-bold shadow-lg shadow-[#66B2B2]/20">
               <Plus className="w-4 h-4 mr-2" />
               Add New Part
            </Button>
@@ -273,6 +276,13 @@ export default function Inventory() {
             )}
          </DialogContent>
       </Dialog>
+
+      {/* Add Part Modal */}
+      <AddPartModal 
+        open={showAddPart} 
+        onOpenChange={setShowAddPart}
+        onSubmitPart={addItem}
+      />
     </div>
   );
 }

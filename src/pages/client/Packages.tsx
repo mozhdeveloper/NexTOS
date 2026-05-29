@@ -2,6 +2,8 @@ import { useState } from "react";
 import { useAuthStore } from "@/stores/useAuthStore";
 import { useBillingStore } from "@/stores/useBillingStore";
 import { useOperationsStore } from "@/stores/useOperationsStore";
+import { useClientPortalStore } from "@/stores/useClientPortalStore";
+import seedData from "@/data/seed-data.json";
 import { Button } from "@/components/ui/button";
 import {
   CheckCircle2,
@@ -41,7 +43,11 @@ export default function ClientPackages() {
   const { user } = useAuthStore();
   const { packages, addInvoice } = useBillingStore();
   const { equipment, registerEquipmentToPackage } = useOperationsStore();
-  const clientId = user?.clientId || 1;
+  const { selectedCompanyId } = useClientPortalStore();
+  
+  // Map seedData company ID to numeric clientId
+  const selectedCompanyIndex = seedData.clients.findIndex(c => c.id === selectedCompanyId);
+  const clientId = selectedCompanyIndex !== -1 ? selectedCompanyIndex + 1 : (user?.clientId || 1);
 
   const clientPackages = packages.filter((pkg) => pkg.clientId === clientId);
   const activePackages = clientPackages.filter((pkg) => pkg.status === "active");

@@ -275,8 +275,8 @@ export interface InventoryItem {
   id: number;
   partNumber: string;
   name: string;
-  category: "Filter" | "Oil" | "Belt" | "Hardware" | "Electrical" | "Other";
-  unit: "Pcs" | "Liters" | "Kits" | "Meters";
+  category: "Filter" | "Oil" | "Belt" | "Hardware" | "Electrical" | "Other" | string;
+  unit: "Pcs" | "Liters" | "Kits" | "Meters" | string;
   stockLevel: number;
   minThreshold: number;
   pricePerUnit: number;

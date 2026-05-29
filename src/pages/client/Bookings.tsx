@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAuthStore } from "@/stores/useAuthStore";
 import { useOperationsStore } from "@/stores/useOperationsStore";
+import { useClientPortalStore } from "@/stores/useClientPortalStore";
+import seedData from "@/data/seed-data.json";
 import type { Booking, ServiceType } from "@/types";
 import {
   Calendar,
@@ -226,7 +228,11 @@ function formatDateRangeLabel(from: string, to: string): string {
 export default function ClientBookings() {
   const { user } = useAuthStore();
   const { bookings, equipment, addBooking, updateBooking } = useOperationsStore();
-  const clientId = user?.clientId || 1;
+  const { selectedCompanyId } = useClientPortalStore();
+  
+  // Map seedData company ID to numeric clientId
+  const selectedCompanyIndex = seedData.clients.findIndex(c => c.id === selectedCompanyId);
+  const clientId = selectedCompanyIndex !== -1 ? selectedCompanyIndex + 1 : (user?.clientId || 1);
 
   const clientEquipment = useMemo(() => equipment.filter((e) => e.clientId === clientId), [equipment, clientId]);
   const equipmentById = useMemo(() => new Map(clientEquipment.map((eq) => [eq.id, eq])), [clientEquipment]);

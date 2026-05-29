@@ -2,6 +2,8 @@ import { useMemo } from "react";
 import { useAuthStore } from "@/stores/useAuthStore";
 import { useOperationsStore } from "@/stores/useOperationsStore";
 import { useBillingStore } from "@/stores/useBillingStore";
+import { useClientPortalStore } from "@/stores/useClientPortalStore";
+import seedData from "@/data/seed-data.json";
 import {
   ResponsiveContainer,
   BarChart,
@@ -43,8 +45,11 @@ export default function ClientReports() {
   const { user } = useAuthStore();
   const { equipment, serviceRecords, bookings } = useOperationsStore();
   const { invoices, packages } = useBillingStore();
+  const { selectedCompanyId } = useClientPortalStore();
 
-  const clientId = user?.clientId || 1;
+  // Map seedData company ID to numeric clientId
+  const selectedCompanyIndex = seedData.clients.findIndex(c => c.id === selectedCompanyId);
+  const clientId = selectedCompanyIndex !== -1 ? selectedCompanyIndex + 1 : (user?.clientId || 1);
 
   const clientEquipment = equipment.filter((e) => e.clientId === clientId);
   const clientEquipmentIds = new Set(clientEquipment.map(e => e.id));
