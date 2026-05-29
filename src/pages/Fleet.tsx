@@ -703,34 +703,38 @@ function buildMockHistoryRow(id: string, name: string, date: Date, unitSeed: num
 }
 
 const unitIdToSeedEquipmentId: Record<string, string> = {
-  // GPS-001 — Excavator CAT 320 (EQ-001) — MetroBuild Construction Corp.
+  // GPS-001 — Excavator CAT 320 (EQ-001)
   "EXC-320": "EQ-001",
-  "EXC-CAT-20": "EQ-003",
   "KS199D-4G TRACKER": "EQ-001",
-  // GPS-002 — Boom Truck X500 (EQ-002) — Prime Infra Solutions
+  // GPS-002 — Boom Truck X500 (EQ-002)
   "TST-BEAM-02": "EQ-002",
-  // GPS-003 — Generator 500KVA (EQ-003) — GreenBuild Developers
+  // GPS-003 — Generator 500KVA (EQ-003)
   "GPS-003": "EQ-003",
-  // GPS-004 — Concrete Strength Tester (LAB-001) — Delta Testing Laboratories
+  // EQ-004 — Excavator / Kumatsu (EQ-004) — Resolved Conflict with EQ-003
+  "EXC-CAT-20": "EQ-004",
+  // GPS-004 — Concrete Strength Tester (LAB-001) — Consolidated GPS-007 & GPS-004
   "GPS-007": "LAB-001",
   "GPS-004": "LAB-001",
-  // GPS-005 — Steel Beam Tester (LAB-002) — MetroBuild Construction Corp.
+  // GPS-005 — Steel Beam Tester (LAB-002)
   "GPS-005": "LAB-002",
   "GPS-010": "LAB-002",
   "LAB-STS-01": "LAB-002",
-  // GPS-006 — Soil Compaction Machine (LAB-003) — Prime Infra Solutions
+  // GPS-006 — Soil Compaction Machine (LAB-003)
   "GPS-006": "LAB-003",
 };
 
 // Temporary GPS name mapping
 const gpsNameMapping: Record<string, string> = {
   "EXC-320": "GPS-001",
+  "KS199D-4G TRACKER": "GPS-001",
   "TST-BEAM-02": "GPS-002",
-  "EXC-CAT-20": "GPS-003",
-  "GPS-007": "GPS-004",
-  "GPS-010": "GPS-005",
   "GPS-003": "GPS-003",
+  "EXC-CAT-20": "GPS-001",
+  "GPS-007": "GPS-004",
   "GPS-004": "GPS-004",
+  "GPS-005": "GPS-005",
+  "GPS-010": "GPS-005",
+  "GPS-006": "GPS-006",
 };
 
 // Only the equipment IDs that are actually rendered as GPS tracker cards (GPS-001 and GPS-006).
