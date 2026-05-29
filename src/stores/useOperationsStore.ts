@@ -3,7 +3,6 @@ import { persist } from "zustand/middleware";
 import type { Equipment, ServiceRecord, ServicePhoto, Booking, ServiceCategory, Package } from "@/types";
 import { useBillingStore } from "./useBillingStore";
 import { toast } from "sonner";
-import seedData from "@/data/seed-data.json";
 
 export interface DraftExecution {
   currentStep: number;
@@ -146,34 +145,40 @@ const twoMonthsAgo = new Date(Date.now() - 60 * 86400000).toISOString();
 const nextWeek = new Date(Date.now() + 7 * 86400000).toISOString();
 const sixMonthsFromNow = new Date(Date.now() + 180 * 86400000).toISOString();
 
-const clientIdMap: Record<string, number> = {};
-seedData.clients.forEach((c, index) => {
-  clientIdMap[c.id] = index + 1;
-});
-
-const mockEquipment: Equipment[] = seedData.equipment.map((eq, index) => ({
-  id: index + 1,
-  clientId: clientIdMap[eq.clientId] || 1,
-  unitId: eq.id,
-  type: eq.name,
-  equipmentType: eq.equipmentType as any,
-  serialNumber: eq.serialNumber,
-  manufacturer: "Unknown",
-  model: "Generic",
-  installDate: lastMonth,
-  warrantyExpiry: nextWeek,
-  status: "active",
-  location: eq.location || "Main Site",
-  notes: "Seeded from seed-data.json",
-  currentHours: parseInt(eq.hoursTotal?.split("h")[0] || "0"),
-  lastPMSHours: 0,
-  pmsInterval: eq.pmsConfiguration?.serviceIntervalHours || 1000,
-  nextPMSHours: eq.pmsConfiguration?.serviceIntervalHours || 1000,
-  lastCalibrationDate: null,
-  calibrationFrequency: 12,
-  nextCalibrationDate: sixMonthsFromNow,
-  createdAt: lastMonth,
-}));
+const mockEquipment: Equipment[] = [
+  { 
+    id: 1, clientId: 1, unitId: "EXC-320", type: "Excavator", equipmentType: "Heavy Equipment", 
+    serialNumber: "CAT-320-001", manufacturer: "Caterpillar", model: "320 GC", installDate: twoMonthsAgo, 
+    warrantyExpiry: nextWeek, status: "active", location: "Denver Site A", notes: "Main excavator", 
+    currentHours: 4980, lastPMSHours: 4000, pmsInterval: 1000, nextPMSHours: 5000,
+    lastCalibrationDate: null, calibrationFrequency: 0, nextCalibrationDate: null,
+    createdAt: twoMonthsAgo 
+  },
+  { 
+    id: 2, clientId: 1, unitId: "LAB-STS-01", type: "Concrete Tester", equipmentType: "Lab Equipment", 
+    serialNumber: "SN-LAB-2024", manufacturer: "Controls Group", model: "Automax E", installDate: lastMonth, 
+    warrantyExpiry: nextWeek, status: "active", location: "Main Lab", notes: "Concrete strength tester", 
+    currentHours: 0, lastPMSHours: 0, pmsInterval: 0, nextPMSHours: 0,
+    lastCalibrationDate: lastMonth, calibrationFrequency: 12, nextCalibrationDate: sixMonthsFromNow,
+    createdAt: lastMonth 
+  },
+  { 
+    id: 3, clientId: 1, unitId: "TST-BEAM-02", type: "Beam Tester", equipmentType: "Testing Equipment", 
+    serialNumber: "SN-BEAM-500", manufacturer: "Tinius Olsen", model: "Super L", installDate: lastMonth, 
+    warrantyExpiry: nextWeek, status: "active", location: "Chicago Depot", notes: "Steel beam strength testing", 
+    currentHours: 0, lastPMSHours: 0, pmsInterval: 0, nextPMSHours: 0,
+    lastCalibrationDate: lastWeek, calibrationFrequency: 6, nextCalibrationDate: nextWeek,
+    createdAt: lastMonth 
+  },
+  { 
+    id: 4, clientId: 1, unitId: "EXC-CAT-20", type: "Excavator", equipmentType: "Heavy Equipment", 
+    serialNumber: "SN-CAT-20", manufacturer: "Caterpillar", model: "320D", installDate: twoMonthsAgo, 
+    warrantyExpiry: nextWeek, status: "active", location: "Site B", notes: "Near service unit", 
+    currentHours: 5150, lastPMSHours: 4200, pmsInterval: 1000, nextPMSHours: 5200,
+    lastCalibrationDate: null, calibrationFrequency: 0, nextCalibrationDate: null,
+    createdAt: twoMonthsAgo 
+  },
+];
 
 const mockServiceRecords: ServiceRecord[] = [
   { 
@@ -290,11 +295,6 @@ export const useOperationsStore = create<OperationsState>()(
               }
             }
 
-            // BRIDGE LOGIC: Sync completion back to booking
-            if (record.bookingId) {
-              setTimeout(() => get().updateBooking(record.bookingId!, { status: "completed" }), 0);
-            }
-
             if (!record.invoiceId) {
               const invoiceNumber = `INV-${Date.now().toString().slice(-4)}`;
               useBillingStore.getState()._addInvoice({
@@ -325,74 +325,12 @@ export const useOperationsStore = create<OperationsState>()(
       addBooking: (booking) => {
         const newBooking = { ...booking, id: Date.now(), createdAt: new Date().toISOString() };
         set((state) => ({ bookings: [...state.bookings, newBooking] }));
-
-        // BRIDGE LOGIC: If booking is confirmed, create a service task
-        if (newBooking.status === "confirmed") {
-          get().addServiceRecord({
-            equipmentId: newBooking.equipmentId,
-            clientId: newBooking.clientId,
-            technician: "Unassigned",
-            serviceCategory: newBooking.serviceCategory,
-            serviceType: newBooking.serviceType,
-            description: `BOOKED VIA PORTAL: ${newBooking.notes}`,
-            status: "scheduled",
-            scheduledDate: newBooking.requestedDate,
-            completedDate: null,
-            cost: 0,
-            bookingId: newBooking.id,
-            findings: "",
-            workDone: "",
-            recommendation: "",
-            partsUsed: "Pending Inspection"
-          });
-        }
       },
 
       updateBooking: (id, data) => {
         set((state) => ({
           bookings: state.bookings.map((b) => (b.id === id ? { ...b, ...data } : b)),
         }));
-
-        // SYNC LOGIC: Keep ServiceRecords in sync with Bookings
-        const booking = get().bookings.find(b => b.id === id);
-        if (!booking) return;
-
-        const existingRecord = get().serviceRecords.find(r => r.bookingId === id);
-
-        if (booking.status === "confirmed") {
-          if (!existingRecord) {
-            get().addServiceRecord({
-              equipmentId: booking.equipmentId,
-              clientId: booking.clientId,
-              technician: "Unassigned",
-              serviceCategory: booking.serviceCategory,
-              serviceType: booking.serviceType,
-              description: `BOOKED VIA PORTAL: ${booking.notes}`,
-              status: "scheduled",
-              scheduledDate: booking.requestedDate,
-              completedDate: null,
-              cost: 0,
-              bookingId: booking.id,
-              findings: "",
-              workDone: "",
-              recommendation: "",
-              partsUsed: "Pending Inspection"
-            });
-          } else {
-            get().updateServiceRecord(existingRecord.id, {
-              equipmentId: booking.equipmentId,
-              serviceCategory: booking.serviceCategory,
-              serviceType: booking.serviceType,
-              description: `BOOKED VIA PORTAL: ${booking.notes}`,
-              scheduledDate: booking.requestedDate,
-              status: existingRecord.status === "cancelled" ? "scheduled" : existingRecord.status
-            });
-          }
-        } else if (booking.status === "cancelled") {
-          if (existingRecord && existingRecord.status !== "completed" && existingRecord.status !== "cancelled") {
-            get().updateServiceRecord(existingRecord.id, { status: "cancelled" });
-          }
-        }
       },
 
       updateDraftExecution: (id, data) => {
@@ -608,7 +546,6 @@ export const useOperationsStore = create<OperationsState>()(
     }),
     {
       name: "nexvision-operations-v4",
-      version: 5,
     }
   )
 );
