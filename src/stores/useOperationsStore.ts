@@ -124,6 +124,7 @@ interface OperationsState {
   // Simulation Actions
   injectSimulationTask: () => void;
   clearSimulationData: () => void;
+  pruneStaleEquipment: () => void;
 
   // Logic Helpers
   getHoursRemaining: (equipmentId: number) => number | null;
@@ -580,6 +581,13 @@ export const useOperationsStore = create<OperationsState>()(
       getClientServiceHistory: (clientId) => get().serviceRecords.filter((r) => r.clientId === clientId),
       generateQRData: (serialNumber) => JSON.stringify({ serial: serialNumber, company: "NexVision", scannedAt: new Date().toISOString() }),
       
+      pruneStaleEquipment: () => {
+        const validUnitIds = new Set(mockEquipment.map((e) => e.unitId));
+        set((state) => ({
+          equipment: state.equipment.filter((e) => validUnitIds.has(e.unitId)),
+        }));
+      },
+
       syncWithFleet: (fleetUnits) => {
         set((state) => ({
           equipment: state.equipment.map((eq) => {
