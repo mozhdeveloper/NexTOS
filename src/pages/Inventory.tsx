@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useInventoryStore } from "@/stores/useInventoryStore";
 import { AddPartModal } from "@/components/AddPartModal";
+import { EditPartModal } from "@/components/EditPartModal";
 import { 
   Box, 
   Search, 
@@ -12,7 +13,9 @@ import {
   ArrowRight,
   Package,
   ArrowUpCircle,
-  MoreVertical
+  MoreVertical,
+  Edit2,
+  Trash2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,12 +34,15 @@ import {
 } from "@/components/ui/dialog";
 
 export default function Inventory() {
-  const { items, restockItem, addItem } = useInventoryStore();
+  const { items, restockItem, addItem, updateItem, deleteItem } = useInventoryStore();
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [showRestock, setShowRestock] = useState<number | null>(null);
   const [restockQty, setPartQty] = useState(1);
   const [showAddPart, setShowAddPart] = useState(false);
+  const [editingPart, setEditingPart] = useState<number | null>(null);
+  const [deletingPart, setDeletingPart] = useState<number | null>(null);
+  const [openKebabId, setOpenKebabId] = useState<number | null>(null);
 
   const filteredItems = items.filter(item => {
     const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
@@ -44,6 +50,8 @@ export default function Inventory() {
     const matchesCategory = categoryFilter === "all" || item.category === categoryFilter;
     return matchesSearch && matchesCategory;
   });
+
+  const uniqueCategories = [...new Set(items.map(item => item.category))];
 
   const lowStockCount = items.filter(i => i.stockLevel <= i.minThreshold).length;
 
@@ -136,10 +144,9 @@ export default function Inventory() {
                   </SelectTrigger>
                   <SelectContent className="bg-white border-gray-200">
                      <SelectItem value="all">All Categories</SelectItem>
-                     <SelectItem value="FILTER">Filters</SelectItem>
-                     <SelectItem value="OIL">Oils & Fluids</SelectItem>
-                     <SelectItem value="BELT">Drive Belts</SelectItem>
-                     <SelectItem value="HARDWARE">Hardware</SelectItem>
+                     {uniqueCategories.map(category => (
+                        <SelectItem key={category} value={category}>{category}</SelectItem>
+                     ))}
                   </SelectContent>
                </Select>
                <Button variant="outline" className="h-11 bg-white border-gray-200 font-bold px-4">
@@ -205,9 +212,43 @@ export default function Inventory() {
                                     <ArrowUpCircle className="w-3.5 h-3.5 mr-1" />
                                     Restock
                                  </Button>
-                                 <button className="p-2 text-gray-300 hover:text-gray-900 transition-colors">
-                                    <MoreVertical className="w-4 h-4" />
-                                 </button>
+                                 <div className="relative">
+                                    <button 
+                                       className="p-2 text-gray-300 hover:text-gray-900 transition-colors"
+                                       onClick={(e) => {
+                                          e.stopPropagation();
+                                          setOpenKebabId(openKebabId === item.id ? null : item.id);
+                                       }}
+                                    >
+                                       <MoreVertical className="w-4 h-4" />
+                                    </button>
+                                    {openKebabId === item.id && (
+                                       <div className="absolute right-0 top-7 z-50 min-w-[120px] rounded border border-gray-200 bg-white py-1 shadow-lg">
+                                          <button
+                                             type="button"
+                                             className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-100 transition-colors"
+                                             onClick={() => {
+                                                setEditingPart(item.id);
+                                                setOpenKebabId(null);
+                                             }}
+                                          >
+                                             <Edit2 className="w-3 h-3" />
+                                             Edit
+                                          </button>
+                                          <button
+                                             type="button"
+                                             className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-[#EF4444] hover:bg-[#EF4444]/10 transition-colors"
+                                             onClick={() => {
+                                                setDeletingPart(item.id);
+                                                setOpenKebabId(null);
+                                             }}
+                                          >
+                                             <Trash2 className="w-3 h-3" />
+                                             Delete
+                                          </button>
+                                       </div>
+                                    )}
+                                 </div>
                               </div>
                            </td>
                         </tr>
@@ -283,6 +324,57 @@ export default function Inventory() {
         onOpenChange={setShowAddPart}
         onSubmitPart={addItem}
       />
+
+      {/* Edit Part Modal */}
+      <EditPartModal
+        open={editingPart !== null}
+        onOpenChange={(open) => !open && setEditingPart(null)}
+        part={editingPart !== null ? items.find(i => i.id === editingPart) || null : null}
+        onSubmitPart={(id, data) => updateItem(id, data)}
+      />
+
+      {/* Delete Part Modal */}
+      <Dialog open={deletingPart !== null} onOpenChange={(open) => !open && setDeletingPart(null)}>
+        <DialogContent className="bg-white border-gray-200 sm:max-w-sm rounded-2xl shadow-2xl">
+          <DialogHeader className="border-b border-gray-50 pb-4">
+            <DialogTitle className="text-gray-900">Delete Part</DialogTitle>
+          </DialogHeader>
+          
+          <div className="py-6">
+            <p className="text-gray-700 text-sm">
+              This action is permanent and cannot be undone. Are you sure you want to delete this part entry?
+            </p>
+            {deletingPart && (
+              <div className="mt-4 p-3 rounded-lg bg-gray-50 border border-gray-200">
+                <div className="text-[10px] text-gray-600 uppercase font-bold tracking-wider mb-1">Part to Delete</div>
+                <div className="text-sm font-bold text-gray-900">{items.find(i => i.id === deletingPart)?.name}</div>
+                <div className="text-[10px] text-gray-600 mt-1">{items.find(i => i.id === deletingPart)?.partNumber}</div>
+              </div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Button 
+              variant="outline" 
+              onClick={() => setDeletingPart(null)}
+              className="h-11 font-bold border-gray-200 rounded-xl"
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={() => {
+                if (deletingPart) {
+                  deleteItem(deletingPart);
+                  setDeletingPart(null);
+                }
+              }}
+              className="h-11 font-bold rounded-xl bg-red-600 hover:bg-red-700 text-white"
+            >
+              Delete Permanently
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -11,13 +11,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { Package } from "lucide-react";
+import { Edit2 } from "lucide-react";
 import type { InventoryItem } from "@/types";
 
-export interface AddPartModalProps {
+export interface EditPartModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSubmitPart: (part: Omit<InventoryItem, "id" | "lastRestocked" | "createdAt">) => void;
+  part: InventoryItem | null;
+  onSubmitPart: (id: number, data: Partial<InventoryItem>) => void;
 }
 
 const CATEGORIES = [
@@ -29,27 +30,19 @@ const CATEGORIES = [
   { value: "Other", label: "Other" },
 ];
 
-const UNIT_TYPES = [
-  { value: "Pcs", label: "PER PCS" },
-  { value: "Liters", label: "PER LITERS" },
-  { value: "Kits", label: "PER KITS" },
-  { value: "Meters", label: "PER METERS" },
-];
-
-export function AddPartModal({
+export function EditPartModal({
   open,
   onOpenChange,
+  part,
   onSubmitPart,
-}: AddPartModalProps) {
-  type RequiredFieldKey = "partName" | "partId" | "category" | "unitPrice" | "unit";
+}: EditPartModalProps) {
+  type RequiredFieldKey = "partName" | "partId" | "category" | "unitPrice";
 
   const [partName, setPartName] = useState("");
   const [partId, setPartId] = useState("");
   const [category, setCategory] = useState("");
   const [otherCategory, setOtherCategory] = useState("");
   const [unitPrice, setUnitPrice] = useState("");
-  const [unit, setUnit] = useState("");
-  const [stockLevel, setStockLevel] = useState("");
   const [minThreshold, setMinThreshold] = useState("");
   const [missingFields, setMissingFields] = useState<RequiredFieldKey[]>([]);
 
@@ -58,16 +51,23 @@ export function AddPartModal({
       return;
     }
 
-    setPartName("");
-    setPartId("");
-    setCategory("");
-    setOtherCategory("");
-    setUnitPrice("");
-    setUnit("");
-    setStockLevel("");
-    setMinThreshold("");
-    setMissingFields([]);
-  }, [open]);
+    if (part) {
+      setPartName(part.name);
+      setPartId(part.partNumber);
+      const isStandardCategory = CATEGORIES.some(c => c.value === part.category);
+      if (isStandardCategory) {
+        setCategory(part.category);
+        setOtherCategory("");
+      } else {
+        setCategory("Other");
+        setOtherCategory(part.category);
+      }
+      setUnitPrice(part.pricePerUnit.toString());
+      setMinThreshold(part.minThreshold.toString());
+      setMissingFields([]);
+      return;
+    }
+  }, [open, part]);
 
   const handleSubmit = () => {
     const newMissingFields: RequiredFieldKey[] = [];
@@ -76,11 +76,9 @@ export function AddPartModal({
     if (!partId.trim()) newMissingFields.push("partId");
     if (!category) newMissingFields.push("category");
     if (category === "Other" && !otherCategory.trim()) {
-      // You can decide if you want a specific error for this
       newMissingFields.push("category");
     }
     if (!unitPrice || parseFloat(unitPrice) <= 0) newMissingFields.push("unitPrice");
-    if (!unit) newMissingFields.push("unit");
 
     if (newMissingFields.length > 0) {
       setMissingFields(newMissingFields);
@@ -90,19 +88,19 @@ export function AddPartModal({
       return;
     }
 
-    const newPart: Omit<InventoryItem, "id" | "lastRestocked" | "createdAt"> = {
-      partNumber: partId.trim(),
+    const updatedData: Partial<InventoryItem> = {
       name: partName.trim(),
+      partNumber: partId.trim(),
       category: category === "Other" ? otherCategory.trim() : (category as InventoryItem["category"]),
-      unit: unit as InventoryItem["unit"],
       pricePerUnit: parseFloat(unitPrice),
-      stockLevel: stockLevel ? parseInt(stockLevel) : 0,
       minThreshold: minThreshold ? parseInt(minThreshold) : 10,
-      compatibility: [],
     };
 
-    onSubmitPart(newPart);
+    onSubmitPart(part!.id, updatedData);
     onOpenChange(false);
+    toast.success("Part Updated", {
+      description: `${partName} has been updated successfully.`,
+    });
   };
 
   return (
@@ -110,8 +108,8 @@ export function AddPartModal({
       <DialogContent className="bg-white border-gray-200 sm:max-w-md rounded-2xl shadow-2xl">
         <DialogHeader className="border-b border-gray-50 pb-4">
           <DialogTitle className="text-gray-900 flex items-center gap-2">
-            <Package className="w-5 h-5 text-[#66B2B2]" />
-            Add New Part
+            <Edit2 className="w-5 h-5 text-[#66B2B2]" />
+            Edit Part
           </DialogTitle>
         </DialogHeader>
 
@@ -183,54 +181,21 @@ export function AddPartModal({
             </div>
           </div>
 
-          {/* Unit Price & Unit */}
+          {/* Unit Price */}
           <div className="space-y-2">
             <Label className="text-[10px] text-gray-400 font-black uppercase tracking-widest ml-1">
               Unit Price <span className="text-red-500">*</span>
             </Label>
-            <div className="flex items-center gap-3">
-              <Input
-                type="number"
-                placeholder="0.00"
-                value={unitPrice}
-                onChange={(e) => setUnitPrice(e.target.value)}
-                step="0.01"
-                min="0"
-                className={`flex-1 h-12 bg-white border-gray-200 focus:ring-[#66B2B2]/20 text-right ${
-                  missingFields.includes("unitPrice") ? "border-red-500" : ""
-                }`}
-              />
-              <Select value={unit} onValueChange={setUnit}>
-                <SelectTrigger
-                  className={`w-40 h-12 bg-white border-gray-200 focus:ring-[#66B2B2]/20 ${
-                    missingFields.includes("unit") ? "border-red-500" : ""
-                  }`}
-                >
-                  <SelectValue placeholder="Unit" />
-                </SelectTrigger>
-                <SelectContent className="bg-white border-gray-200">
-                  {UNIT_TYPES.map((u) => (
-                    <SelectItem key={u.value} value={u.value}>
-                      {u.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          {/* Initial Stock Level */}
-          <div className="space-y-2">
-            <Label className="text-[10px] text-gray-400 font-black uppercase tracking-widest ml-1">
-              Initial Stock Level
-            </Label>
             <Input
               type="number"
-              placeholder="0"
-              value={stockLevel}
-              onChange={(e) => setStockLevel(e.target.value)}
+              placeholder="0.00"
+              value={unitPrice}
+              onChange={(e) => setUnitPrice(e.target.value)}
+              step="0.01"
               min="0"
-              className="h-12 bg-white border-gray-200 focus:ring-[#66B2B2]/20"
+              className={`h-12 bg-white border-gray-200 focus:ring-[#66B2B2]/20 text-right ${
+                missingFields.includes("unitPrice") ? "border-red-500" : ""
+              }`}
             />
           </div>
 
@@ -262,7 +227,7 @@ export function AddPartModal({
               onClick={handleSubmit}
               className="bg-[#66B2B2] text-white hover:bg-[#5A9E9E] font-bold rounded-xl h-12 shadow-lg shadow-[#66B2B2]/20"
             >
-              Add Part
+              Save Changes
             </Button>
           </div>
         </div>

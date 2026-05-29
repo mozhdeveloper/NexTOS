@@ -500,7 +500,7 @@ function KPICard({
           className={`w-4 h-4 ${alert ? "text-[#EF4444]" : "text-gray-400"}`}
         />
       </div>
-      <div className={`text-4xl font-bold tracking-[-0.03em] mb-1 ${alert ? "text-[#EF4444]" : "text-gray-900 kpi-glow"}`}>
+      <div className={` text-4xl font-bold tracking-[-0.03em] mb-1 ${alert ? "text-[#EF4444]" : "text-gray-900 kpi-glow"}`}>
         {value}
       </div>
       <div className="flex items-center gap-1">
