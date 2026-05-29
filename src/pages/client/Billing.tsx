@@ -2,6 +2,8 @@ import { useState } from "react";
 import { useAuthStore } from "@/stores/useAuthStore";
 import { useBillingStore } from "@/stores/useBillingStore";
 import { useOperationsStore } from "@/stores/useOperationsStore";
+import { useClientPortalStore } from "@/stores/useClientPortalStore";
+import seedData from "@/data/seed-data.json";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
@@ -25,7 +27,11 @@ export default function ClientBilling() {
   const { user } = useAuthStore();
   const { invoices, packages, markInvoicePaid } = useBillingStore();
   const { serviceRecords, equipment } = useOperationsStore();
-  const clientId = user?.clientId || 1;
+  const { selectedCompanyId } = useClientPortalStore();
+  
+  // Map seedData company ID to numeric clientId
+  const selectedCompanyIndex = seedData.clients.findIndex(c => c.id === selectedCompanyId);
+  const clientId = selectedCompanyIndex !== -1 ? selectedCompanyIndex + 1 : (user?.clientId || 1);
 
   const clientInvoices = invoices.filter((i) => i.clientId === clientId);
 

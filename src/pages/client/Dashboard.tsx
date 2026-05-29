@@ -4,6 +4,8 @@ import { useAuthStore } from "@/stores/useAuthStore";
 import { useOperationsStore } from "@/stores/useOperationsStore";
 import { useBillingStore } from "@/stores/useBillingStore";
 import { useCRMStore } from "@/stores/useCRMStore";
+import { useClientPortalStore } from "@/stores/useClientPortalStore";
+import seedData from "@/data/seed-data.json";
 import type { Booking, Equipment, ServiceCategory, ServiceRecord } from "@/types";
 import { ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 import {
@@ -224,8 +226,11 @@ export default function ClientDashboard() {
   const { equipment, serviceRecords, servicePhotos, bookings } = useOperationsStore();
   const { invoices } = useBillingStore();
   const { clients } = useCRMStore();
+  const { selectedCompanyId } = useClientPortalStore();
 
-  const clientId = user?.clientId || 1;
+  // Map seedData company ID to numeric clientId
+  const selectedCompanyIndex = seedData.clients.findIndex(c => c.id === selectedCompanyId);
+  const clientId = selectedCompanyIndex !== -1 ? selectedCompanyIndex + 1 : (user?.clientId || 1);
   const clientObj = useMemo(() => clients.find(c => c.id === clientId), [clients, clientId]);
   const [serviceTab, setServiceTab] = useState<DashboardServiceTab>("upcoming");
   const [showReport, setShowReport] = useState<ServiceRecord | null>(null);

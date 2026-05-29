@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate, useLocation } from "react-router";
 import { useAuthStore } from "@/stores/useAuthStore";
 import { useCRMStore } from "@/stores/useCRMStore";
+import { useClientPortalStore } from "@/stores/useClientPortalStore";
 import type { UserRole } from "@/types";
 import {
   LayoutDashboard,
@@ -15,6 +16,7 @@ import {
   ChevronRight,
   LogOut,
   Building2,
+  ChevronDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -24,6 +26,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import seedData from "@/data/seed-data.json";
 
 interface NavItem {
   label: string;
@@ -44,12 +53,13 @@ const navItems: NavItem[] = [
 export default function ClientPortalShell({ children }: { children: React.ReactNode }) {
   const { user, switchRole, logout } = useAuthStore();
   const { clients } = useCRMStore();
+  const { selectedCompanyId, setSelectedCompanyId } = useClientPortalStore();
   const navigate = useNavigate();
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(false);
 
-  const client = clients.find((c) => c.id === user?.clientId);
-  const companyName = client?.companyName ?? "Client Portal";
+  const selectedCompany = seedData.clients.find((c) => c.id === selectedCompanyId);
+  const companyName = selectedCompany?.companyName ?? "Select Company";
 
   const handleRoleChange = (role: UserRole) => {
     switchRole(role);
@@ -114,20 +124,41 @@ export default function ClientPortalShell({ children }: { children: React.ReactN
           </div>
         )}
 
-        {/* Client Company Badge */}
+        {/* Client Company Selector */}
         {!collapsed && (
           <div className="px-3 py-3 border-b border-gray-200">
-            <div className="flex items-center gap-2">
-              <Building2 className="w-4 h-4 text-[#66B2B2] shrink-0" />
-              <div className="min-w-0">
-                <div className="text-[11px] text-gray-900 font-semibold leading-tight truncate">
-                  {companyName}
-                </div>
-                <div className="text-[9px] text-[#10B981] uppercase tracking-[0.1em] font-mono-tech">
-                  Active Account
-                </div>
-              </div>
-            </div>
+            <label className="text-[10px] text-gray-500 uppercase tracking-[0.1em] font-medium mb-2 block">
+              Select Company
+            </label>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="w-full mt-2 p-2.5 rounded-lg bg-[#66B2B2]/5 border border-[#66B2B2]/10 flex items-center justify-between gap-2 hover:bg-[#66B2B2]/10 hover:border-[#66B2B2]/20 transition-colors cursor-pointer">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Building2 className="w-4 h-4 text-[#66B2B2] shrink-0" />
+                    <div className="text-left min-w-0">
+                      <div className="text-[10px] text-[#66B2B2] font-semibold leading-tight truncate">
+                        {companyName}
+                      </div>
+                      <div className="text-[9px] text-[#10B981] uppercase tracking-[0.1em] font-mono-tech">
+                        Active Account
+                      </div>
+                    </div>
+                  </div>
+                  <ChevronDown className="w-4 h-4 text-[#66B2B2] shrink-0" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-[190px] bg-white border-gray-200" align="start">
+                {seedData.clients.map((company) => (
+                  <DropdownMenuItem
+                    key={company.id}
+                    onClick={() => setSelectedCompanyId(company.id)}
+                    className="text-xs text-gray-900 cursor-pointer"
+                  >
+                    {company.companyName}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         )}
 

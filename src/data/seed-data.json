@@ -1,4 +1,6 @@
 {
+
+
     "clients": [
         {
             "id": "CL-001",
@@ -81,7 +83,7 @@
         {
             "id": "EQ-002",
             "name": "Boom Truck X500",
-            "clientId": "CL-002",
+            "clientId": "CL-002",   
             "equipmentType": "Heavy Equipment",
             "lat": 14.59986,
             "lng": 121.03679,
@@ -191,7 +193,7 @@
         },
         {
             "id": "EQ-004",
-            "name": "kumatsu",
+            "name": "Kumatsu",
             "clientId": "CL-001",
             "equipmentType": "Heavy Equipment",
             "lat": 14.60736,
@@ -976,6 +978,58 @@
             "closedDeals": 2,
             "revenue": 450000,
             "conversion": "6%"
+        }
+    ],
+    "parts": [
+        {
+            "id": "FL-OIL-01",
+            "name": "Engine Oil Filter (Primary)",
+            "category": "FILTER",
+            "unitPrice": 1250,
+            "quantity": 45,
+            "minQuantity": 10,
+            "unitType": "Pcs",
+            "status": "In Stock"
+        },
+        {
+            "id": "FL-AIR-B2",
+            "name": "Heavy Duty Air Filter",
+            "category": "FILTER",
+            "unitPrice": 3400,
+            "quantity": 12,
+            "minQuantity": 15,
+            "unitType": "Pcs",
+            "status": "Low Stock"
+        },
+        {
+            "id": "OIL-15W40",
+            "name": "Premium Engine Oil 15W-40",
+            "category": "OIL",
+            "unitPrice": 450,
+            "quantity": 250,
+            "minQuantity": 50,
+            "unitType": "Liters",
+            "status": "In Stock"
+        },
+        {
+            "id": "BLT-DRV-003",
+            "name": "Main Drive Belt",
+            "category": "BELT",
+            "unitPrice": 5600,
+            "quantity": 5,
+            "minQuantity": 8,
+            "unitType": "Pcs",
+            "status": "Low Stock"
+        },
+        {
+            "id": "HW-BOLT-M12",
+            "name": "Steel Bolt M12 (Grade 8)",
+            "category": "HARDWARE",
+            "unitPrice": 45,
+            "quantity": 500,
+            "minQuantity": 100,
+            "unitType": "Pcs",
+            "status": "In Stock"
         }
     ]
 }

@@ -3,7 +3,7 @@ import { useAuthStore } from "@/stores/useAuthStore";
 import { useOperationsStore } from "@/stores/useOperationsStore";
 import { useCRMStore } from "@/stores/useCRMStore";
 import { useBillingStore } from "@/stores/useBillingStore";
-import type { ServiceType } from "@/types";
+import type { ServiceType, ServiceRecord } from "@/types";
 import {
   Shield,
   History,
@@ -13,10 +13,10 @@ import {
   ChevronUp,
   CheckCircle2,
   Clock,
-  Wrench,
   X,
   ArrowRight,
   Package,
+  Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,7 +34,7 @@ import {
   DialogContent,
 } from "@/components/ui/dialog";
 
-type TabType = "history" | "booking" | "packages" | "billing";
+type TabType = "history" | "equipment" | "booking" | "packages" | "billing";
 
 export default function ClientPortal() {
   const { user } = useAuthStore();
@@ -238,6 +238,7 @@ export default function ClientPortal() {
       <div className="flex gap-1 border-b border-gray-200">
         {[
           { id: "history" as TabType, label: "Equipment History", icon: History },
+          { id: "equipment" as TabType, label: "Equipment", icon: Package },
           { id: "booking" as TabType, label: "Book Service", icon: Calendar },
           { id: "packages" as TabType, label: "Packages", icon: Package },
           { id: "billing" as TabType, label: "Billing", icon: CreditCard },
@@ -400,6 +401,148 @@ export default function ClientPortal() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Equipment Tab */}
+      {activeTab === "equipment" && (
+        <div className="space-y-3">
+          {clientEquipment.length === 0 ? (
+            <div className="data-card p-6 text-center">
+              <Package className="w-12 h-12 mx-auto text-gray-300 mb-2" />
+              <p className="text-gray-600 text-sm">No equipment found for this company</p>
+            </div>
+          ) : (
+            clientEquipment.map((eq) => {
+              const serviceDue = isServiceDueFor(eq);
+              return (
+                <div key={eq.id} className="data-card p-4">
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex items-start gap-3">
+                      <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${
+                        serviceDue ? 'bg-red-50' : 'bg-[#66B2B2]/10'
+                      }`}>
+                        <Zap className={`w-6 h-6 ${serviceDue ? 'text-red-600' : 'text-[#66B2B2]'}`} />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-bold text-black font-mono-tech">{eq.unitId}</span>
+                          <span className="text-xs text-gray-600 bg-gray-100 px-2 py-1 rounded">{eq.equipmentType}</span>
+                        </div>
+                        <div className="text-[10px] text-gray-600 mt-1">
+                          {eq.manufacturer} {eq.model}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-end gap-1">
+                      {serviceDue && (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] bg-red-50 text-red-600 font-bold border border-red-200">
+                          Service Due
+                        </span>
+                      )}
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                        eq.status === 'active' ? 'bg-green-50 text-green-600 border border-green-200' :
+                        eq.status === 'maintenance' ? 'bg-amber-50 text-amber-600 border border-amber-200' :
+                        eq.status === 'service_due' ? 'bg-red-50 text-red-600 border border-red-200' :
+                        'bg-gray-50 text-gray-600 border border-gray-200'
+                      }`}>
+                        {eq.status}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4 pb-4 border-b border-gray-100">
+                    <div>
+                      <div className="text-[10px] text-gray-600 uppercase tracking-wider font-bold">Serial Number</div>
+                      <div className="text-sm font-mono-tech font-bold text-gray-900 mt-1">{eq.serialNumber}</div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] text-gray-600 uppercase tracking-wider font-bold">Installation Date</div>
+                      <div className="text-sm font-mono-tech font-bold text-gray-900 mt-1">
+                        {new Date(eq.installDate).toLocaleDateString()}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] text-gray-600 uppercase tracking-wider font-bold">Location</div>
+                      <div className="text-sm font-bold text-gray-900 mt-1">{eq.location}</div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] text-gray-600 uppercase tracking-wider font-bold">Warranty Expiry</div>
+                      <div className="text-sm font-mono-tech font-bold text-gray-900 mt-1">
+                        {new Date(eq.warrantyExpiry).toLocaleDateString()}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Heavy Equipment Specific Info */}
+                  {eq.equipmentType === "Heavy Equipment" && (
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4 pb-4 border-b border-gray-100">
+                      <div>
+                        <div className="text-[10px] text-gray-600 uppercase tracking-wider font-bold">Current Hours</div>
+                        <div className={`text-lg font-bold font-mono-tech mt-1 ${serviceDue ? 'text-red-600' : 'text-[#66B2B2]'}`}>
+                          {eq.currentHours} hrs
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] text-gray-600 uppercase tracking-wider font-bold">Last PMS</div>
+                        <div className="text-sm font-mono-tech font-bold text-gray-900 mt-1">
+                          {eq.lastPMSHours} hrs
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] text-gray-600 uppercase tracking-wider font-bold">PMS Interval</div>
+                        <div className="text-sm font-mono-tech font-bold text-gray-900 mt-1">
+                          {eq.pmsInterval} hrs
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] text-gray-600 uppercase tracking-wider font-bold">Next PMS Due</div>
+                        <div className={`text-lg font-bold font-mono-tech mt-1 ${serviceDue ? 'text-red-600' : 'text-[#66B2B2]'}`}>
+                          {eq.nextPMSHours} hrs
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Lab/Testing Equipment Specific Info */}
+                  {(eq.equipmentType === "Lab Equipment" || eq.equipmentType === "Testing Equipment") && (
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4 pb-4 border-b border-gray-100">
+                      <div>
+                        <div className="text-[10px] text-gray-600 uppercase tracking-wider font-bold">Last Calibration</div>
+                        <div className="text-sm font-mono-tech font-bold text-gray-900 mt-1">
+                          {eq.lastCalibrationDate ? new Date(eq.lastCalibrationDate).toLocaleDateString() : "—"}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] text-gray-600 uppercase tracking-wider font-bold">Frequency</div>
+                        <div className="text-sm font-bold text-gray-900 mt-1">
+                          {eq.calibrationFrequency} months
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] text-gray-600 uppercase tracking-wider font-bold">Next Calibration</div>
+                        <div className={`text-sm font-mono-tech font-bold mt-1 ${
+                          serviceDue ? 'text-red-600' : 'text-[#66B2B2]'
+                        }`}>
+                          {eq.nextCalibrationDate ? new Date(eq.nextCalibrationDate).toLocaleDateString() : "—"}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Notes */}
+                  {eq.notes && (
+                    <div>
+                      <div className="text-[10px] text-gray-600 uppercase tracking-wider font-bold mb-2">Notes</div>
+                      <p className="text-sm text-gray-700 bg-gray-50 p-3 rounded border border-gray-100">
+                        {eq.notes}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
         </div>
       )}
 
