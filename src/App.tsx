@@ -25,6 +25,8 @@ import NotFound from '@/pages/NotFound'
 import { useAuthStore } from '@/stores/useAuthStore'
 import { Toaster } from '@/components/ui/sonner'
 
+
+
 function ClientPortalRoutes() {
   return (
     <ClientPortalShell>
