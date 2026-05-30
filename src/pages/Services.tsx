@@ -2058,48 +2058,48 @@ export default function Services() {
         {/* Manual Log Tab */}
         {activeTab === "new" && (
           <div className="max-w-4xl mx-auto space-y-6 animate-in fade-in duration-300 pb-10">
-            <div className="data-card p-8 space-y-8 bg-white shadow-xl border border-gray-200 rounded-2xl">
+            <div className="data-card p-8 space-y-8 bg-white dark:bg-[#1A1A20] shadow-xl border border-gray-200 dark:border-white/10 rounded-2xl">
               {/* Header */}
               <div className="flex items-center gap-4 mb-2">
                  <div className="w-12 h-12 rounded-2xl bg-[#66B2B2]/10 flex items-center justify-center shadow-inner">
                     <PenTool className="w-6 h-6 text-[#66B2B2]" />
                  </div>
                  <div>
-                    <h3 className="text-xl font-black text-gray-900 tracking-tight">Manual Service Documentation</h3>
-                    <p className="text-sm text-gray-500 font-medium">Generate a comprehensive service report for ad-hoc maintenance.</p>
+                    <h3 className="text-xl font-black text-gray-900 dark:text-[#EAEAEA] tracking-tight">Manual Service Documentation</h3>
+                    <p className="text-sm text-gray-500 dark:text-[#88888C] font-medium">Generate a comprehensive service report for ad-hoc maintenance.</p>
                  </div>
               </div>
 
               {/* Step 1: Core Info */}
               <div className="space-y-6">
-                <div className="flex items-center gap-2 border-b border-gray-100 pb-2">
+                <div className="flex items-center gap-2 border-b border-gray-100 dark:border-white/5 pb-2">
                    <Package className="w-4 h-4 text-[#66B2B2]" />
-                   <span className="text-xs font-black uppercase tracking-widest text-gray-400">Asset & Assignment</span>
+                   <span className="text-xs font-black uppercase tracking-widest text-gray-400 dark:text-[#88888C]">Asset & Assignment</span>
                 </div>
                 <div className="grid grid-cols-2 gap-6">
                   <div className="space-y-4">
                     <div>
-                      <label className="text-[10px] text-gray-500 uppercase font-black mb-1.5 block tracking-widest">Client Company</label>
+                      <label className="text-[10px] text-gray-500 dark:text-[#88888C] uppercase font-black mb-1.5 block tracking-widest">Client Company</label>
                       <Select value={formClientId} onValueChange={(v) => { setFormClientId(v); setFormEquipmentId(""); }}>
-                        <SelectTrigger className="h-12 bg-gray-50 border-gray-100 text-gray-900 focus:ring-[#66B2B2]/30 rounded-xl font-bold">
+                        <SelectTrigger className="h-12 bg-gray-50 dark:bg-[#121214] border-gray-100 dark:border-white/5 text-gray-900 dark:text-[#EAEAEA] focus:ring-[#66B2B2]/30 rounded-xl font-bold">
                           <SelectValue placeholder="Select client..." />
                         </SelectTrigger>
-                        <SelectContent className="bg-white border-gray-200 z-50">
+                        <SelectContent className="bg-white dark:bg-[#1A1A20] border-gray-200 dark:border-white/10 z-50">
                           {clients.length > 0 ? clients.map(c => (
-                            <SelectItem key={c.id} value={c.id.toString()} className="text-gray-900">{c.companyName}</SelectItem>
+                            <SelectItem key={c.id} value={c.id.toString()} className="text-gray-900 dark:text-[#EAEAEA]">{c.companyName}</SelectItem>
                           )) : <div className="p-2 text-xs text-gray-400">No clients found</div>}
                         </SelectContent>
                       </Select>
                     </div>
                     <div>
-                      <label className="text-[10px] text-gray-500 uppercase font-black mb-1.5 block tracking-widest">Equipment Unit</label>
+                      <label className="text-[10px] text-gray-500 dark:text-[#88888C] uppercase font-black mb-1.5 block tracking-widest">Equipment Unit</label>
                       <Select value={formEquipmentId} onValueChange={setFormEquipmentId} disabled={!formClientId}>
-                        <SelectTrigger className="h-12 bg-gray-50 border-gray-100 text-gray-900 focus:ring-[#66B2B2]/30 disabled:bg-gray-50 rounded-xl font-bold">
+                        <SelectTrigger className="h-12 bg-gray-50 dark:bg-[#121214] border-gray-100 dark:border-white/5 text-gray-900 dark:text-[#EAEAEA] focus:ring-[#66B2B2]/30 disabled:bg-gray-50 dark:disabled:bg-white/5 rounded-xl font-bold">
                           <SelectValue placeholder={formClientId ? "Select unit ID..." : "Select client first"} />
                         </SelectTrigger>
-                        <SelectContent className="bg-white border-gray-200 z-50">
+                        <SelectContent className="bg-white dark:bg-[#1A1A20] border-gray-200 dark:border-white/10 z-50">
                           {equipment.filter(e => e.clientId === parseInt(formClientId)).map(e => (
-                            <SelectItem key={e.id} value={e.id.toString()} className="text-gray-900 font-mono-tech">{e.unitId} — {e.manufacturer} {e.model}</SelectItem>
+                            <SelectItem key={e.id} value={e.id.toString()} className="text-gray-900 dark:text-[#EAEAEA] font-mono-tech">{e.unitId} — {e.manufacturer} {e.model}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
@@ -2108,23 +2108,23 @@ export default function Services() {
 
                   <div className="space-y-4">
                     <div>
-                      <label className="text-[10px] text-gray-500 uppercase font-black mb-1.5 block tracking-widest">Service Category</label>
+                      <label className="text-[10px] text-gray-500 dark:text-[#88888C] uppercase font-black mb-1.5 block tracking-widest">Service Category</label>
                       <Select value={formType} onValueChange={setFormType}>
-                        <SelectTrigger className="h-12 bg-gray-50 border-gray-100 text-gray-900 focus:ring-[#66B2B2]/30 rounded-xl font-bold">
+                        <SelectTrigger className="h-12 bg-gray-50 dark:bg-[#121214] border-gray-100 dark:border-white/5 text-gray-900 dark:text-[#EAEAEA] focus:ring-[#66B2B2]/30 rounded-xl font-bold">
                           <SelectValue placeholder="Select type..." />
                         </SelectTrigger>
-                        <SelectContent className="bg-white border-gray-200 z-50">
-                          <SelectItem value="Heavy Equipment PMS" className="text-gray-900">Heavy Equipment PMS</SelectItem>
-                          <SelectItem value="Calibration PMS" className="text-gray-900">Calibration PMS</SelectItem>
-                          <SelectItem value="Repair" className="text-gray-900">General Repair</SelectItem>
-                          <SelectItem value="Inspection" className="text-gray-900">Standard Inspection</SelectItem>
-                          <SelectItem value="Installation" className="text-gray-900">New Installation</SelectItem>
+                        <SelectContent className="bg-white dark:bg-[#1A1A20] border-gray-200 dark:border-white/10 z-50">
+                          <SelectItem value="Heavy Equipment PMS" className="text-gray-900 dark:text-[#EAEAEA]">Heavy Equipment PMS</SelectItem>
+                          <SelectItem value="Calibration PMS" className="text-gray-900 dark:text-[#EAEAEA]">Calibration PMS</SelectItem>
+                          <SelectItem value="Repair" className="text-gray-900 dark:text-[#EAEAEA]">General Repair</SelectItem>
+                          <SelectItem value="Inspection" className="text-gray-900 dark:text-[#EAEAEA]">Standard Inspection</SelectItem>
+                          <SelectItem value="Installation" className="text-gray-900 dark:text-[#EAEAEA]">New Installation</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
                     <div>
-                      <label className="text-[10px] text-gray-500 uppercase font-black mb-1.5 block tracking-widest">Performing Technician</label>
-                      <Input value={formTechnician} onChange={(e) => setFormTechnician(e.target.value)} className="h-12 bg-gray-50 border-gray-100 text-gray-900 focus:ring-[#66B2B2]/30 rounded-xl font-bold" />
+                      <label className="text-[10px] text-gray-500 dark:text-[#88888C] uppercase font-black mb-1.5 block tracking-widest">Performing Technician</label>
+                      <Input value={formTechnician} onChange={(e) => setFormTechnician(e.target.value)} className="h-12 bg-gray-50 dark:bg-[#121214] border-gray-100 dark:border-white/5 text-gray-900 dark:text-[#EAEAEA] focus:ring-[#66B2B2]/30 rounded-xl font-bold" />
                     </div>
                   </div>
                 </div>
@@ -2132,14 +2132,14 @@ export default function Services() {
 
               {/* Step 2: Visual Evidence */}
               <div className="space-y-6">
-                 <div className="flex items-center gap-2 border-b border-gray-100 pb-2">
+                 <div className="flex items-center gap-2 border-b border-gray-100 dark:border-white/5 pb-2">
                     <Camera className="w-4 h-4 text-[#66B2B2]" />
-                    <span className="text-xs font-black uppercase tracking-widest text-gray-400">Visual Evidence Documentation</span>
+                    <span className="text-xs font-black uppercase tracking-widest text-gray-400 dark:text-[#88888C]">Visual Evidence Documentation</span>
                  </div>
                  <div className="grid grid-cols-2 gap-6">
                     <div className="space-y-3">
-                       <label className="text-[10px] text-gray-500 uppercase font-black block tracking-widest ml-1">Pre-Service State (Before)</label>
-                       <div className="relative aspect-video rounded-2xl bg-gray-50 border-2 border-dashed border-gray-200 overflow-hidden group hover:border-[#66B2B2]/50 transition-colors">
+                       <label className="text-[10px] text-gray-500 dark:text-[#88888C] uppercase font-black block tracking-widest ml-1">Pre-Service State (Before)</label>
+                       <div className="relative aspect-video rounded-2xl bg-gray-50 dark:bg-[#121214] border-2 border-dashed border-gray-200 dark:border-white/10 overflow-hidden group hover:border-[#66B2B2]/50 transition-colors">
                           {formBeforePhoto ? (
                              <>
                                 <img src={formBeforePhoto} className="w-full h-full object-cover" alt="Before" />
@@ -2149,8 +2149,8 @@ export default function Services() {
                              </>
                           ) : (
                              <label className="absolute inset-0 flex flex-col items-center justify-center cursor-pointer hover:bg-[#66B2B2]/5 transition-colors">
-                                <Upload className="w-8 h-8 text-gray-300 mb-2" />
-                                <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Upload Photo</span>
+                                <Upload className="w-8 h-8 text-gray-300 dark:text-[#6B7280] mb-2" />
+                                <span className="text-[10px] font-black text-gray-400 dark:text-[#88888C] uppercase tracking-widest">Upload Photo</span>
                                 <input type="file" accept="image/*" className="hidden" onChange={(e) => {
                                    const file = e.target.files?.[0];
                                    if (file) {
@@ -2164,8 +2164,8 @@ export default function Services() {
                        </div>
                     </div>
                     <div className="space-y-3">
-                       <label className="text-[10px] text-gray-500 uppercase font-black block tracking-widest ml-1">Post-Service State (After)</label>
-                       <div className="relative aspect-video rounded-2xl bg-gray-50 border-2 border-dashed border-gray-200 overflow-hidden group hover:border-[#66B2B2]/50 transition-colors">
+                       <label className="text-[10px] text-gray-500 dark:text-[#88888C] uppercase font-black block tracking-widest ml-1">Post-Service State (After)</label>
+                       <div className="relative aspect-video rounded-2xl bg-gray-50 dark:bg-[#121214] border-2 border-dashed border-gray-200 dark:border-white/10 overflow-hidden group hover:border-[#66B2B2]/50 transition-colors">
                           {formAfterPhoto ? (
                              <>
                                 <img src={formAfterPhoto} className="w-full h-full object-cover" alt="After" />
@@ -2175,8 +2175,8 @@ export default function Services() {
                              </>
                           ) : (
                              <label className="absolute inset-0 flex flex-col items-center justify-center cursor-pointer hover:bg-[#66B2B2]/5 transition-colors">
-                                <Upload className="w-8 h-8 text-gray-300 mb-2" />
-                                <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Upload Photo</span>
+                                <Upload className="w-8 h-8 text-gray-300 dark:text-[#6B7280] mb-2" />
+                                <span className="text-[10px] font-black text-gray-400 dark:text-[#88888C] uppercase tracking-widest">Upload Photo</span>
                                 <input type="file" accept="image/*" className="hidden" onChange={(e) => {
                                    const file = e.target.files?.[0];
                                    if (file) {
@@ -2194,15 +2194,15 @@ export default function Services() {
 
               {/* Step 3: Technical Details */}
               <div className="space-y-6">
-                 <div className="flex items-center gap-2 border-b border-gray-100 pb-2">
+                 <div className="flex items-center gap-2 border-b border-gray-100 dark:border-white/5 pb-2">
                     <FileText className="w-4 h-4 text-[#66B2B2]" />
-                    <span className="text-xs font-black uppercase tracking-widest text-gray-400">Technical Report Details</span>
+                    <span className="text-xs font-black uppercase tracking-widest text-gray-400 dark:text-[#88888C]">Technical Report Details</span>
                  </div>
                  <div className="grid gap-6">
                     <div>
-                      <label className="text-[10px] text-gray-500 uppercase font-black mb-1.5 block tracking-widest ml-1">Initial Findings & Diagnosed Faults</label>
+                      <label className="text-[10px] text-gray-500 dark:text-[#88888C] uppercase font-black mb-1.5 block tracking-widest ml-1">Initial Findings & Diagnosed Faults</label>
                       <textarea 
-                        className="w-full p-4 rounded-xl border border-gray-200 text-sm text-gray-900 focus:border-[#66B2B2] focus:ring-2 focus:ring-[#66B2B2]/10 outline-none transition-all resize-none bg-gray-50/50" 
+                        className="w-full p-4 rounded-xl border border-gray-200 dark:border-white/10 text-sm text-gray-900 dark:text-[#EAEAEA] focus:border-[#66B2B2] focus:ring-2 focus:ring-[#66B2B2]/10 outline-none transition-all resize-none bg-gray-50/50 dark:bg-[#121214]/50" 
                         rows={2}
                         value={formFindings}
                         onChange={(e) => setFormFindings(e.target.value)}
@@ -2210,9 +2210,9 @@ export default function Services() {
                       />
                     </div>
                     <div>
-                      <label className="text-[10px] text-gray-500 uppercase font-black mb-1.5 block tracking-widest ml-1">Technical Work & Operations Performed</label>
+                      <label className="text-[10px] text-gray-500 dark:text-[#88888C] uppercase font-black mb-1.5 block tracking-widest ml-1">Technical Work & Operations Performed</label>
                       <textarea 
-                        className="w-full p-4 rounded-xl border border-gray-200 text-sm text-gray-900 focus:border-[#66B2B2] focus:ring-2 focus:ring-[#66B2B2]/10 outline-none transition-all resize-none bg-gray-50/50" 
+                        className="w-full p-4 rounded-xl border border-gray-200 dark:border-white/10 text-sm text-gray-900 dark:text-[#EAEAEA] focus:border-[#66B2B2] focus:ring-2 focus:ring-[#66B2B2]/10 outline-none transition-all resize-none bg-gray-50/50 dark:bg-[#121214]/50" 
                         rows={3}
                         value={formWorkDone}
                         onChange={(e) => setFormWorkDone(e.target.value)}
@@ -2220,9 +2220,9 @@ export default function Services() {
                       />
                     </div>
                     <div>
-                      <label className="text-[10px] text-gray-500 uppercase font-black mb-1.5 block tracking-widest ml-1">Strategic Maintenance Recommendations</label>
+                      <label className="text-[10px] text-gray-500 dark:text-[#88888C] uppercase font-black mb-1.5 block tracking-widest ml-1">Strategic Maintenance Recommendations</label>
                       <textarea 
-                        className="w-full p-4 rounded-xl border border-gray-200 text-sm text-gray-900 focus:border-[#66B2B2] focus:ring-2 focus:ring-[#66B2B2]/10 outline-none transition-all resize-none bg-gray-50/50" 
+                        className="w-full p-4 rounded-xl border border-gray-200 dark:border-white/10 text-sm text-gray-900 dark:text-[#EAEAEA] focus:border-[#66B2B2] focus:ring-2 focus:ring-[#66B2B2]/10 outline-none transition-all resize-none bg-gray-50/50 dark:bg-[#121214]/50" 
                         rows={2}
                         value={formRecommendation}
                         onChange={(e) => setFormRecommendation(e.target.value)}
@@ -2234,9 +2234,9 @@ export default function Services() {
 
               {/* Step 4: Verification */}
               <div className="space-y-6">
-                 <div className="flex items-center gap-2 border-b border-gray-100 pb-2">
+                 <div className="flex items-center gap-2 border-b border-gray-100 dark:border-white/5 pb-2">
                     <UserCheck className="w-4 h-4 text-[#66B2B2]" />
-                    <span className="text-xs font-black uppercase tracking-widest text-gray-400">Digital Seal & Verification</span>
+                    <span className="text-xs font-black uppercase tracking-widest text-gray-400 dark:text-[#88888C]">Digital Seal & Verification</span>
                  </div>
                  <div className="grid grid-cols-2 gap-8">
                     <SignaturePad 
@@ -2254,12 +2254,12 @@ export default function Services() {
                  </div>
               </div>
 
-              <div className="bg-[#66B2B2]/5 border border-[#66B2B2]/20 p-5 rounded-2xl flex gap-4">
+              <div className="bg-[#66B2B2]/5 border border-[#66B2B2]/20 dark:border-[#66B2B2]/40 p-5 rounded-2xl flex gap-4">
                  <div className="w-10 h-10 rounded-xl bg-[#66B2B2]/10 flex items-center justify-center flex-shrink-0 shadow-sm border border-[#66B2B2]/20">
                     <AlertTriangle className="w-5 h-5 text-[#66B2B2]" />
                  </div>
-                 <p className="text-[11px] text-gray-700 leading-relaxed font-medium">
-                   <strong className="text-gray-900">Legal Compliance Notice:</strong> By submitting this manual log, you certify that all technical work listed was performed to NexTOS safety standards and has been visually verified. This record will be permanently sealed into the asset's maintenance history and available for client review.
+                 <p className="text-[11px] text-gray-700 dark:text-[#B5B5B8] leading-relaxed font-medium">
+                   <strong className="text-gray-900 dark:text-[#EAEAEA]">Legal Compliance Notice:</strong> By submitting this manual log, you certify that all technical work listed was performed to NexTOS safety standards and has been visually verified. This record will be permanently sealed into the asset's maintenance history and available for client review.
                  </p>
               </div>
 
@@ -3471,20 +3471,20 @@ function TechnicalWorkForm({ draft, equipment, client, packages, seedEquipment, 
             <div className="grid grid-cols-1 gap-4">
                 <div className="p-4 rounded-xl bg-gray-50 border border-gray-100"> 
                     <div className="text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-2">Equipment Unit</div>
-                    <div className="text-xs text-gray-500 mt-1"><span className="font-semibold text-gray-600">Equipment Name:</span> {eqName}</div>
-                    <div className="text-xs text-gray-500 mt-1"><span className="font-semibold text-gray-600">Equipment Type:</span> {eqType}</div>
-                    <div className="text-xs text-gray-500 mt-0.5"><span className="font-semibold text-gray-600">Client:</span> {clientName}</div>
+                    <div className="text-xs text-white mt-1"><span className="font-semibold text-gray-600">Equipment Name:</span> {eqName}</div>
+                    <div className="text-xs text-white mt-1"><span className="font-semibold text-gray-600">Equipment Type:</span> {eqType}</div>
+                    <div className="text-xs text-white mt-0.5"><span className="font-semibold text-gray-600">Client:</span> {clientName}</div>
                 </div>
                 <div className="p-4 rounded-xl bg-gray-50 border border-gray-100">
-                    <div className="text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-2">Service Context</div>
+                    <div className="text-[10px] text-white uppercase font-bold tracking-wider mb-2">Service Context</div>
                     {pmsConfig ? (
                         <div className="space-y-1">
                             <div className="text-xs text-gray-500"><span className="font-semibold text-gray-600">Service Type:</span> {pmsConfig.serviceType}</div>
-                            {intervalDisplay && <div className="text-xs text-gray-500"><span className="font-semibold text-gray-600">Scheduled Maintenance:</span> {intervalDisplay}</div>}
-                            {currentMetric && <div className="text-xs text-gray-500"><span className="font-semibold text-gray-600">{getPmsMetricLabel(pmsConfig.serviceIntervalUnit ?? "Hours")}:</span> {currentMetric}</div>}
+                            {intervalDisplay && <div className="text-xs text-white"><span className="font-semibold text-gray-600">Scheduled Maintenance:</span> {intervalDisplay}</div>}
+                            {currentMetric && <div className="text-xs text-white"><span className="font-semibold text-gray-600">{getPmsMetricLabel(pmsConfig.serviceIntervalUnit ?? "Hours")}:</span> {currentMetric}</div>}
                         </div>
                     ) : (
-                        <div className="text-sm font-bold text-gray-900 truncate">{client?.companyName ?? "—"}</div>
+                        <div className="text-sm font-bold text-white truncate">{client?.companyName ?? "—"}</div>
                     )}
                 </div>
             </div>

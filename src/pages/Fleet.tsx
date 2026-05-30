@@ -2294,7 +2294,7 @@ export default function Fleet() {
                   >
                     Last Month
                   </button>
-                  <div className="text-sm font-semibold text-black">
+                  <div className="text-sm font-semibold text-gray-900 dark:text-[#EAEAEA]">
                     {historyMonth.toLocaleDateString(undefined, { month: "long", year: "numeric" })}
                   </div>
                   <button
@@ -2349,7 +2349,7 @@ export default function Fleet() {
                         onClick={() => setSelectedHistoryDate(dateValue)}
                         className={`h-8 rounded text-xs border transition-colors flex flex-col items-center justify-center gap-0.5 ${
                           isSelected
-                            ? "bg-[#66B2B2] border-[#66B2B2] text-[#050505] font-semibold"
+                            ? "bg-[#66B2B2] border-[#66B2B2] text-white font-semibold"
                             : isToday
                             ? "border-[#10B981] text-[#10B981]"
                             : "border-gray-200 dark:border-white/10 text-gray-700 dark:text-[#EAEAEA] hover:bg-gray-50 dark:hover:bg-white/10"
@@ -2365,7 +2365,7 @@ export default function Fleet() {
 
               <div className="rounded border border-gray-200 dark:border-white/10 bg-white dark:bg-[#1A1A20] overflow-auto">
                 <table className="min-w-full text-[11px]">
-                  <thead className="bg-gray-100 dark:bg-[#050505]/70 text-black">
+                  <thead className="bg-gray-100 dark:bg-[#050505]/70 text-gray-900 dark:text-[#F2A900]">
                     <tr>
                       <th className="px-3 py-2 text-left font-semibold">ID</th>
                       <th className="px-3 py-2 text-left font-semibold">Mileage</th>
