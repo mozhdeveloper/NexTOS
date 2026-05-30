@@ -11,6 +11,7 @@ interface InventoryState {
   // Actions
   addItem: (item: Omit<InventoryItem, "id" | "createdAt" | "lastRestocked">) => void;
   updateItem: (id: number, data: Partial<InventoryItem>) => void;
+  deleteItem: (id: number) => void;
   restockItem: (id: number, quantity: number) => void;
   
   // Usage Actions
@@ -59,6 +60,14 @@ export const useInventoryStore = create<InventoryState>()(
         set((state) => ({
           items: state.items.map((i) => (i.id === id ? { ...i, ...data } : i))
         }));
+      },
+
+      deleteItem: (id) => {
+        const item = get().items.find(i => i.id === id);
+        set((state) => ({
+          items: state.items.filter((i) => i.id !== id)
+        }));
+        toast.success(`Part Deleted`, { description: `${item?.name} has been removed from inventory.` });
       },
 
       restockItem: (id, quantity) => {
