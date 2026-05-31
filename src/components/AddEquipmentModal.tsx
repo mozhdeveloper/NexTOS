@@ -12,8 +12,10 @@ import {
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import type { Client } from "@/types";
+import seedData from "@/data/seed-data.json";
 
-export type ServiceIntervalUnit = "Hours" | "KM" | "Weeks" | "Months" | "Years";
+// Values sourced from serviceIntervalUnits in src/data/seed-data.json
+export type ServiceIntervalUnit = string;
 
 export interface EquipmentPMSConfiguration {
   serviceInterval: number;
@@ -45,15 +47,7 @@ interface AddEquipmentModalProps {
   equipmentTypeOptions?: Array<{ value: string; label: string }>;
 }
 
-const EQUIPMENT_TYPES = [
-  { value: "heavy-equipment", label: "Heavy Equipment" },
-  { value: "testing-equipment", label: "Testing Equipment" },
-  { value: "laboratory-equipment", label: "Laboratory Equipment" },
-  { value: "safety-equipment", label: "Safety Equipment" },
-  { value: "vehicles", label: "Vehicles" },
-  { value: "power-tools", label: "Power Tools" },
-  { value: "monitoring-equipment", label: "Monitoring Equipment" },
-];
+const EQUIPMENT_TYPES = seedData.equipmentTypes;
 
 const HARD_CODED_HOURS_PRESETS = [
   { today: "4h 20m", total: "3890h 40m" },

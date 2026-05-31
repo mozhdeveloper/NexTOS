@@ -44,6 +44,7 @@ export interface DraftExecution {
   // Captured addresses (technician at departure, equipment at site)
   technicianAddress?: string;
   equipmentSiteAddress?: string;
+  estimatedArrival?: string;
 }
 
 // Full payload shape that mirrors the tRPC seedServiceRecords.complete input.
@@ -92,6 +93,7 @@ export interface PendingSubmission {
     completionTime?: string | null;
     technicianAddress?: string | null;
     equipmentSiteAddress?: string | null;
+    estimatedArrival?: string | null;
     equipmentStatusAtService?: string | null;
     resetMetricsOnComplete?: boolean;
   };

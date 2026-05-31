@@ -85,12 +85,8 @@ export interface Task {
   createdAt: string;
 }
 
-export type EquipmentType =
-  | "Heavy Equipment"
-  | "Lab Equipment"
-  | "Testing Equipment"
-  | "Monitoring Device"
-  | "Other";
+// Values sourced from equipmentTypes in src/data/seed-data.json
+export type EquipmentType = string;
 
 export interface PmsConfig {
   serviceInterval: number;

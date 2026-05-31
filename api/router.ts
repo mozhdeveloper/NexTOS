@@ -77,6 +77,7 @@ type SeedServiceRecord = {
   // Location context captured at dispatch time
   technicianAddress?: string | null;
   equipmentSiteAddress?: string | null;
+  estimatedArrival?: string | null;
   // Equipment status snapshotted at the moment the task was submitted
   equipmentStatusAtService?: string | null;
 };
@@ -667,6 +668,7 @@ export const appRouter = createRouter({
           // Location context
           technicianAddress: z.string().nullable().optional(),
           equipmentSiteAddress: z.string().nullable().optional(),
+          estimatedArrival: z.string().nullable().optional(),
           // Equipment PMS status at the moment of submission
           equipmentStatusAtService: z.string().nullable().optional(),
           // When true, atomically reset the equipment's usage metric to 0 in the same file write.
@@ -706,6 +708,7 @@ export const appRouter = createRouter({
           completionTime: input.completionTime ?? null,
           technicianAddress: input.technicianAddress ?? null,
           equipmentSiteAddress: input.equipmentSiteAddress ?? null,
+          estimatedArrival: input.estimatedArrival ?? null,
           equipmentStatusAtService: input.equipmentStatusAtService ?? null,
         } as SeedServiceRecord);
 

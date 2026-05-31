@@ -79,6 +79,7 @@ export function ServiceReportView({ record, equipment, client, photos }: Service
   const completionTime: string | null = record.completionTime ?? null;
   const technicianAddress: string | null = record.technicianAddress ?? null;
   const equipmentSiteAddress: string | null = record.equipmentSiteAddress ?? null;
+  const estimatedArrival: string | null = record.estimatedArrival ?? null;
 
   const travelTimeDisplay = formatElapsed(travelStartTime, arrivalTime);
   const serviceTimeDisplay = formatElapsed(arrivalTime, completionTime);
@@ -86,7 +87,7 @@ export function ServiceReportView({ record, equipment, client, photos }: Service
   const arrivalDisplay = formatTime(arrivalTime);
   const completionDisplay = formatTime(completionTime);
 
-  const hasJourney = !!(travelStartTime || arrivalTime || completionTime || technicianAddress || equipmentSiteAddress);
+  const hasJourney = !!(travelStartTime || arrivalTime || completionTime || technicianAddress || equipmentSiteAddress || estimatedArrival);
 
   // Photos: prefer record-embedded URLs (from seed), augmented by servicePhotos store
   const beforePhotoUrl: string =
@@ -265,6 +266,16 @@ export function ServiceReportView({ record, equipment, client, photos }: Service
                 </p>
               </div>
             </div>
+
+            {estimatedArrival && (
+              <div className="p-3 rounded-xl bg-teal-50 border border-teal-100 space-y-1">
+                <div className="flex items-center gap-1.5">
+                  <Clock className="w-3 h-3 text-teal-500 shrink-0" />
+                  <span className="text-[9px] font-black uppercase tracking-widest text-teal-600">Estimated Arrival</span>
+                </div>
+                <p className="text-[11px] text-teal-900 font-medium leading-snug">{estimatedArrival}</p>
+              </div>
+            )}
 
             {/* Timing breakdown */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
