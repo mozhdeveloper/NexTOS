@@ -58,7 +58,7 @@ export default function ClientBilling() {
         const record = serviceRecords.find(r => r.id === invoice.serviceRecordId);
         if (record) {
             const eq = equipment.find(e => e.id === record.equipmentId);
-            return eq?.unitId || "Asset";
+            return eq?.name || eq?.serialNumber || "Asset";
         }
     }
     return "—";

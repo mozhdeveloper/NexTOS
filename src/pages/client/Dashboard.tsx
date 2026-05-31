@@ -176,8 +176,21 @@ function getTechnicianFromBooking(booking: Booking) {
   return getTag(booking.notes, "tech") ?? "Unassigned";
 }
 
+function parseHoursNum(text?: string): number {
+  const m = String(text ?? "").match(/(\d+)\s*h\s*(\d+)\s*m/i);
+  return m ? Number(m[1]) + Number(m[2]) / 60 : 0;
+}
+
+function getHeavyRemaining(equipment: Equipment): number {
+  const config = equipment.pmsConfiguration?.find(c => c.serviceIntervalUnit?.toLowerCase() === "hours");
+  if (!config) return Infinity;
+  const current = parseHoursNum(equipment.hoursTotal);
+  const next = (Math.floor(current / config.serviceInterval) + 1) * config.serviceInterval;
+  return next - current;
+}
+
 function getHeavyStatus(equipment: Equipment): HeavyStatus {
-  const remaining = equipment.nextPMSHours - equipment.currentHours;
+  const remaining = getHeavyRemaining(equipment);
   if (remaining <= 0) return "Overdue";
   if (remaining <= 50) return "Due Soon";
   if (remaining <= 100) return "Near Service";
@@ -199,7 +212,7 @@ function getDaysUntil(dateISO: string, now: Date) {
 
 function getEquipmentLabel(equipment?: Equipment) {
   if (!equipment) return "Unknown equipment";
-  return `${equipment.type} ${equipment.model}`;
+  return equipment.name ?? equipment.id ?? "Unknown equipment";
 }
 
 function getEquipmentSubLabel(equipment?: Equipment) {
@@ -235,10 +248,11 @@ export default function ClientDashboard() {
   const [serviceTab, setServiceTab] = useState<DashboardServiceTab>("upcoming");
   const [showReport, setShowReport] = useState<ServiceRecord | null>(null);
 
-  const clientEquipment = useMemo(() => equipment.filter((entry) => entry.clientId === clientId), [equipment, clientId]);
+  const eqClientNum = (id: string) => Number(String(id).replace(/\D/g, ""));
+  const clientEquipment = useMemo(() => equipment.filter((entry) => eqClientNum(entry.clientId) === clientId), [equipment, clientId]);
   const clientEquipmentIds = useMemo(() => new Set(clientEquipment.map(e => e.id)), [clientEquipment]);
   const clientServices = useMemo(() => serviceRecords.filter((entry) => clientEquipmentIds.has(entry.equipmentId)), [serviceRecords, clientEquipmentIds]);
-  const clientBookings = useMemo(() => bookings.filter((entry) => entry.clientId === clientId), [bookings, clientId]);
+  const clientBookings = useMemo(() => bookings.filter((entry) => eqClientNum(entry.clientId) === clientId), [bookings, clientId]);
   const clientInvoices = useMemo(() => invoices.filter((entry) => entry.clientId === clientId), [invoices, clientId]);
 
   const equipmentById = useMemo(() => new Map(clientEquipment.map((entry) => [entry.id, entry])), [clientEquipment]);
@@ -350,8 +364,8 @@ export default function ClientDashboard() {
           category: entry.serviceCategory,
           typeLabel: entry.serviceCategory === "Heavy Equipment PMS" ? "PMS (1000 hrs)" : entry.serviceCategory,
           scheduleLabel:
-            linkedEquipment?.equipmentType === "Heavy Equipment" && linkedEquipment.nextPMSHours > 0
-              ? `In ${Math.max(linkedEquipment.nextPMSHours - linkedEquipment.currentHours, 0)} hrs`
+            linkedEquipment?.equipmentType === "Heavy Equipment" && linkedEquipment.pmsConfiguration?.length
+              ? `In ${Math.max(Math.floor(getHeavyRemaining(linkedEquipment)), 0)} hrs`
               : formatDateTimeLabel(entry.requestedDate),
           scheduleMeta: `${formatDateTimeLabel(entry.requestedDate)}${entry.preferredTime ? `, ${formatTimeRange(entry.preferredTime)}` : ""}`,
           statusLabel: heavyStatus ?? (entry.status === "confirmed" ? "Scheduled" : entry.status === "completed" ? "Completed" : "Requested"),
@@ -432,12 +446,12 @@ export default function ClientDashboard() {
     });
 
     heavyEquipment.forEach((entry) => {
-      const remaining = entry.nextPMSHours - entry.currentHours;
+      const remaining = Math.floor(getHeavyRemaining(entry));
       if (remaining <= 50) {
         alerts.push({
           id: `heavy-${entry.id}`,
           title: `${getEquipmentLabel(entry)} PMS ${remaining <= 0 ? "is overdue" : `is due in ${remaining} hrs`}`,
-          subtitle: `Current Hours: ${entry.currentHours} hrs`,
+          subtitle: `Current Hours: ${entry.hoursTotal ?? "—"}`,
           tone: remaining <= 0 ? "danger" : "warning",
         });
       }
@@ -519,7 +533,7 @@ export default function ClientDashboard() {
 
   const topHeavyRisk = heavyEquipment
     .slice()
-    .sort((left, right) => (left.nextPMSHours - left.currentHours) - (right.nextPMSHours - right.currentHours))[0];
+    .sort((left, right) => getHeavyRemaining(left) - getHeavyRemaining(right))[0];
 
   const topCalibrationRisk = calibrationEquipment
     .slice()
@@ -765,7 +779,7 @@ export default function ClientDashboard() {
                 footerTitle={topHeavyRisk ? `${getEquipmentLabel(topHeavyRisk)}` : "No critical unit"}
                 footerSubtitle={
                   topHeavyRisk
-                    ? `${topHeavyRisk.nextPMSHours - topHeavyRisk.currentHours <= 0 ? "Overdue" : "Due in"} ${Math.abs(topHeavyRisk.nextPMSHours - topHeavyRisk.currentHours)} hrs`
+                    ? `${getHeavyRemaining(topHeavyRisk) <= 0 ? "Overdue" : "Due in"} ${Math.abs(Math.floor(getHeavyRemaining(topHeavyRisk)))} hrs`
                     : "All units within target"
                 }
               />
@@ -1082,16 +1096,16 @@ function ServiceReportView({ record, equipment, client, photos }: any) {
             </h4>
             <div className="space-y-3 px-3">
               <div className="flex justify-between border-b border-gray-100 pb-2">
-                <span className="text-[11px] text-gray-400 font-bold uppercase">Identification ID:</span>
-                <span className="text-[11px] text-gray-900 font-black font-mono-tech tracking-wider">{equipment?.unitId}</span>
+                <span className="text-[11px] text-gray-400 font-bold uppercase">Equipment ID:</span>
+                <span className="text-[11px] text-gray-900 font-black font-mono-tech tracking-wider">{equipment?.id}</span>
               </div>
               <div className="flex justify-between border-b border-gray-100 pb-2">
-                <span className="text-[11px] text-gray-400 font-bold uppercase">Manufacturer:</span>
-                <span className="text-[11px] text-gray-900 font-bold">{equipment?.manufacturer}</span>
+                <span className="text-[11px] text-gray-400 font-bold uppercase">Name:</span>
+                <span className="text-[11px] text-gray-900 font-bold">{equipment?.name ?? "—"}</span>
               </div>
               <div className="flex justify-between border-b border-gray-100 pb-2">
-                <span className="text-[11px] text-gray-400 font-bold uppercase">Model Descriptor:</span>
-                <span className="text-[11px] text-gray-900 font-bold">{equipment?.model}</span>
+                <span className="text-[11px] text-gray-400 font-bold uppercase">Type:</span>
+                <span className="text-[11px] text-gray-900 font-bold">{equipment?.equipmentType ?? "—"}</span>
               </div>
               <div className="flex justify-between border-b border-gray-100 pb-2">
                 <span className="text-[11px] text-gray-400 font-bold uppercase">Runtime Meter:</span>

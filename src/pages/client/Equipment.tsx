@@ -36,7 +36,7 @@ function QRModal({ equipment, isOpen, onClose }: { equipment: any; isOpen: boole
     printWindow.document.write(`
       <html>
         <head>
-          <title>Print QR Tag - ${equipment.unitId}</title>
+          <title>Print QR Tag - ${equipment.name ?? equipment.serialNumber}</title>
           <style>
             @page { size: auto; margin: 0; }
             body { 
@@ -66,9 +66,9 @@ function QRModal({ equipment, isOpen, onClose }: { equipment: any; isOpen: boole
         <body>
           <div class="tag-container">
             <div class="brand">NexTOS</div>
-            <div class="unit-id">${equipment.unitId}</div>
+            <div class="unit-id">${equipment.name ?? equipment.id}</div>
             <div class="qr-wrapper">${qrSvg}</div>
-            <div class="meta">${equipment.manufacturer} ${equipment.model}</div>
+            <div class="meta">${equipment.equipmentType}</div>
             <div class="meta" style="margin-top: 4px;">SN: ${equipment.serialNumber}</div>
           </div>
           <script>
@@ -88,7 +88,7 @@ function QRModal({ equipment, isOpen, onClose }: { equipment: any; isOpen: boole
       <DialogContent className="bg-white border-gray-200 sm:max-w-md rounded-[2.5rem] shadow-2xl p-8">
         <DialogHeader className="items-center pb-4">
           <DialogTitle className="text-2xl font-black tracking-tighter text-gray-900">Equipment QR Tag</DialogTitle>
-          <p className="text-sm text-gray-500 font-medium">Digital Identity for {equipment.unitId}</p>
+          <p className="text-sm text-gray-500 font-medium">Digital Identity for {equipment.name ?? equipment.id}</p>
         </DialogHeader>
 
         <div className="flex flex-col items-center gap-8 py-4">
@@ -99,7 +99,7 @@ function QRModal({ equipment, isOpen, onClose }: { equipment: any; isOpen: boole
                 id={`qr-gen-${equipment.id}`}
                 value={JSON.stringify({
                   id: equipment.id,
-                  unitId: equipment.unitId,
+                  name: equipment.name,
                   serialNumber: equipment.serialNumber,
                   type: "EQUIPMENT_TAG"
                 })}
@@ -172,7 +172,7 @@ export default function ClientEquipment() {
   const clientId = selectedCompanyIndex !== -1 ? selectedCompanyIndex + 1 : (user?.clientId || 1);
 
   const [searchQuery, setSearchQuery] = useState("");
-  const [expanded, setExpanded] = useState<number | null>(null);
+  const [expanded, setExpanded] = useState<string | null>(null);
   const [qrModalItem, setQrModalItem] = useState<any | null>(null);
   
   // Metrics calculation
@@ -192,11 +192,11 @@ export default function ClientEquipment() {
   };
 
   const clientEquipment = equipment.filter(
-    (e) => e.clientId === clientId && 
-    (searchQuery === "" || 
-     e.unitId.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    (e) => Number(String(e.clientId).replace(/\D/g, "")) === clientId &&
+    (searchQuery === "" ||
+     e.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
      e.serialNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-     e.model.toLowerCase().includes(searchQuery.toLowerCase()))
+     e.id.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
   const statusBadge = (status: string) => {
@@ -214,14 +214,15 @@ export default function ClientEquipment() {
     }
   };
 
+  const parseH = (text: string) => {
+    const m = String(text ?? "").match(/(\d+)\s*h/i);
+    return m ? Number(m[1]) : 0;
+  };
+
   const isServiceDue = (eq: any) => {
-    if (eq.equipmentType === "Heavy Equipment") {
-      return eq.nextPMSHours > 0 && eq.currentHours >= eq.nextPMSHours;
-    }
-    if (eq.equipmentType === "Lab Equipment" || eq.equipmentType === "Testing Equipment") {
-      return eq.nextCalibrationDate && new Date(eq.nextCalibrationDate) <= new Date();
-    }
-    return false;
+    const config = eq.pmsConfiguration?.[0];
+    if (!config || config.serviceIntervalUnit?.toLowerCase() !== "hours") return false;
+    return parseH(eq.hoursTotal ?? "0h 0m") >= config.serviceInterval;
   };
 
   return (
@@ -304,11 +305,11 @@ export default function ClientEquipment() {
                   </div>
                   <div className="text-left">
                     <div className="flex items-center gap-2">
-                      <span className="text-base lg:text-lg font-semibold text-gray-900 font-mono-tech">{eq.unitId}</span>
+                      <span className="text-base lg:text-lg font-semibold text-gray-900 font-mono-tech">{eq.name ?? eq.id}</span>
                       <span className="text-xs text-gray-500">{eq.equipmentType}</span>
-                      <span className={statusBadge(eq.status)}>{eq.status}</span>
+                      <span className={statusBadge(eq.status ?? "active")}>{eq.status ?? "active"}</span>
                     </div>
-                    <div className="text-[10px] text-gray-500">{eq.manufacturer} {eq.model} — {eq.location}</div>
+                    <div className="text-[10px] text-gray-500">SN: {eq.serialNumber}</div>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
@@ -331,49 +332,31 @@ export default function ClientEquipment() {
                       <div className="text-gray-900 font-mono-tech">{eq.serialNumber}</div>
                     </div>
                     <div>
-                      <div className="text-[10px] text-gray-500">Install Date</div>
-                      <div className="text-gray-900">{new Date(eq.installDate).toLocaleDateString()}</div>
+                      <div className="text-[10px] text-gray-500">Hours Total</div>
+                      <div className="text-gray-900 font-mono-tech">{eq.hoursTotal ?? "—"}</div>
                     </div>
-                    {eq.equipmentType === "Heavy Equipment" ? (
-                      <>
-                        <div className="col-span-2">
-                          <div className="flex justify-between items-center mb-1">
-                            <div className="text-[10px] text-gray-500">Usage Progress</div>
-                            <div className="text-[10px] text-gray-900 font-mono-tech">{eq.currentHours} / {eq.nextPMSHours}h</div>
-                          </div>
-                          <div className="h-1.5 bg-gray-50 rounded-full overflow-hidden">
-                            <div 
-                              className={`h-full rounded-full ${serviceDue ? "bg-[#EF4444]" : "bg-[#66B2B2]"}`} 
-                              style={{ width: `${Math.min(100, (eq.currentHours / eq.nextPMSHours) * 100)}%` }}
-                            />
+                    {eq.pmsConfiguration?.[0] && (
+                      <div className="col-span-2">
+                        <div className="flex justify-between items-center mb-1">
+                          <div className="text-[10px] text-gray-500">Usage Progress</div>
+                          <div className="text-[10px] text-gray-900 font-mono-tech">
+                            {eq.hoursTotal ?? "0h"} / {eq.pmsConfiguration[0].serviceInterval}{eq.pmsConfiguration[0].serviceIntervalUnit}
                           </div>
                         </div>
-                        <div>
-                          <div className="text-[10px] text-gray-500">Last PMS</div>
-                          <div className="text-gray-900 font-mono-tech">{eq.lastPMSHours}h</div>
+                        <div className="h-1.5 bg-gray-50 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full ${serviceDue ? "bg-[#EF4444]" : "bg-[#66B2B2]"}`}
+                            style={{ width: `${Math.min(100, (parseH(eq.hoursTotal ?? "0h 0m") / eq.pmsConfiguration[0].serviceInterval) * 100)}%` }}
+                          />
                         </div>
-                      </>
-                    ) : (
-                      <>
-                        <div>
-                          <div className="text-[10px] text-gray-500">Last Calibration</div>
-                          <div className="text-gray-900">{eq.lastCalibrationDate ? new Date(eq.lastCalibrationDate).toLocaleDateString() : "—"}</div>
-                        </div>
-                        <div className="col-span-2">
-                           <div className="text-[10px] text-gray-500">Next Calibration</div>
-                           <div className="flex items-center gap-2">
-                              <div className={`text-sm font-bold font-mono-tech ${serviceDue ? "text-[#EF4444]" : "text-gray-900"}`}>
-                                {eq.nextCalibrationDate ? new Date(eq.nextCalibrationDate).toLocaleDateString() : "—"}
-                              </div>
-                              {eq.nextCalibrationDate && (
-                                <span className={`text-[9px] px-1 py-0.5 rounded ${serviceDue ? "bg-[#EF4444]/20 text-[#EF4444]" : "bg-[#66B2B2]/20 text-[#66B2B2]"}`}>
-                                  {Math.ceil((new Date(eq.nextCalibrationDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))}d left
-                                </span>
-                              )}
-                           </div>
-                        </div>
-                      </>
+                      </div>
                     )}
+                    <div>
+                      <div className="text-[10px] text-gray-500">PMS Interval</div>
+                      <div className="text-gray-900 font-mono-tech">
+                        {eq.pmsConfiguration?.[0] ? `${eq.pmsConfiguration[0].serviceInterval} ${eq.pmsConfiguration[0].serviceIntervalUnit}` : "—"}
+                      </div>
+                    </div>
                   </div>
 
                   {eqRecords.length > 0 && (

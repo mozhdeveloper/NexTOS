@@ -246,7 +246,7 @@ export default function Dashboard() {
                       {record.technician} {record.status === 'completed' ? 'finalized' : 'started'} {record.serviceCategory}
                    </div>
                    <div className="text-[10px] text-gray-400 mt-0.5">
-                      {equipment.find(e => e.id === record.equipmentId)?.unitId || 'Unknown Asset'} • {new Date(record.completedDate || record.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      {equipment.find(e => e.id === record.equipmentId)?.name || 'Unknown Asset'} • {new Date(record.completedDate || record.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                    </div>
                 </div>
               </div>
@@ -304,14 +304,14 @@ export default function Dashboard() {
                 </tr>
               </thead>
               <tbody>
-                {equipment.filter(e => e.status === 'service_due' || e.currentHours > e.nextPMSHours - 100).sort((a,b) => (b.currentHours - (b.nextPMSHours || 0)) - (a.currentHours - (a.nextPMSHours || 0))).slice(0, 5).map((eq) => (
+                {equipment.filter(e => e.status === 'service_due').slice(0, 5).map((eq) => (
                   <tr key={eq.id} className="border-b border-gray-100 hover:bg-gray-50 group">
                     <td className="py-2">
-                       <div className="font-bold text-gray-900">{eq.unitId}</div>
-                       <div className="text-[10px] text-gray-400">{eq.manufacturer} {eq.model}</div>
+                       <div className="font-bold text-gray-900">{eq.name ?? eq.id}</div>
+                       <div className="text-[10px] text-gray-400">{eq.equipmentType}</div>
                     </td>
-                    <td className="py-2 font-mono-tech font-bold text-gray-700">{eq.currentHours}h</td>
-                    <td className="py-2 font-mono-tech text-gray-400">{eq.nextPMSHours}h</td>
+                    <td className="py-2 font-mono-tech font-bold text-gray-700">{eq.hoursTotal ?? "—"}</td>
+                    <td className="py-2 font-mono-tech text-gray-400">{eq.pmsConfiguration?.[0]?.serviceInterval ?? "—"}h</td>
                     <td className="py-2">
                       <span className={`px-1.5 py-0.5 rounded-[4px] text-[9px] font-black uppercase tracking-tighter ${
                         eq.status === 'service_due' ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-amber-50 text-amber-600 border border-amber-100'

@@ -87,13 +87,7 @@ const METRICS_OVERRIDES_KEY = "nextos-metrics-overrides-v1";
 const PM_INTERVAL_UNITS = ["Hours", "KM", "Weeks", "Months", "Years"] as const;
 const _toastedPmsMessages = new Set<string>();
 
-const serviceTypeOptions = [
-  { value: "PMS (Preventative Maintenance)", label: "PMS (Preventative Maintenance)" },
-  { value: "Calibration PMS", label: "Calibration PMS" },
-  { value: "Repair", label: "General Repair" },
-  { value: "Inspection", label: "Standard Inspection" },
-  { value: "Installation", label: "Installation" },
-];
+const serviceTypeOptions = seedData.serviceTypes;
 
 function getPmsMetricLabel(unit: string): string {
   switch (unit.toLowerCase()) {
@@ -626,7 +620,7 @@ export default function Services() {
       
       setActiveTab("equipment");
       setTimeout(() => setHighlightedEquipment(null), 3000);
-      toast.success(`Found asset: ${seedEq.name || seedEq.unitId}`);
+      toast.success(`Found asset: ${seedEq.name || seedEq.id}`);
     } else {
       toast.error(`Equipment not found with serial: ${serialToFind}`);
     }
@@ -853,7 +847,7 @@ export default function Services() {
         return {
           serviceRecords: [
             ...state.serviceRecords,
-            { ...record, invoiceId: null, createdAt: new Date().toISOString(), serviceCategory: record.serviceCategory as any },
+            { ...record, equipmentId: record.seedEquipmentId ?? String(record.equipmentId), invoiceId: null, createdAt: new Date().toISOString(), serviceCategory: record.serviceCategory as any },
           ],
         };
       });
@@ -928,10 +922,7 @@ export default function Services() {
       const seedEq = liveEquipment.find((s) => s.id === seedEqId);
       if (!seedEq) continue;
 
-      const storeEq =
-        equipment.find((e) => (e.equipmentType ?? "").toLowerCase() === (seedEq.equipmentType ?? "").toLowerCase()) ??
-        equipment.find((e) => (e.type ?? "").toLowerCase().includes((seedEq.name ?? "").split(" ")[0].toLowerCase())) ??
-        equipment[0];
+      const storeEq = equipment.find((e) => e.id === seedEqId) ?? equipment[0];
       if (!storeEq) continue;
 
       const clientId = Number(String(seedEq.clientId).replace(/\D/g, "")) || 1;
@@ -969,7 +960,7 @@ export default function Services() {
             findings: "",
             workDone: "",
             recommendation: "",
-            hoursAtService: storeEq.currentHours || 0,
+            hoursAtService: Math.floor(parseFloat((storeEq.hoursTotal ?? "0").match(/(\d+)/)?.[1] ?? "0")) || 0,
             invoiceId: null,
             createdAt: new Date().toISOString(),
           },
@@ -993,7 +984,7 @@ export default function Services() {
           recommendation: "",
           partsUsed: "Pending Inspection",
           cost: entry.estimatedCost || 0,
-          hoursAtService: storeEq.currentHours || 0,
+          hoursAtService: Math.floor(parseFloat((storeEq.hoursTotal ?? "0").match(/(\d+)/)?.[1] ?? "0")) || 0,
         });
       }
 
@@ -1307,18 +1298,18 @@ export default function Services() {
                   : null;
 
                 const displayName = isPmsTask
-                  ? (pmsSeedEq?.name ?? eq?.unitId ?? "Unknown Equipment")
-                  : (eq?.unitId ?? "No unit selected");
+                  ? (pmsSeedEq?.name ?? eq?.name ?? eq?.id ?? "Unknown Equipment")
+                  : (eq?.name ?? eq?.id ?? "No unit selected");
                 const displaySub = isPmsTask
                   ? null
-                  : (eq ? `${eq.manufacturer} ${eq.model}` : null);
+                  : (eq ? eq.equipmentType : null);
                 const displayClient = isPmsTask
                   ? (pmsSeedClient?.companyName ?? client?.companyName ?? "Unknown Client")
                   : (client?.companyName ?? "Unknown Client");
                 const metricUnit = pmsCfg?.serviceIntervalUnit ?? "Hours";
                 const metricValue = isPmsTask
                   ? getPmsMetricValue(pmsSeedEq, metricUnit, gps001CacheMs, gps001HoursOffsetMs)
-                  : `${eq?.currentHours || 0}h`;
+                  : (eq?.hoursTotal ?? "—");
                 const serviceIntervalDisplay = (isPmsTask && pmsCfg)
                   ? formatServiceInterval(pmsCfg.serviceInterval, pmsCfg.serviceIntervalUnit)
                   : null;
@@ -1996,7 +1987,7 @@ export default function Services() {
                       ? liveClients.find(c => c.id === seedEqRow.clientId)
                       : null;
 
-                    const rowEqName = r.equipmentName || seedEqRow?.name || storeEq?.unitId || "—";
+                    const rowEqName = r.equipmentName || seedEqRow?.name || storeEq?.name || storeEq?.id || "—";
                     const rowClientName = r.clientName || seedClientRow?.companyName || storeClient?.companyName || "—";
                     const rowSerial = r.serialNumber || seedEqRow?.serialNumber || storeEq?.serialNumber || "—";
                     const rowEqType = r.equipmentType || seedEqRow?.equipmentType || "—";
@@ -2098,8 +2089,8 @@ export default function Services() {
                           <SelectValue placeholder={formClientId ? "Select unit ID..." : "Select client first"} />
                         </SelectTrigger>
                         <SelectContent className="bg-white dark:bg-[#1A1A20] border-gray-200 dark:border-white/10 z-50">
-                          {equipment.filter(e => e.clientId === parseInt(formClientId)).map(e => (
-                            <SelectItem key={e.id} value={e.id.toString()} className="text-gray-900 dark:text-[#EAEAEA] font-mono-tech">{e.unitId} — {e.manufacturer} {e.model}</SelectItem>
+                          {equipment.filter(e => e.clientId === formClientId).map(e => (
+                            <SelectItem key={e.id} value={e.id} className="text-gray-900 dark:text-[#EAEAEA] font-mono-tech">{e.name ?? e.id} — {e.equipmentType}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
@@ -2294,7 +2285,7 @@ export default function Services() {
                     findings: formFindings || "Manually Logged Entry",
                     workDone: formWorkDone,
                     recommendation: formRecommendation || "Regular monitoring advised",
-                    hoursAtService: targetEq?.currentHours || 0,
+                    hoursAtService: Math.floor(parseFloat((targetEq?.hoursTotal ?? "0").match(/(\d+)/)?.[1] ?? "0")) || 0,
                     techSignature: formTechSign,
                     clientSignature: formClientSign
                   });
@@ -2327,9 +2318,9 @@ export default function Services() {
                         recommendation: formRecommendation,
                         partsUsed: "Manually Logged",
                         cost: 0,
-                        hoursAtService: targetEq?.currentHours || 0,
+                        hoursAtService: Math.floor(parseFloat((targetEq?.hoursTotal ?? "0").match(/(\d+)/)?.[1] ?? "0")) || 0,
                         // Rich fields for PDF/View
-                        equipmentName: seedEq?.name || targetEq?.unitId || "",
+                        equipmentName: seedEq?.name || targetEq?.name || targetEq?.id || "",
                         clientName: seedClient?.companyName || "",
                         equipmentType: seedEq?.equipmentType || "",
                         serialNumber: targetEq?.serialNumber || "",
@@ -2486,7 +2477,7 @@ export default function Services() {
               <p className="text-xs text-gray-400 font-bold uppercase tracking-widest">Serial Number</p>
               <p className="text-lg font-bold text-gray-900 font-mono-tech">{qrSerial}</p>
               <div className="inline-flex items-center px-3 py-1 bg-[#66B2B2]/10 text-[#66B2B2] rounded-full text-[10px] font-bold mt-2">
-                 UNIT: {equipment.find((e) => e.serialNumber === qrSerial)?.unitId}
+                 UNIT: {equipment.find((e) => e.serialNumber === qrSerial)?.name ?? equipment.find((e) => e.serialNumber === qrSerial)?.id}
               </div>
             </div>
           </div>
@@ -2822,7 +2813,7 @@ function ExecutionModal({
             safetyChecklist: draft.safetyChecklist,
             completedDate,
             equipmentId: effectiveEquipId,
-            hoursAtService: draft.hoursAtService || storeEq?.currentHours || 0,
+            hoursAtService: draft.hoursAtService || Math.floor(parseFloat((storeEq?.hoursTotal ?? "0").match(/(\d+)/)?.[1] ?? "0")) || 0,
             cost: draft.cost ?? task.cost ?? 0,
         });
 
@@ -2930,7 +2921,7 @@ function ExecutionModal({
                 // Core record fields (for upsert)
                 seedEquipmentId: meta._seedEqId ?? "",
                 pmsConfigIndex: meta._pmsIdx ?? 0,
-                equipmentId: effectiveEquipId,
+                equipmentId: Number(String(effectiveEquipId ?? "").replace(/\D/g, "")) || 0,
                 clientId: task.clientId,
                 serviceCategory: task.serviceCategory,
                 scheduledDate: task.scheduledDate ?? completedDate,
@@ -2946,9 +2937,9 @@ function ExecutionModal({
                     pricePerUnit: p.pricePerUnit,
                 })) ?? [],
                 cost: draft.cost ?? pmsCfg?.estimatedCost ?? task.cost ?? 0,
-                hoursAtService: draft.hoursAtService ?? storeEq?.currentHours ?? 0,
+                hoursAtService: draft.hoursAtService ?? Math.floor(parseFloat((storeEq?.hoursTotal ?? "0").match(/(\d+)/)?.[1] ?? "0")) ?? 0,
                 // Rich completion fields
-                equipmentName: seedEq?.name ?? storeEq?.unitId ?? "",
+                equipmentName: seedEq?.name ?? storeEq?.name ?? storeEq?.id ?? "",
                 clientName: seedClient?.companyName ?? clients.find(c => c.id === task.clientId)?.companyName ?? "",
                 equipmentType: seedEq?.equipmentType ?? "",
                 serialNumber: seedEq?.serialNumber ?? storeEq?.serialNumber ?? "",
@@ -3029,8 +3020,8 @@ function ExecutionModal({
     // Serial number used for QR verification and display
     const displaySerial = _pmsSeedEq?.serialNumber ?? currentEq?.serialNumber ?? "";
     // Equipment name shown in the header and Step 1 card
-    const displayName = _pmsSeedEq?.name ?? currentEq?.unitId ?? `SIM-UNIT-${task?.id}`;
-    const displaySubtitle = _pmsSeedEq?.equipmentType ?? (currentEq ? `${currentEq.manufacturer} ${currentEq.model}` : "");
+    const displayName = _pmsSeedEq?.name ?? currentEq?.name ?? currentEq?.id ?? `SIM-UNIT-${task?.id}`;
+    const displaySubtitle = _pmsSeedEq?.equipmentType ?? currentEq?.equipmentType ?? "";
     const displayClient = _pmsSeedEq?.clientId
       ? (seedClients.find((c: any) => c.id === _pmsSeedEq.clientId)?.companyName ?? null)
       : null;
@@ -3048,7 +3039,7 @@ function ExecutionModal({
           }
         } catch { /* fall through */ }
       }
-      return _pmsSeedEq?.hoursTotal ?? `${currentEq?.currentHours ?? 0}h`;
+      return _pmsSeedEq?.hoursTotal ?? currentEq?.hoursTotal ?? "0h 0m";
     })();
 
     return (
@@ -3427,7 +3418,7 @@ function TechnicalWorkForm({ draft, equipment, client, packages, seedEquipment, 
         workDone: draft.workDone || "",
         selectedParts: draft.selectedParts || [],
         recommendations: draft.recommendations || "",
-        hoursAtService: draft.hoursAtService || equipment?.currentHours || 0,
+        hoursAtService: draft.hoursAtService || Math.floor(parseFloat((equipment?.hoursTotal ?? "0").match(/(\d+)/)?.[1] ?? "0")) || 0,
         cost: draft.cost ?? 0,
     });
 
@@ -3463,8 +3454,8 @@ function TechnicalWorkForm({ draft, equipment, client, packages, seedEquipment, 
         return client?.companyName ?? "—";
     }, [seedEquipment, client]);
 
-    const eqName = seedEquipment?.name ?? equipment?.unitId ?? "—";
-    const eqType = seedEquipment?.equipmentType ?? (equipment ? `${equipment.manufacturer} ${equipment.model}` : "—");
+    const eqName = seedEquipment?.name ?? equipment?.name ?? equipment?.id ?? "—";
+    const eqType = seedEquipment?.equipmentType ?? equipment?.equipmentType ?? "—";
 
     return (
         <div className="space-y-6 animate-in fade-in duration-300">
@@ -3714,12 +3705,12 @@ function EquipmentDetail({
            <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-[#66B2B2]/10 text-[#66B2B2] text-[9px] font-black uppercase tracking-[0.1em] mb-2">
               <Package className="w-2.5 h-2.5" /> Managed Asset
            </div>
-           <h3 className="text-2xl font-bold text-gray-900 tracking-tight">{equipment.unitId}</h3>
-           <p className="text-sm text-gray-500 font-medium">{equipment.manufacturer} <span className="text-gray-300 mx-1">|</span> {equipment.model}</p>
+           <h3 className="text-2xl font-bold text-gray-900 tracking-tight">{equipment.name ?? equipment.id}</h3>
+           <p className="text-sm text-gray-500 font-medium">{equipment.equipmentType}</p>
         </div>
         <div className="text-right">
            <div className="text-[10px] text-gray-400 uppercase font-bold tracking-widest mb-1">Total Operating Time</div>
-           <div className="text-3xl font-bold text-gray-900 font-mono-tech">{equipment.currentHours}<span className="text-sm ml-1 text-gray-400">H</span></div>
+           <div className="text-3xl font-bold text-gray-900 font-mono-tech">{equipment.hoursTotal ?? "—"}</div>
         </div>
       </div>
 
@@ -3730,7 +3721,7 @@ function EquipmentDetail({
          </div>
          <div className="space-y-1">
             <div className="text-[9px] text-gray-400 uppercase font-black tracking-widest">Global Positioning</div>
-            <div className="text-xs font-bold text-gray-900">{equipment.location}</div>
+            <div className="text-xs font-bold text-gray-900">{equipment.lat && equipment.lng ? `${equipment.lat.toFixed(4)}, ${equipment.lng.toFixed(4)}` : "—"}</div>
          </div>
          <div className="space-y-1">
             <div className="text-[9px] text-gray-400 uppercase font-black tracking-widest">Client Assignment</div>

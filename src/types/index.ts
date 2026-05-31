@@ -85,40 +85,34 @@ export interface Task {
   createdAt: string;
 }
 
-export type EquipmentType = 
-  | "Heavy Equipment" 
-  | "Lab Equipment" 
-  | "Testing Equipment" 
-  | "Monitoring Device" 
+export type EquipmentType =
+  | "Heavy Equipment"
+  | "Lab Equipment"
+  | "Testing Equipment"
+  | "Monitoring Device"
   | "Other";
 
+export interface PmsConfig {
+  serviceInterval: number;
+  serviceIntervalUnit: string;
+  serviceType: string;
+  estimatedCost?: number;
+}
+
 export interface Equipment {
-  id: number;
-  clientId: number;
-  unitId: string;
-  type: string; // Legacy field
-  equipmentType: EquipmentType;
+  id: string;          // "EQ-001", "LAB-001" etc — matches seed-data.json
+  name: string;
+  clientId: string;    // "CL-001" etc — matches seed-data.json
   serialNumber: string;
-  manufacturer: string;
-  model: string;
-  installDate: string;
-  warrantyExpiry: string;
-  status: "active" | "inactive" | "maintenance" | "retired" | "under_service" | "broken" | "service_due";
-  
-  // Heavy Equipment Logic (Hours-based)
-  currentHours: number;
-  lastPMSHours: number;
-  pmsInterval: number; // e.g., 1000
-  nextPMSHours: number;
-  
-  // Calibration Logic (Date-based)
-  lastCalibrationDate: string | null;
-  calibrationFrequency: number; // in months, e.g., 6 or 12
-  nextCalibrationDate: string | null;
-  
-  location: string;
-  notes: string;
-  createdAt: string;
+  equipmentType: EquipmentType;
+  status?: string;
+  hoursTotal?: string;  // "1250h 10m"
+  hoursToday?: string;
+  kmTotal?: number;
+  kmToday?: number;
+  lat?: number;
+  lng?: number;
+  pmsConfiguration?: PmsConfig[];
 }
 
 export type ServiceCategory = 
@@ -140,7 +134,7 @@ export type LabTestingStatus =
 
 export interface ServiceRecord {
   id: number;
-  equipmentId: number;
+  equipmentId: string;   // matches Equipment.id / seedEquipmentId
   clientId: number;
   technician: string;
   serviceCategory: ServiceCategory;
@@ -191,18 +185,20 @@ export interface ServicePhoto {
 }
 
 export interface Booking {
-  id: number;
-  clientId: number;
-  equipmentId: number;
-  serviceCategory: ServiceCategory;
-  serviceType?: ServiceType; // Legacy
+  id: string;
+  clientId: string;
+  equipmentId: string;
+  serviceCategory?: ServiceCategory;
+  serviceType?: ServiceType;
+  type?: string;
   requestedDate: string;
-  preferredTime: string;
-  status: "pending" | "confirmed" | "completed" | "cancelled";
-  notes: string;
+  preferredTime?: string;
+  status: "pending" | "confirmed" | "completed" | "cancelled" | "Pending" | "Confirmed" | "Scheduled";
+  notes?: string;
   projectName?: string;
   sampleName?: string;
-  createdAt: string;
+  package?: string;
+  createdAt?: string;
 }
 
 export type PackageType = 

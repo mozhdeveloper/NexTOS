@@ -116,11 +116,10 @@ function formatBookingId(id: number, requestedDate: string) {
   return `BK-${year}-${String(id).padStart(4, "0")}`;
 }
 
-function getTechnicianFromEquipmentId(equipmentId: number) {
-  const mod = equipmentId % 3;
-  if (mod === 0) return "James Rodriguez";
-  if (mod === 1) return "Alex Smith";
-  return "Mike Thompson";
+function getTechnicianFromEquipmentId(equipmentId: string) {
+  const techs = ["James Rodriguez", "Alex Smith", "Mike Thompson"];
+  const hash = equipmentId.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0);
+  return techs[hash % 3];
 }
 
 function getTechColor(tech: string) {
@@ -234,12 +233,13 @@ export default function ClientBookings() {
   const selectedCompanyIndex = seedData.clients.findIndex(c => c.id === selectedCompanyId);
   const clientId = selectedCompanyIndex !== -1 ? selectedCompanyIndex + 1 : (user?.clientId || 1);
 
-  const clientEquipment = useMemo(() => equipment.filter((e) => e.clientId === clientId), [equipment, clientId]);
+  const eqClientNum = (id: string) => Number(String(id).replace(/\D/g, ""));
+  const clientEquipment = useMemo(() => equipment.filter((e) => eqClientNum(e.clientId) === clientId), [equipment, clientId]);
   const equipmentById = useMemo(() => new Map(clientEquipment.map((eq) => [eq.id, eq])), [clientEquipment]);
 
   const clientBookings = useMemo(
     () => bookings
-      .filter((b) => b.clientId === clientId)
+      .filter((b) => eqClientNum(b.clientId) === clientId)
       .sort((a, b) => getBookingDateWithStartTime(a).getTime() - getBookingDateWithStartTime(b).getTime()),
     [bookings, clientId]
   );
@@ -324,7 +324,7 @@ export default function ClientBookings() {
       const tech = getTechnicianFromEquipmentId(eq.id);
       const notes = `[package:${seed.pkg}] [tech:${tech}] [status:${seed.status}]`;
       addBooking({
-        clientId,
+        clientId: String(clientId),
         equipmentId: eq.id,
         serviceCategory: toServiceCategory(seed.type),
         serviceType: seed.type,
@@ -370,7 +370,7 @@ export default function ClientBookings() {
     if (editBookingId) {
       const noteWithStatus = setTag(noteWithTech, "status", "rescheduled");
       updateBooking(editBookingId, {
-        equipmentId: parseInt(bookingEquipment, 10),
+        equipmentId: bookingEquipment,
         serviceType: bookingType,
         requestedDate: normalizedDate.toISOString(),
         preferredTime: bookingTime,
@@ -380,8 +380,8 @@ export default function ClientBookings() {
     } else {
       const noteWithStatus = setTag(noteWithTech, "status", "pending");
       addBooking({
-        clientId,
-        equipmentId: parseInt(bookingEquipment, 10),
+        clientId: String(clientId),
+        equipmentId: bookingEquipment,
         serviceCategory: toServiceCategory(bookingType),
         serviceType: bookingType,
         requestedDate: normalizedDate.toISOString(),
@@ -413,8 +413,8 @@ export default function ClientBookings() {
       const status = getExtendedStatus(booking);
       const pkg = getPackageOption(booking);
       const tech = getTag(booking.notes, "tech") ?? getTechnicianFromEquipmentId(booking.equipmentId);
-      const currentHours = eq ? ((eq.id * 137) % 2000) + 500 : 0;
-      const nextPms = Math.ceil(currentHours / 1000) * 1000;
+      const currentHours = 0;
+      const nextPms = 0;
       const bookingDate = getBookingDateWithStartTime(booking);
 
       return {
@@ -438,7 +438,7 @@ export default function ClientBookings() {
     () => enrichedBookings.filter((item) => {
       const searchMatch =
         !search ||
-        item.equipment?.unitId.toLowerCase().includes(search.toLowerCase()) ||
+        item.equipment?.name?.toLowerCase().includes(search.toLowerCase()) ||
         item.equipment?.serialNumber.toLowerCase().includes(search.toLowerCase()) ||
         formatServiceType(item.booking.serviceType).toLowerCase().includes(search.toLowerCase());
 
@@ -677,7 +677,7 @@ export default function ClientBookings() {
                           <SelectContent className="bg-white border-gray-200">
                             {clientEquipment.map((eq) => (
                               <SelectItem key={eq.id} value={String(eq.id)} className="text-xs text-gray-900">
-                                {eq.unitId} - {eq.type}
+                                {eq.name ?? eq.id} - {eq.type}
                               </SelectItem>
                             ))}
                           </SelectContent>
@@ -794,7 +794,7 @@ export default function ClientBookings() {
                       <div className="p-3 rounded bg-gray-50 border border-gray-200 space-y-1 text-xs">
                         <div className="flex justify-between">
                           <span className="text-gray-500">Equipment</span>
-                          <span className="text-gray-900 font-mono">{clientEquipment.find((e) => e.id === parseInt(bookingEquipment, 10))?.unitId}</span>
+                          <span className="text-gray-900 font-mono">{clientEquipment.find((e) => e.id === bookingEquipment)?.name ?? bookingEquipment}</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-gray-500">Service Type</span>
@@ -886,7 +886,7 @@ export default function ClientBookings() {
                 <SelectContent className="bg-white border-gray-200">
                   <SelectItem value="all">All Equipment</SelectItem>
                   {clientEquipment.map((eq) => (
-                    <SelectItem key={eq.id} value={String(eq.id)}>{eq.unitId}</SelectItem>
+                    <SelectItem key={eq.id} value={String(eq.id)}>{eq.name ?? eq.id}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

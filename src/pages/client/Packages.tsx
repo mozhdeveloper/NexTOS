@@ -203,11 +203,10 @@ export default function ClientPackages() {
     return <ClipboardList className="w-4 h-4 text-[#A78BFA]" />;
   };
 
-  const unassignedEquipment = equipment.filter(eq => 
-    eq.clientId === clientId && 
-    (!eq.packageId) &&
-    (regSearch === "" || 
-     eq.unitId.toLowerCase().includes(regSearch.toLowerCase()) || 
+  const unassignedEquipment = equipment.filter(eq =>
+    Number(String(eq.clientId).replace(/\D/g, "")) === clientId &&
+    (regSearch === "" ||
+     eq.name?.toLowerCase().includes(regSearch.toLowerCase()) ||
      eq.serialNumber.toLowerCase().includes(regSearch.toLowerCase()))
   );
 
@@ -466,8 +465,8 @@ export default function ClientPackages() {
                 unassignedEquipment.map(eq => (
                   <div key={eq.id} className="p-3 rounded-lg border border-gray-200 bg-white hover:border-[#66B2B2]/50 transition-colors flex items-center justify-between">
                     <div>
-                      <div className="text-xs font-bold text-gray-900">{eq.unitId}</div>
-                      <div className="text-[10px] text-gray-500">{eq.manufacturer} {eq.model}</div>
+                      <div className="text-xs font-bold text-gray-900">{eq.name ?? eq.id}</div>
+                      <div className="text-[10px] text-gray-500">{eq.equipmentType}</div>
                       <div className="text-[10px] text-gray-500 font-mono-tech">{eq.serialNumber}</div>
                     </div>
                     <Button 

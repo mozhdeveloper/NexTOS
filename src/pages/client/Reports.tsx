@@ -51,10 +51,11 @@ export default function ClientReports() {
   const selectedCompanyIndex = seedData.clients.findIndex(c => c.id === selectedCompanyId);
   const clientId = selectedCompanyIndex !== -1 ? selectedCompanyIndex + 1 : (user?.clientId || 1);
 
-  const clientEquipment = equipment.filter((e) => e.clientId === clientId);
+  const eqClientNum = (id: string) => Number(String(id).replace(/\D/g, ""));
+  const clientEquipment = equipment.filter((e) => eqClientNum(e.clientId) === clientId);
   const clientEquipmentIds = new Set(clientEquipment.map(e => e.id));
   const clientServices = serviceRecords.filter((r) => clientEquipmentIds.has(r.equipmentId));
-  const clientBookings = bookings.filter((b) => b.clientId === clientId);
+  const clientBookings = bookings.filter((b) => eqClientNum(b.clientId) === clientId);
   const clientInvoices = invoices.filter((i) => i.clientId === clientId);
   const clientPackages = packages.filter((p) => p.clientId === clientId);
 
@@ -63,30 +64,22 @@ export default function ClientReports() {
   // High Value KPIs
   const completedServices = clientServices.filter(s => s.status === "completed").length;
   
+  const parseH = (t?: string) => { const m = String(t ?? "").match(/(\d+)\s*h/i); return m ? Number(m[1]) : 0; };
+  const getRemaining = (e: Equipment) => {
+    const cfg = e.pmsConfiguration?.find(c => c.serviceIntervalUnit?.toLowerCase() === "hours");
+    if (!cfg) return null;
+    const cur = parseH(e.hoursTotal);
+    return (Math.floor(cur / cfg.serviceInterval) + 1) * cfg.serviceInterval - cur;
+  };
+
   const serviceDue = clientEquipment.filter(e => {
-    if (e.equipmentType === "Heavy Equipment") {
-        const remaining = e.nextPMSHours - e.currentHours;
-        return remaining > 0 && remaining <= 50;
-    }
-    if (e.equipmentType === "Lab Equipment" || e.equipmentType === "Testing Equipment") {
-        const nextDate = e.nextCalibrationDate ? new Date(e.nextCalibrationDate) : null;
-        if (!nextDate) return false;
-        const diffDays = Math.ceil((nextDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-        return diffDays > 0 && diffDays <= 15;
-    }
-    return false;
+    const r = getRemaining(e);
+    return r !== null && r > 0 && r <= 50;
   }).length;
 
   const overdue = clientEquipment.filter(e => {
-    if (e.equipmentType === "Heavy Equipment") {
-        return e.nextPMSHours - e.currentHours <= 0;
-    }
-    if (e.equipmentType === "Lab Equipment" || e.equipmentType === "Testing Equipment") {
-        const nextDate = e.nextCalibrationDate ? new Date(e.nextCalibrationDate) : null;
-        if (!nextDate) return false;
-        return nextDate <= now;
-    }
-    return false;
+    const r = getRemaining(e);
+    return r !== null && r <= 0;
   }).length;
 
   const totalRevenue = clientInvoices.reduce((sum, i) => sum + i.total, 0);
@@ -135,12 +128,15 @@ export default function ClientReports() {
 
   const pmsReport = useMemo(() => {
     return clientEquipment.filter(e => e.equipmentType === "Heavy Equipment").map(e => {
-        const remaining = e.nextPMSHours - e.currentHours;
+        const cfg = e.pmsConfiguration?.find(c => c.serviceIntervalUnit?.toLowerCase() === "hours");
+        const cur = parseH(e.hoursTotal);
+        const next = cfg ? (Math.floor(cur / cfg.serviceInterval) + 1) * cfg.serviceInterval : 0;
+        const remaining = next - cur;
         return {
-            unit: e.unitId,
-            current: e.currentHours,
-            next: e.nextPMSHours,
-            remaining: remaining,
+            unit: e.name ?? e.id,
+            current: e.hoursTotal ?? "—",
+            next: cfg ? `${next}h` : "—",
+            remaining: Math.floor(remaining),
             status: remaining <= 0 ? "Overdue" : remaining <= 50 ? "Near Service" : "OK"
         };
     });
@@ -148,14 +144,12 @@ export default function ClientReports() {
 
   const calibrationReport = useMemo(() => {
     return clientEquipment.filter(e => e.equipmentType === "Lab Equipment" || e.equipmentType === "Testing Equipment").map(e => {
-        const nextDate = e.nextCalibrationDate ? new Date(e.nextCalibrationDate) : null;
-        const diffDays = nextDate ? Math.ceil((nextDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)) : null;
         return {
-            unit: e.unitId,
-            last: e.lastCalibrationDate ? new Date(e.lastCalibrationDate).toLocaleDateString() : "—",
-            next: e.nextCalibrationDate ? new Date(e.nextCalibrationDate).toLocaleDateString() : "—",
-            remaining: diffDays,
-            status: diffDays === null ? "—" : diffDays <= 0 ? "Overdue" : diffDays <= 15 ? "Due Soon" : "OK"
+            unit: e.name ?? e.id,
+            last: "—",
+            next: "—",
+            remaining: null as number | null,
+            status: "—"
         };
     });
   }, [clientEquipment, now]);

@@ -1,7 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { Package, Invoice } from "@/types";
-import seedData from "@/data/seed-data.json";
 
 interface BillingState {
   packages: Package[];
@@ -17,7 +16,6 @@ interface BillingState {
   getOutstandingRevenue: () => number;
 }
 
-const lastWeek = new Date(Date.now() - 7 * 86400000).toISOString();
 const lastMonth = new Date(Date.now() - 30 * 86400000).toISOString();
 const nextMonth = new Date(Date.now() + 30 * 86400000).toISOString();
 const nextYear = new Date(Date.now() + 365 * 86400000).toISOString();
@@ -208,7 +206,7 @@ export const useBillingStore = create<BillingState>()(
       },
     }),
     {
-      name: "nextos-billing-v3",
+      name: "nextos-billing-v4",
     }
   )
 );

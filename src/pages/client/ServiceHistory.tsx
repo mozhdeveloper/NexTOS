@@ -169,8 +169,9 @@ export default function ClientServiceHistory() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
 
+  const eqClientNum = (id: string) => Number(String(id).replace(/\D/g, ""));
   const clientEquipment = useMemo(
-    () => equipment.filter((item) => item.clientId === clientId),
+    () => equipment.filter((item) => eqClientNum(item.clientId) === clientId),
     [equipment, clientId]
   );
 
@@ -189,7 +190,7 @@ export default function ClientServiceHistory() {
         const asset = equipmentById.get(record.equipmentId);
         const serviceDate = getServiceDate(record).slice(0, 10);
 
-        if (equipmentFilter !== "all" && record.equipmentId !== Number(equipmentFilter)) {
+        if (equipmentFilter !== "all" && record.equipmentId !== equipmentFilter) {
           return false;
         }
 
@@ -214,7 +215,7 @@ export default function ClientServiceHistory() {
         }
 
         return [
-          asset?.unitId,
+          asset?.name ?? asset?.id,
           asset?.type,
           asset?.serialNumber,
           record.technician,
@@ -299,7 +300,7 @@ export default function ClientServiceHistory() {
               <SelectItem value="all">All Equipment</SelectItem>
               {clientEquipment.map((asset) => (
                 <SelectItem key={asset.id} value={String(asset.id)}>
-                  {asset.unitId}
+                  {asset.name ?? asset.id}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -473,7 +474,11 @@ export default function ClientServiceHistory() {
                 const workDoneItems = buildWorkDone(record);
                 const findingsSummary = buildFindings(record);
                 const isExpanded = expanded === record.id;
-                const nextService = getNextServiceState(asset?.currentHours ?? 0, asset?.nextPMSHours ?? 0);
+                const parseH = (t?: string) => { const m = String(t ?? "").match(/(\d+)\s*h/i); return m ? Number(m[1]) : 0; };
+                const config = asset?.pmsConfiguration?.find((c: any) => c.serviceIntervalUnit?.toLowerCase() === "hours");
+                const currentH = parseH(asset?.hoursTotal);
+                const nextMilestone = config ? (Math.floor(currentH / config.serviceInterval) + 1) * config.serviceInterval : 0;
+                const nextService = getNextServiceState(currentH, nextMilestone);
                 const serviceTypeKey = typeof record.serviceType === "string" ? record.serviceType.toLowerCase() : "";
                 const statusKey = typeof record.status === "string" ? record.status.toLowerCase() : "";
                 const serviceTypeLabel = formatServiceType(record.serviceType);
@@ -488,7 +493,7 @@ export default function ClientServiceHistory() {
                             <Wrench className="w-4 h-4 text-[#2563EB]" />
                           </div>
                           <div>
-                            <div className="text-base font-semibold text-gray-900 leading-tight">{asset?.unitId ?? "Unknown Unit"}</div>
+                            <div className="text-base font-semibold text-gray-900 leading-tight">{asset?.name ?? asset?.id ?? "Unknown Unit"}</div>
                             <div className="text-sm text-gray-400">SN: {asset?.serialNumber ?? "—"}</div>
                           </div>
                         </div>
@@ -518,11 +523,11 @@ export default function ClientServiceHistory() {
                       </td>
 
                       <td className="py-3 px-3">
-                        <div className="text-[#059669] font-semibold font-mono-tech">{formatHours(asset?.currentHours ?? 0)}</div>
+                        <div className="text-[#059669] font-semibold font-mono-tech">{asset?.hoursTotal ?? "—"}</div>
                       </td>
 
                       <td className="py-3 px-3">
-                        <div className="text-gray-900 font-semibold font-mono-tech">{formatHours(asset?.nextPMSHours ?? 0)}</div>
+                        <div className="text-gray-900 font-semibold font-mono-tech">{config ? `${nextMilestone}h` : "—"}</div>
                         <div className={`mt-0.5 ${nextService.remainingHours <= 0 ? "text-[#EF4444]" : "text-[#059669]"}`}>
                           {nextService.remainingHours > 0
                             ? `${nextService.remainingHours.toLocaleString()} hrs remaining`
@@ -573,7 +578,7 @@ export default function ClientServiceHistory() {
                                   <Wrench className="w-5 h-5 text-[#2563EB]" />
                                 </div>
                                 <div>
-                                  <div className="text-2xl font-semibold text-gray-900 leading-tight">{asset?.unitId ?? "Unknown Unit"}</div>
+                                  <div className="text-2xl font-semibold text-gray-900 leading-tight">{asset?.name ?? asset?.id ?? "Unknown Unit"}</div>
                                   <div className="text-sm text-gray-400 mt-0.5">SN: {asset?.serialNumber ?? "—"}</div>
                                   <span className={`inline-flex mt-2 px-2 py-0.5 rounded text-[11px] font-medium capitalize ${statusColors[statusKey] ?? "bg-[#6B7280]/20 text-gray-500"}`}>
                                     {statusLabel}
@@ -596,12 +601,12 @@ export default function ClientServiceHistory() {
 
                               <div>
                                 <div className="text-[10px] text-gray-400 uppercase">Current Hours</div>
-                                <div className="text-2xl text-[#059669] mt-0.5 font-mono-tech">{formatHours(asset?.currentHours ?? 0)}</div>
+                                <div className="text-2xl text-[#059669] mt-0.5 font-mono-tech">{asset?.hoursTotal ?? "—"}</div>
                               </div>
 
                               <div>
                                 <div className="text-[10px] text-gray-400 uppercase">Next Service At</div>
-                                <div className="text-2xl text-gray-900 mt-0.5 font-mono-tech">{formatHours(asset?.nextPMSHours ?? 0)}</div>
+                                <div className="text-2xl text-gray-900 mt-0.5 font-mono-tech">{config ? `${nextMilestone}h` : "—"}</div>
                                 <div className="text-sm text-[#059669] mt-0.5">
                                   {nextService.remainingHours > 0
                                     ? `${nextService.remainingHours.toLocaleString()} hrs remaining`
@@ -668,7 +673,7 @@ export default function ClientServiceHistory() {
                               <div className="space-y-2">
                                 <div className="text-[11px] text-gray-400 uppercase">Next Service Information</div>
                                 <RowDetail label="Next Service Type" value={serviceTypeLabel} />
-                                <RowDetail label="Next Service At" value={formatHours(asset?.nextPMSHours ?? 0)} />
+                                <RowDetail label="Next Service At" value={config ? `${nextMilestone}h` : "—"} />
                                 <RowDetail label="Before / After" value={`${beforePhotos.length} / ${afterPhotos.length}`} />
                                 <RowDetail label="Reminder" value="30 days before" />
                                 <div className="mt-3 p-2 rounded-md bg-gray-50 border border-gray-200 flex items-center justify-between">
