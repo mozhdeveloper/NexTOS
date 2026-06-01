@@ -152,6 +152,7 @@ export function ScheduledMaintenanceTab({
               const nextService = _seedEq
                 ? computeNextService({ serviceInterval: entry.serviceInterval, serviceIntervalUnit: entry.serviceIntervalUnit }, _seedEq)
                 : "—";
+              const statusDef = seedData.pmsStatuses.find(s => s.value === entry.status);
               return (
               <tr key={entry.id} className="border-b border-gray-200 hover:bg-gray-50">
                 <td className="py-2.5 px-3 text-black font-medium">{entry.equipmentName}</td>
@@ -166,12 +167,8 @@ export function ScheduledMaintenanceTab({
                     : "—"}
                 </td>
                 <td className="py-2.5 px-3">
-                  {entry.status === "Overdue" ? (
-                    <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#EF4444]/20 text-[#EF4444] uppercase">Overdue</span>
-                  ) : entry.status === "Near Service" ? (
-                    <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#F2A900]/20 text-[#F2A900] uppercase">Near Service</span>
-                  ) : entry.status === "OK" ? (
-                    <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#10B981]/20 text-[#10B981] uppercase">OK</span>
+                  {statusDef ? (
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase" style={{ backgroundColor: `${statusDef.color}33`, color: statusDef.color }}>{statusDef.label}</span>
                   ) : (
                     <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-gray-100 text-gray-500 uppercase">—</span>
                   )}

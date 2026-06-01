@@ -349,9 +349,8 @@ export default function Services() {
 
     if (usage === null || !Number.isFinite(usage) || usage < 0) return "—";
     const progress = (usage / interval) * 100;
-    if (progress >= 100) return "Overdue";
-    if (progress >= 80) return "Near Service";
-    return "OK";
+    const match = seedData.pmsStatuses.find(s => progress >= s.minProgressPercent);
+    return (match?.value ?? "—") as ScheduledMaintenanceEntry["status"];
   };
 
   const computeNextService = (

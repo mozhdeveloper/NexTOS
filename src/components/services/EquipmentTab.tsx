@@ -1,6 +1,6 @@
 import { Fragment } from "react";
-import { Search, Camera, Wrench, Package, History, Check, ChevronDown, ChevronRight } from "lucide-react";
-import { QRCodeSVG } from "qrcode.react";
+import { Search, Camera, Wrench, Package, History, Check, ChevronDown, ChevronRight, QrCode } from "lucide-react";
+import seedData from "@/data/seed-data.json";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { Equipment } from "@/types";
@@ -124,6 +124,7 @@ export function EquipmentTab({
               const yearsDisplay = validDays ? `${(daysNum! / 365.25).toFixed(1)}` : "—";
 
               const worstStatus = computeEquipmentWorstStatus(seedEq);
+              const statusDef = seedData.pmsStatuses.find(s => s.value === worstStatus);
               const isSelected = selectedSeedId === seedEq.id;
               const isHighlighted = storeId !== null && highlightedEquipment === storeId;
 
@@ -174,12 +175,8 @@ export function EquipmentTab({
                     <td className="py-3 px-3 font-mono-tech text-gray-800">{monthsDisplay}</td>
                     <td className="py-3 px-3 font-mono-tech text-gray-800">{yearsDisplay}</td>
                     <td className="py-3 px-3">
-                      {worstStatus === "Overdue" ? (
-                        <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#EF4444]/20 text-[#EF4444] uppercase">Overdue</span>
-                      ) : worstStatus === "Near Service" ? (
-                        <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#F2A900]/20 text-[#F2A900] uppercase">Near Service</span>
-                      ) : worstStatus === "OK" ? (
-                        <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#10B981]/20 text-[#10B981] uppercase">OK</span>
+                      {statusDef ? (
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase" style={{ backgroundColor: `${statusDef.color}33`, color: statusDef.color }}>{statusDef.label}</span>
                       ) : (
                         <span className="text-gray-400">—</span>
                       )}
@@ -194,13 +191,7 @@ export function EquipmentTab({
                         className="p-1 rounded bg-white border border-gray-100 hover:border-[#66B2B2] transition-all shadow-sm active:scale-95 group/qr"
                         title="View QR Tag"
                       >
-                        <QRCodeSVG
-                          value={seedEq.serialNumber ?? ""}
-                          size={32}
-                          level="L"
-                          includeMargin={false}
-                          className="opacity-80 group-hover:opacity-100 transition-opacity"
-                        />
+                        <QrCode className="w-8 h-8 text-gray-500 group-hover/qr:text-[#66B2B2] transition-colors" />
                       </button>
                     </td>
                     <td className="py-3 px-3 w-8 text-center">
