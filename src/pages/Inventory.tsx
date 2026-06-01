@@ -1,7 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useInventoryStore } from "@/stores/useInventoryStore";
+import type { InventoryItem } from "@/types";
 import { AddPartModal } from "@/components/AddPartModal";
 import { EditPartModal } from "@/components/EditPartModal";
+import { trpc } from "@/providers/trpc";
 import { 
   Box, 
   Search, 
@@ -33,8 +35,20 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
+type SeedPartEntry = {
+  id: string;
+  name: string;
+  category: string;
+  unitPrice: number;
+  quantity: number;
+  minQuantity: number;
+  unitType: string;
+  status?: string;
+};
+
 export default function Inventory() {
-  const { items, restockItem, addItem, updateItem, deleteItem } = useInventoryStore();
+  const { items, restockItem, addItem, updateItem, deleteItem, setItems } = useInventoryStore();
+  const trpcUtils = trpc.useContext();
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [showRestock, setShowRestock] = useState<number | null>(null);
@@ -43,6 +57,91 @@ export default function Inventory() {
   const [editingPart, setEditingPart] = useState<number | null>(null);
   const [deletingPart, setDeletingPart] = useState<number | null>(null);
   const [openKebabId, setOpenKebabId] = useState<number | null>(null);
+
+  const seedPartsQuery = trpc.seedParts.list.useQuery();
+
+  const addPartMutation = trpc.seedParts.add.useMutation();
+  const updatePartMutation = trpc.seedParts.update.useMutation();
+  const deletePartMutation = trpc.seedParts.delete.useMutation();
+
+  const mapSeedPartToInventoryItem = (part: SeedPartEntry, index: number) => ({
+    id: Date.now() + index,
+    partNumber: part.id,
+    name: part.name,
+    category: (part.category.charAt(0) + part.category.slice(1).toLowerCase()) as InventoryItem["category"],
+    unit: part.unitType as InventoryItem["unit"],
+    stockLevel: part.quantity,
+    minThreshold: part.minQuantity,
+    pricePerUnit: part.unitPrice,
+    compatibility: [],
+    lastRestocked: new Date().toISOString(),
+    createdAt: new Date().toISOString(),
+  });
+
+  useEffect(() => {
+    if (seedPartsQuery.data) {
+      setItems(seedPartsQuery.data.parts.map(mapSeedPartToInventoryItem));
+    }
+  }, [seedPartsQuery.data, setItems]);
+
+  const handleAddPart = (newPart: Omit<InventoryItem, "id" | "createdAt" | "lastRestocked">) => {
+    addPartMutation.mutate(
+      {
+        id: newPart.partNumber,
+        name: newPart.name,
+        category: newPart.category,
+        unitPrice: newPart.pricePerUnit,
+        quantity: newPart.stockLevel,
+        minQuantity: newPart.minThreshold,
+        unitType: newPart.unit,
+      },
+      {
+        onSuccess: () => {
+          addItem(newPart);
+          trpcUtils.seedParts.list.invalidate();
+        },
+      }
+    );
+  };
+
+  const handleUpdatePart = (id: number, data: Partial<InventoryItem>) => {
+    const existing = items.find((item) => item.id === id);
+    if (!existing) return;
+
+    updatePartMutation.mutate(
+      {
+        originalId: existing.partNumber,
+        id: data.partNumber ?? existing.partNumber,
+        name: data.name ?? existing.name,
+        category: data.category ?? existing.category,
+        unitPrice: data.pricePerUnit ?? existing.pricePerUnit,
+        quantity: existing.stockLevel,
+        minQuantity: data.minThreshold ?? existing.minThreshold,
+        unitType: data.unit ?? existing.unit,
+      },
+      {
+        onSuccess: () => {
+          updateItem(id, data);
+          trpcUtils.seedParts.list.invalidate();
+        },
+      }
+    );
+  };
+
+  const handleDeletePart = (id: number) => {
+    const existing = items.find((item) => item.id === id);
+    if (!existing) return;
+
+    deletePartMutation.mutate(
+      { id: existing.partNumber },
+      {
+        onSuccess: () => {
+          deleteItem(id);
+          trpcUtils.seedParts.list.invalidate();
+        },
+      }
+    );
+  };
 
   const filteredItems = items.filter(item => {
     const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
@@ -322,7 +421,7 @@ export default function Inventory() {
       <AddPartModal 
         open={showAddPart} 
         onOpenChange={setShowAddPart}
-        onSubmitPart={addItem}
+        onSubmitPart={handleAddPart}
       />
 
       {/* Edit Part Modal */}
@@ -330,7 +429,7 @@ export default function Inventory() {
         open={editingPart !== null}
         onOpenChange={(open) => !open && setEditingPart(null)}
         part={editingPart !== null ? items.find(i => i.id === editingPart) || null : null}
-        onSubmitPart={(id, data) => updateItem(id, data)}
+        onSubmitPart={handleUpdatePart}
       />
 
       {/* Delete Part Modal */}
@@ -364,7 +463,7 @@ export default function Inventory() {
             <Button 
               onClick={() => {
                 if (deletingPart) {
-                  deleteItem(deletingPart);
+                  handleDeletePart(deletingPart);
                   setDeletingPart(null);
                 }
               }}

@@ -34,8 +34,8 @@ type SeedServiceRecord = {
   id: number;
   seedEquipmentId: string;
   pmsConfigIndex: number;
-  equipmentId: number;
-  clientId: number;
+  equipmentId: number | string;
+  clientId: number | string;
   serviceCategory: string;
   status: "scheduled" | "in_progress" | "completed";
   scheduledDate: string;
@@ -82,9 +82,22 @@ type SeedServiceRecord = {
   equipmentStatusAtService?: string | null;
 };
 
+type SeedPartEntry = {
+  id: string;
+  name: string;
+  category: string;
+  unitPrice: number;
+  quantity: number;
+  minQuantity: number;
+  unitType: string;
+  status?: string;
+};
+
 type SeedDataShape = {
   clients?: Array<{ id: string }>;
   equipment?: SeedEquipmentEntry[];
+  parts?: SeedPartEntry[];
+  pmsConfigurations?: Array<{ id: string; equipmentType: string; serviceInterval: number; serviceIntervalUnit: string }>;
   serviceRecords?: SeedServiceRecord[];
   [key: string]: unknown;
 };
@@ -214,6 +227,10 @@ function applyComputedServiceStatuses(parsed: SeedDataShape): void {
     }
     return { ...entry, status };
   });
+}
+
+function getPartStatus(quantity: number, minQuantity: number): "In Stock" | "Low Stock" {
+  return quantity <= minQuantity ? "Low Stock" : "In Stock";
 }
 
 export const appRouter = createRouter({
@@ -434,6 +451,7 @@ export const appRouter = createRouter({
         return { ok: true };
       }),
 
+
     // Reset hoursTotal or kmTotal to 0 after a completed service (used by Reset-on-Completion toggle)
     resetMetrics: publicQuery
       .input(
@@ -464,7 +482,111 @@ export const appRouter = createRouter({
 
         return { ok: true };
       }),
-  }),
+    }),
+
+    seedParts: createRouter({
+      list: publicQuery.query(async () => {
+        const parsed = await readSeedData();
+        return { parts: Array.isArray(parsed.parts) ? parsed.parts : [] };
+      }),
+
+      add: publicQuery
+        .input(
+          z.object({
+            id: z.string().min(1),
+            name: z.string().min(1),
+            category: z.string().min(1),
+            unitPrice: z.number().min(0),
+            quantity: z.number().min(0).optional(),
+            minQuantity: z.number().min(0).optional(),
+            unitType: z.string().min(1),
+          })
+        )
+        .mutation(async ({ input }) => {
+          const parsed = await readSeedData();
+          const parts = Array.isArray(parsed.parts) ? parsed.parts : [];
+
+          if (parts.some((item) => item.id === input.id)) {
+            throw new Error("Part ID already exists");
+          }
+
+          const newPart: SeedPartEntry = {
+            id: input.id,
+            name: input.name,
+            category: input.category.toUpperCase(),
+            unitPrice: input.unitPrice,
+            quantity: input.quantity ?? 0,
+            minQuantity: input.minQuantity ?? 0,
+            unitType: input.unitType,
+            status: getPartStatus(input.quantity ?? 0, input.minQuantity ?? 0),
+          };
+
+          parsed.parts = [...parts, newPart];
+          await writeSeedData(parsed);
+
+          return { ok: true, part: newPart };
+        }),
+
+      update: publicQuery
+        .input(
+          z.object({
+            originalId: z.string().min(1),
+            id: z.string().min(1),
+            name: z.string().min(1),
+            category: z.string().min(1),
+            unitPrice: z.number().min(0),
+            quantity: z.number().min(0).optional(),
+            minQuantity: z.number().min(0).optional(),
+            unitType: z.string().min(1),
+          })
+        )
+        .mutation(async ({ input }) => {
+          const parsed = await readSeedData();
+          const parts = Array.isArray(parsed.parts) ? parsed.parts : [];
+          const existingIndex = parts.findIndex((item) => item.id === input.originalId);
+          if (existingIndex === -1) {
+            throw new Error("Seed part not found");
+          }
+
+          if (input.originalId !== input.id && parts.some((item) => item.id === input.id)) {
+            throw new Error("Part ID already exists");
+          }
+
+          const existing = parts[existingIndex];
+          const updatedPart: SeedPartEntry = {
+            id: input.id,
+            name: input.name,
+            category: input.category.toUpperCase(),
+            unitPrice: input.unitPrice,
+            quantity: input.quantity ?? existing.quantity,
+            minQuantity: input.minQuantity ?? existing.minQuantity,
+            unitType: input.unitType,
+            status: getPartStatus(input.quantity ?? existing.quantity, input.minQuantity ?? existing.minQuantity),
+          };
+
+          parts[existingIndex] = updatedPart;
+          parsed.parts = parts;
+          await writeSeedData(parsed);
+
+          return { ok: true, part: updatedPart };
+        }),
+
+      delete: publicQuery
+        .input(z.object({ id: z.string().min(1) }))
+        .mutation(async ({ input }) => {
+          const parsed = await readSeedData();
+          const parts = Array.isArray(parsed.parts) ? parsed.parts : [];
+          const existing = parts.find((item) => item.id === input.id);
+          if (!existing) {
+            throw new Error("Seed part not found");
+          }
+
+          parsed.parts = parts.filter((item) => item.id !== input.id);
+          await writeSeedData(parsed);
+
+          return { ok: true };
+        }),
+    }),
 
     seedPms: createRouter({
       add: publicQuery
@@ -568,8 +690,8 @@ export const appRouter = createRouter({
           id: z.number(),
           seedEquipmentId: z.string(),
           pmsConfigIndex: z.number(),
-          equipmentId: z.number(),
-          clientId: z.number(),
+          equipmentId: z.union([z.number(), z.string()]),
+          clientId: z.union([z.number(), z.string()]),
           serviceCategory: z.string(),
           status: z.enum(["scheduled", "in_progress", "completed"]),
           scheduledDate: z.string(),
@@ -618,8 +740,8 @@ export const appRouter = createRouter({
 
           seedEquipmentId: z.string().optional(),
           pmsConfigIndex: z.number().optional(),
-          equipmentId: z.number().optional(),
-          clientId: z.number().optional(),
+          equipmentId: z.union([z.number(), z.string()]).optional(),
+          clientId: z.union([z.number(), z.string()]).optional(),
           serviceCategory: z.string().optional(),
           scheduledDate: z.string().optional(),
           description: z.string().optional(),

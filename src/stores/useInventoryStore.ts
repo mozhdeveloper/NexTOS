@@ -1,5 +1,4 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
 import type { InventoryItem, PartUsage } from "@/types";
 import { toast } from "sonner";
 import seedData from "@/data/seed-data.json";
@@ -9,6 +8,7 @@ interface InventoryState {
   usageHistory: PartUsage[];
   
   // Actions
+  setItems: (items: InventoryItem[]) => void;
   addItem: (item: Omit<InventoryItem, "id" | "createdAt" | "lastRestocked">) => void;
   updateItem: (id: number, data: Partial<InventoryItem>) => void;
   deleteItem: (id: number) => void;
@@ -39,11 +39,11 @@ const mockInventory: InventoryItem[] = seedData.parts.map((part, index) => ({
   createdAt: new Date().toISOString()
 }));
 
-export const useInventoryStore = create<InventoryState>()(
-  persist(
-    (set, get) => ({
+export const useInventoryStore = create<InventoryState>()((set, get) => ({
       items: mockInventory,
       usageHistory: [],
+
+      setItems: (items) => set({ items }),
 
       addItem: (item) => {
         const newItem: InventoryItem = {
@@ -127,9 +127,5 @@ export const useInventoryStore = create<InventoryState>()(
 
       getItemByPartNumber: (partNumber) => 
         get().items.find(i => i.partNumber === partNumber)
-    }),
-    {
-      name: "nexvision-inventory-v1",
-    }
-  )
+    })
 );

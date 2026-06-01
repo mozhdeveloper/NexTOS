@@ -48,11 +48,11 @@ export function useAuth(options?: UseAuthOptions) {
     () => ({
       user: user ?? null,
       isAuthenticated: !!user,
-      isLoading: isLoading || logoutMutation.isPending,
+      isLoading: isLoading || logoutMutation.status === 'pending',
       error,
       logout,
       refresh: refetch,
     }),
-    [user, isLoading, logoutMutation.isPending, error, logout, refetch],
+    [user, isLoading, logoutMutation.status, error, logout, refetch],
   );
 }
