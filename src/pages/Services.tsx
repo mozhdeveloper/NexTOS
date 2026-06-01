@@ -38,6 +38,7 @@ import {
   Settings,
   Car,
   Navigation,
+  MoreVertical,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -237,6 +238,7 @@ export default function Services() {
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editingEntry, setEditingEntry] = useState<ScheduledMaintenanceEntry | null>(null);
   const [editEquipmentId, setEditEquipmentId] = useState("");
+  const [scheduleActionMenuOpenFor, setScheduleActionMenuOpenFor] = useState<string | null>(null);
   const [editServiceType, setEditServiceType] = useState("");
   const [editInterval, setEditInterval] = useState("");
   const [editIntervalUnit, setEditIntervalUnit] = useState("Hours");
@@ -1789,13 +1791,48 @@ export default function Services() {
                       </td>
                       <td className="py-2.5 px-3 font-mono-tech text-xs text-gray-700">{nextService}</td>
                       <td className="py-2.5 px-3">
-                        <div className="flex items-center gap-1">
-                          <Button variant="ghost" size="sm" onClick={() => openEditModal(entry)} className="h-6 w-6 p-0 text-gray-500 hover:text-[#66B2B2] hover:bg-[#66B2B2]/10">
-                            <Pencil className="w-3 h-3" />
-                          </Button>
-                          <Button variant="ghost" size="sm" onClick={() => handleDeleteEntry(entry)} disabled={deletePmsConfigurationMutation.status === 'pending'} className="h-6 w-6 p-0 text-gray-500 hover:text-[#EF4444] hover:bg-[#EF4444]/10">
-                            <Trash2 className="w-3 h-3" />
-                          </Button>
+                        <div className="relative inline-flex items-center">
+                          <button
+                            type="button"
+                            className="p-2 text-gray-400 hover:text-[#66B2B2] transition-colors"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setScheduleActionMenuOpenFor((current) => (current === entry.id ? null : entry.id));
+                            }}
+                            aria-label="Open action menu"
+                          >
+                            <MoreVertical className="w-4 h-4" />
+                          </button>
+
+                          {scheduleActionMenuOpenFor === entry.id && (
+                            <div className="absolute right-0 top-10 z-50 min-w-[130px] rounded-xl border border-gray-200 bg-white py-1 shadow-lg">
+                              <button
+                                type="button"
+                                className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-gray-700 hover:bg-gray-100 transition-colors"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setScheduleActionMenuOpenFor(null);
+                                  openEditModal(entry);
+                                }}
+                              >
+                                <Pencil className="w-3 h-3" />
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-[#EF4444] hover:bg-[#EF4444]/10 transition-colors"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setScheduleActionMenuOpenFor(null);
+                                  handleDeleteEntry(entry);
+                                }}
+                                disabled={deletePmsConfigurationMutation.status === 'pending'}
+                              >
+                                <Trash2 className="w-3 h-3" />
+                                Delete
+                              </button>
+                            </div>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -2136,11 +2173,11 @@ export default function Services() {
                           <SelectValue placeholder="Select type..." />
                         </SelectTrigger>
                         <SelectContent className="bg-white border-gray-200 z-50">
-                          <SelectItem value="Heavy Equipment PMS" className="text-gray-900">Heavy Equipment PMS</SelectItem>
-                          <SelectItem value="Calibration PMS" className="text-gray-900">Calibration PMS</SelectItem>
-                          <SelectItem value="Repair" className="text-gray-900">General Repair</SelectItem>
-                          <SelectItem value="Inspection" className="text-gray-900">Standard Inspection</SelectItem>
-                          <SelectItem value="Installation" className="text-gray-900">New Installation</SelectItem>
+                          {seedData.serviceTypes.map((option) => (
+                            <SelectItem key={option.value} value={option.value} className="text-gray-900">
+                              {option.label}
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </div>

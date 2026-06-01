@@ -102,6 +102,21 @@ export interface Equipment {
   serialNumber: string;
   equipmentType: EquipmentType;
   status?: string;
+  unitId?: string;
+  type?: string;
+  manufacturer?: string;
+  model?: string;
+  location?: string;
+  installDate?: string;
+  warrantyExpiry?: string;
+  currentHours?: number;
+  lastPMSHours?: number;
+  nextPMSHours?: number;
+  pmsInterval?: number;
+  lastCalibrationDate?: string;
+  nextCalibrationDate?: string;
+  calibrationFrequency?: number;
+  notes?: string;
   hoursTotal?: string;  // "1250h 10m"
   hoursToday?: string;
   kmTotal?: number;

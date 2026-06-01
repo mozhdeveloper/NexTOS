@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { useAuthStore } from "@/stores/useAuthStore";
 import { useOperationsStore } from "@/stores/useOperationsStore";
+import { useClientPortalStore } from "@/stores/useClientPortalStore";
+import seedData from "@/data/seed-data.json";
 import { useCRMStore } from "@/stores/useCRMStore";
 import { useBillingStore } from "@/stores/useBillingStore";
 import type { ServiceType, ServiceRecord } from "@/types";
@@ -17,6 +19,8 @@ import {
   ArrowRight,
   Package,
   Zap,
+  Search,
+  Wrench,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,6 +31,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { QRCodeSVG } from "qrcode.react";
 
 import { ServiceReportView } from "@/components/ServiceReportView";
 import {
@@ -39,25 +44,39 @@ type TabType = "history" | "equipment" | "booking" | "packages" | "billing";
 export default function ClientPortal() {
   const { user } = useAuthStore();
   const { equipment, serviceRecords, servicePhotos, bookings, addBooking } = useOperationsStore();
+  const { selectedCompanyId, setSelectedCompanyId } = useClientPortalStore();
   const { clients } = useCRMStore();
-  const [selectedClientId, setSelectedClientId] = useState<number | null>(clients[0]?.id ?? null);
   const { invoices, packages, markInvoicePaid, addInvoice } = useBillingStore();
   const [activeTab, setActiveTab] = useState<TabType>("history");
-  const [expandedEquipment, setExpandedEquipment] = useState<number | null>(null);
+  const [expandedEquipment, setExpandedEquipment] = useState<string | null>(null);
   const [showReport, setShowReport] = useState<ServiceRecord | null>(null);
+  const [equipmentSearchQuery, setEquipmentSearchQuery] = useState("");
 
-  // Client-filtered data (admin can pick a client). Default to first client for admins.
-  const clientId =
-    (user?.role !== "client"
-      ? (selectedClientId ?? clients[0]?.id ?? user?.clientId)
-      : user?.clientId) || 1;
+  const normalizeId = (value: string | number | undefined) => {
+    if (value === undefined || value === null) return 0;
+    return Number(String(value).replace(/\D/g, "")) || 0;
+  };
+
+  const selectedCompanyIndex = seedData.clients.findIndex((c) => c.id === selectedCompanyId);
+  const clientId = selectedCompanyIndex !== -1 ? selectedCompanyIndex + 1 : user?.clientId || 1;
   const client = clients.find((c) => c.id === clientId);
-  const clientEquipment = equipment.filter((e) => e.clientId === clientId);
-  const clientRecords = serviceRecords.filter((r) => r.clientId === clientId);
-  const clientInvoices = invoices.filter((i) => i.clientId === clientId);
-  const clientPackages = packages.filter((p) => p.clientId === clientId);
-  const availablePackages = packages.filter((p) => p.clientId !== clientId);
-  const clientBookings = bookings.filter((b) => b.clientId === clientId);
+  const clientEquipment = equipment.filter((e) => normalizeId(e.clientId) === clientId);
+  const clientRecords = serviceRecords.filter((r) => normalizeId(r.clientId) === clientId);
+  const clientInvoices = invoices.filter((i) => normalizeId(i.clientId) === clientId);
+  const clientPackages = packages.filter((p) => normalizeId(p.clientId) === clientId);
+  const availablePackages = packages.filter((p) => normalizeId(p.clientId) !== clientId);
+  const clientBookings = bookings.filter((b) => normalizeId(b.clientId) === clientId);
+
+  const filteredClientEquipment = clientEquipment.filter((eq) => {
+    const query = equipmentSearchQuery.trim().toLowerCase();
+    if (!query) return true;
+    return (
+      eq.name?.toLowerCase().includes(query) ||
+      eq.serialNumber?.toLowerCase().includes(query) ||
+      eq.unitId?.toLowerCase().includes(query) ||
+      eq.id.toLowerCase().includes(query)
+    );
+  });
 
   // Booking wizard state
   const [bookingStep, setBookingStep] = useState(0);
@@ -88,8 +107,8 @@ export default function ClientPortal() {
     };
 
     addBooking({
-      clientId,
-      equipmentId: parseInt(bookingEquipment),
+      clientId: String(clientId),
+      equipmentId: bookingEquipment,
       serviceCategory: toServiceCategory(bookingType),
       serviceType: bookingType,
       requestedDate: bookingDate,
@@ -197,8 +216,16 @@ export default function ClientPortal() {
         <div className="flex items-center gap-2">
           {user?.role !== "client" && (
             <select
-              value={String(selectedClientId ?? clients[0]?.id ?? user?.clientId ?? 1)}
-              onChange={(e) => setSelectedClientId(Number(e.target.value))}
+              value={String(clientId)}
+              onChange={(e) => {
+                const numericId = Number(e.target.value);
+                const selectedSeedClient = seedData.clients.find(
+                  (c) => Number(c.id.replace("CL-", "")) === numericId
+                );
+                if (selectedSeedClient) {
+                  setSelectedCompanyId(selectedSeedClient.id);
+                }
+              }}
               className="h-8 bg-white border border-gray-200 text-black text-xs px-2"
             >
               {clients.map((c) => (
@@ -279,10 +306,11 @@ export default function ClientPortal() {
                     </div>
                     <div className="text-left">
                       <div className="flex items-center gap-2">
-                        <span className="text-sm font-semibold text-black font-mono-tech">{eq.unitId}</span>
-                        <span className="text-xs text-gray-600">{eq.type}</span>
+                        <span className="text-sm font-semibold text-black font-mono-tech">{eq.name ?? eq.unitId}</span>
+                        <span className="text-xs text-gray-600">{eq.equipmentType ?? eq.type}</span>
                       </div>
-                      <div className="text-[10px] text-gray-600">
+                      <div className="text-[10px] text-gray-500 mt-1">ID: {eq.unitId ?? eq.id}</div>
+                      <div className="text-[10px] text-gray-600 mt-2">
                         {eq.manufacturer} {eq.model} — {eq.location}
                       </div>
                     </div>
@@ -304,26 +332,30 @@ export default function ClientPortal() {
 
                 {isExpanded && (
                   <div className="px-4 pb-4 border-t border-gray-200 pt-3">
-                    <div className="grid grid-cols-4 gap-2 mb-3 text-xs">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3 text-xs">
                       <div>
                         <div className="text-[10px] text-gray-600">Serial</div>
                         <div className="text-black font-mono-tech">{eq.serialNumber}</div>
                       </div>
                       <div>
-                        <div className="text-[10px] text-gray-600">Install Date</div>
-                        <div className="text-black">{new Date(eq.installDate).toLocaleDateString()}</div>
+                        <div className="text-[10px] text-gray-600">Warranty Expiry</div>
+                        <div className="text-black">
+                          {eq.warrantyExpiry ? new Date(eq.warrantyExpiry).toLocaleDateString() : "—"}
+                        </div>
                       </div>
                       <div>
                         <div className="text-[10px] text-gray-600">Current Hours</div>
                         <div className={`font-mono-tech ${serviceDue ? "text-[#EF4444]" : "text-black"}`}>
-                          {eq.currentHours}
+                          {typeof eq.currentHours === "number" ? `${eq.currentHours} hrs` : "—"}
                         </div>
                       </div>
                       <div>
-                        <div className="text-[10px] text-gray-600">Next Service</div>
-                          <div className={`font-mono-tech ${serviceDue ? "text-[#EF4444]" : "text-black"}`}>
-                            {eq.equipmentType === "Heavy Equipment" ? (eq.nextPMSHours ? `${eq.nextPMSHours}h` : "—") : (eq.nextCalibrationDate ? new Date(eq.nextCalibrationDate).toLocaleDateString() : "—")}
-                          </div>
+                        <div className="text-[10px] text-gray-600">{eq.equipmentType === "Heavy Equipment" ? "Last PMS" : "Last Calibration"}</div>
+                        <div className={`font-mono-tech ${serviceDue ? "text-[#EF4444]" : "text-black"}`}>
+                          {eq.equipmentType === "Heavy Equipment"
+                            ? (typeof eq.lastPMSHours === "number" ? `${eq.lastPMSHours} hrs` : "—")
+                            : (eq.lastCalibrationDate ? new Date(eq.lastCalibrationDate).toLocaleDateString() : "—")}
+                        </div>
                       </div>
                     </div>
 
@@ -406,142 +438,100 @@ export default function ClientPortal() {
 
       {/* Equipment Tab */}
       {activeTab === "equipment" && (
-        <div className="space-y-3">
-          {clientEquipment.length === 0 ? (
+        <div className="space-y-3 animate-in fade-in duration-300">
+          <div className="flex items-center gap-3">
+            <div className="relative flex-1 max-w-xs">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500" />
+              <Input
+                placeholder="Search unit ID or serial..."
+                value={equipmentSearchQuery}
+                onChange={(e) => setEquipmentSearchQuery(e.target.value)}
+                className="pl-8 h-8 bg-white border-gray-200 text-black text-xs"
+              />
+            </div>
+          </div>
+
+          {filteredClientEquipment.length === 0 ? (
             <div className="data-card p-6 text-center">
               <Package className="w-12 h-12 mx-auto text-gray-300 mb-2" />
               <p className="text-gray-600 text-sm">No equipment found for this company</p>
             </div>
           ) : (
-            clientEquipment.map((eq) => {
-              const serviceDue = isServiceDueFor(eq);
-              return (
-                <div key={eq.id} className="data-card p-4">
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex items-start gap-3">
-                      <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${
-                        serviceDue ? 'bg-red-50' : 'bg-[#66B2B2]/10'
-                      }`}>
-                        <Zap className={`w-6 h-6 ${serviceDue ? 'text-red-600' : 'text-[#66B2B2]'}`} />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-bold text-black font-mono-tech">{eq.unitId}</span>
-                          <span className="text-xs text-gray-600 bg-gray-100 px-2 py-1 rounded">{eq.equipmentType}</span>
-                        </div>
-                        <div className="text-[10px] text-gray-600 mt-1">
-                          {eq.manufacturer} {eq.model}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex flex-col items-end gap-1">
-                      {serviceDue && (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] bg-red-50 text-red-600 font-bold border border-red-200">
-                          Service Due
-                        </span>
-                      )}
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                        eq.status === 'active' ? 'bg-green-50 text-green-600 border border-green-200' :
-                        eq.status === 'maintenance' ? 'bg-amber-50 text-amber-600 border border-amber-200' :
-                        eq.status === 'service_due' ? 'bg-red-50 text-red-600 border border-red-200' :
-                        'bg-gray-50 text-gray-600 border border-gray-200'
-                      }`}>
-                        {eq.status}
-                      </span>
-                    </div>
-                  </div>
+            <div className="data-card overflow-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-200">
+                    <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider">Image</th>
+                    <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider">Equipment</th>
+                    <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider">Client</th>
+                    <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider">Serial Number</th>
+                    <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider">Total Hours</th>
+                    <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider">Total Km</th>
+                    <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider">Days</th>
+                    <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider">Weeks</th>
+                    <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider">Months</th>
+                    <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider">Years</th>
+                    <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider">Status</th>
+                    <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider">QR Code</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredClientEquipment.map((eq) => {
+                    const hoursDisplay = eq.hoursTotal
+                      ? eq.hoursTotal
+                      : eq.currentHours !== undefined
+                      ? `${eq.currentHours}h`
+                      : "—";
+                    const kmDisplay = typeof eq.kmTotal === "number" && Number.isFinite(eq.kmTotal)
+                      ? `${eq.kmTotal.toFixed(2)} km`
+                      : "—";
+                    const daysValue = typeof (eq as any).days === "number" ? (eq as any).days : null;
+                    const validDays = daysValue !== null && Number.isFinite(daysValue) && daysValue >= 0;
+                    const daysDisplay = validDays ? `${Math.floor(daysValue)}` : "—";
+                    const weeksDisplay = validDays ? `${(daysValue! / 7).toFixed(1)}` : "—";
+                    const monthsDisplay = validDays ? `${(daysValue! / 30.44).toFixed(1)}` : "—";
+                    const yearsDisplay = validDays ? `${(daysValue! / 365.25).toFixed(1)}` : "—";
 
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4 pb-4 border-b border-gray-100">
-                    <div>
-                      <div className="text-[10px] text-gray-600 uppercase tracking-wider font-bold">Serial Number</div>
-                      <div className="text-sm font-mono-tech font-bold text-gray-900 mt-1">{eq.serialNumber}</div>
-                    </div>
-                    <div>
-                      <div className="text-[10px] text-gray-600 uppercase tracking-wider font-bold">Installation Date</div>
-                      <div className="text-sm font-mono-tech font-bold text-gray-900 mt-1">
-                        {new Date(eq.installDate).toLocaleDateString()}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-[10px] text-gray-600 uppercase tracking-wider font-bold">Location</div>
-                      <div className="text-sm font-bold text-gray-900 mt-1">{eq.location}</div>
-                    </div>
-                    <div>
-                      <div className="text-[10px] text-gray-600 uppercase tracking-wider font-bold">Warranty Expiry</div>
-                      <div className="text-sm font-mono-tech font-bold text-gray-900 mt-1">
-                        {new Date(eq.warrantyExpiry).toLocaleDateString()}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Heavy Equipment Specific Info */}
-                  {eq.equipmentType === "Heavy Equipment" && (
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4 pb-4 border-b border-gray-100">
-                      <div>
-                        <div className="text-[10px] text-gray-600 uppercase tracking-wider font-bold">Current Hours</div>
-                        <div className={`text-lg font-bold font-mono-tech mt-1 ${serviceDue ? 'text-red-600' : 'text-[#66B2B2]'}`}>
-                          {eq.currentHours} hrs
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-[10px] text-gray-600 uppercase tracking-wider font-bold">Last PMS</div>
-                        <div className="text-sm font-mono-tech font-bold text-gray-900 mt-1">
-                          {eq.lastPMSHours} hrs
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-[10px] text-gray-600 uppercase tracking-wider font-bold">PMS Interval</div>
-                        <div className="text-sm font-mono-tech font-bold text-gray-900 mt-1">
-                          {eq.pmsInterval} hrs
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-[10px] text-gray-600 uppercase tracking-wider font-bold">Next PMS Due</div>
-                        <div className={`text-lg font-bold font-mono-tech mt-1 ${serviceDue ? 'text-red-600' : 'text-[#66B2B2]'}`}>
-                          {eq.nextPMSHours} hrs
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Lab/Testing Equipment Specific Info */}
-                  {(eq.equipmentType === "Lab Equipment" || eq.equipmentType === "Testing Equipment") && (
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4 pb-4 border-b border-gray-100">
-                      <div>
-                        <div className="text-[10px] text-gray-600 uppercase tracking-wider font-bold">Last Calibration</div>
-                        <div className="text-sm font-mono-tech font-bold text-gray-900 mt-1">
-                          {eq.lastCalibrationDate ? new Date(eq.lastCalibrationDate).toLocaleDateString() : "—"}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-[10px] text-gray-600 uppercase tracking-wider font-bold">Frequency</div>
-                        <div className="text-sm font-bold text-gray-900 mt-1">
-                          {eq.calibrationFrequency} months
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-[10px] text-gray-600 uppercase tracking-wider font-bold">Next Calibration</div>
-                        <div className={`text-sm font-mono-tech font-bold mt-1 ${
-                          serviceDue ? 'text-red-600' : 'text-[#66B2B2]'
-                        }`}>
-                          {eq.nextCalibrationDate ? new Date(eq.nextCalibrationDate).toLocaleDateString() : "—"}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Notes */}
-                  {eq.notes && (
-                    <div>
-                      <div className="text-[10px] text-gray-600 uppercase tracking-wider font-bold mb-2">Notes</div>
-                      <p className="text-sm text-gray-700 bg-gray-50 p-3 rounded border border-gray-100">
-                        {eq.notes}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              );
-            })
+                    return (
+                      <tr key={eq.id} className="border-b border-gray-100 hover:bg-[#66B2B2]/5 transition-all">
+                        <td className="py-3 px-3">
+                          <div className="h-11 w-11 shrink-0 overflow-hidden rounded-md border bg-gray-100 flex items-center justify-center">
+                            {eq.serialNumber ? (
+                              <Wrench className="w-4 h-4 text-gray-400" />
+                            ) : (
+                              <Wrench className="w-4 h-4 text-gray-400" />
+                            )}
+                          </div>
+                        </td>
+                        <td className="py-3 px-3 text-black font-medium">{eq.name ?? "—"}</td>
+                        <td className="py-3 px-3 text-black">{client?.companyName ?? "—"}</td>
+                        <td className="py-3 px-3 text-gray-600 font-mono-tech">{eq.serialNumber ?? "—"}</td>
+                        <td className="py-3 px-3 font-mono-tech text-gray-800">{hoursDisplay}</td>
+                        <td className="py-3 px-3 font-mono-tech text-gray-800">{kmDisplay}</td>
+                        <td className="py-3 px-3 font-mono-tech text-gray-800">{daysDisplay}</td>
+                        <td className="py-3 px-3 font-mono-tech text-gray-800">{weeksDisplay}</td>
+                        <td className="py-3 px-3 font-mono-tech text-gray-800">{monthsDisplay}</td>
+                        <td className="py-3 px-3 font-mono-tech text-gray-800">{yearsDisplay}</td>
+                        <td className="py-3 px-3">
+                          {eq.status ? (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#66B2B2]/10 text-[#0F766E] uppercase">
+                              {eq.status}
+                            </span>
+                          ) : (
+                            <span className="text-gray-400">—</span>
+                          )}
+                        </td>
+                        <td className="py-3 px-3">
+                          <div className="p-1 rounded bg-white border border-gray-100 shadow-sm w-max">
+                            <QRCodeSVG value={eq.serialNumber ?? eq.id} size={32} level="L" includeMargin={false} />
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
       )}
@@ -761,7 +751,7 @@ export default function ClientPortal() {
                             <div className="flex justify-between">
                               <span className="text-gray-600">Equipment</span>
                               <span className="text-black font-mono-tech">
-                                {clientEquipment.find((e) => e.id === parseInt(bookingEquipment))?.unitId}
+                                {clientEquipment.find((e) => e.id === bookingEquipment)?.unitId}
                               </span>
                             </div>
                             <div className="flex justify-between">

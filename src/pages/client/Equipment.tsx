@@ -176,7 +176,8 @@ export default function ClientEquipment() {
   const [qrModalItem, setQrModalItem] = useState<any | null>(null);
   
   // Metrics calculation
-  const allEqRecords = serviceRecords.filter((r) => r.clientId === clientId);
+  const normalizeId = (value: string | number | undefined) => Number(String(value).replace(/\D/g, "")) || 0;
+  const allEqRecords = serviceRecords.filter((r) => normalizeId(r.clientId) === clientId);
   const totalServices = allEqRecords.length;
   const completedServices = allEqRecords.filter(r => r.status === 'completed').length;
   const inProgressServices = allEqRecords.filter(r => r.status === 'in_progress' || r.status === 'scheduled').length;
@@ -195,7 +196,7 @@ export default function ClientEquipment() {
     (e) => Number(String(e.clientId).replace(/\D/g, "")) === clientId &&
     (searchQuery === "" ||
      e.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-     e.serialNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
+     (e.serialNumber?.toLowerCase() ?? "").includes(searchQuery.toLowerCase()) ||
      e.id.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
@@ -217,6 +218,33 @@ export default function ClientEquipment() {
   const parseH = (text: string) => {
     const m = String(text ?? "").match(/(\d+)\s*h/i);
     return m ? Number(m[1]) : 0;
+  };
+
+  const parseNumber = (value: number | string | undefined | null) => {
+    if (value === undefined || value === null || value === "") return null;
+    if (typeof value === "number") return Number.isFinite(value) ? value : null;
+    const parsed = parseFloat(String(value).replace(/[^\d.]/g, ""));
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+
+  const formatKm = (value: number | string | undefined | null) => {
+    const num = parseNumber(value);
+    return num !== null ? `${num.toFixed(2)} km` : "—";
+  };
+
+  const formatDays = (rawDays: number | string | undefined | null) => {
+    const daysNum = parseNumber(rawDays);
+    const validDays = daysNum !== null && daysNum >= 0;
+    return {
+      daysDisplay: validDays ? `${Math.floor(daysNum)}` : "—",
+      weeksDisplay: validDays ? `${(daysNum / 7).toFixed(1)}` : "—",
+      monthsDisplay: validDays ? `${(daysNum / 30.44).toFixed(1)}` : "—",
+      yearsDisplay: validDays ? `${(daysNum / 365.25).toFixed(1)}` : "—",
+    };
+  };
+
+  const getClientName = (clientIdValue: string | number | undefined | null) => {
+    return seedData.clients.find((client) => String(client.id) === String(clientIdValue))?.companyName ?? "—";
   };
 
   const isServiceDue = (eq: any) => {

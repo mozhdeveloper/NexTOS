@@ -63,6 +63,7 @@ export default function Inventory() {
   const addPartMutation = trpc.seedParts.add.useMutation();
   const updatePartMutation = trpc.seedParts.update.useMutation();
   const deletePartMutation = trpc.seedParts.delete.useMutation();
+  const restockPartMutation = trpc.seedParts.restock.useMutation();
 
   const mapSeedPartToInventoryItem = (part: SeedPartEntry, index: number) => ({
     id: Date.now() + index,
@@ -155,11 +156,25 @@ export default function Inventory() {
   const lowStockCount = items.filter(i => i.stockLevel <= i.minThreshold).length;
 
   const handleRestock = () => {
-    if (showRestock) {
-      restockItem(showRestock, restockQty);
-      setShowRestock(null);
-      setPartQty(1);
-    }
+    if (!showRestock) return;
+
+    const target = items.find((item) => item.id === showRestock);
+    if (!target) return;
+
+    restockPartMutation.mutate(
+      { id: target.partNumber, quantity: restockQty },
+      {
+        onSuccess: () => {
+          restockItem(showRestock, restockQty);
+          trpcUtils.seedParts.list.invalidate();
+          setShowRestock(null);
+          setPartQty(1);
+        },
+        onError: () => {
+          // keep modal open for retry
+        },
+      }
+    );
   };
 
   return (

@@ -170,6 +170,7 @@ export default function ClientServiceHistory() {
   const [dateTo, setDateTo] = useState("");
 
   const eqClientNum = (id: string) => Number(String(id).replace(/\D/g, ""));
+  const normalizeId = (value: string | number | undefined) => Number(String(value).replace(/\D/g, "")) || 0;
   const clientEquipment = useMemo(
     () => equipment.filter((item) => eqClientNum(item.clientId) === clientId),
     [equipment, clientId]
@@ -242,7 +243,7 @@ export default function ClientServiceHistory() {
   const serviceTypes = useMemo(
     () => Array.from(new Set(clientEquipment.flatMap((asset) =>
       serviceRecords
-        .filter((record) => record.clientId === clientId && record.equipmentId === asset.id)
+        .filter((record) => normalizeId(record.clientId) === clientId && record.equipmentId === asset.id)
         .map((record) => record.serviceType)
         .filter((serviceType) => typeof serviceType === "string" && serviceType.trim().length > 0)
     ))),
@@ -250,7 +251,7 @@ export default function ClientServiceHistory() {
   );
 
   const allClientRecords = useMemo(
-    () => serviceRecords.filter((record) => record.clientId === clientId),
+    () => serviceRecords.filter((record) => normalizeId(record.clientId) === clientId),
     [serviceRecords, clientId]
   );
 

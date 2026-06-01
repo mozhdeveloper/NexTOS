@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { useNavigate } from "react-router";
 import { useCRMStore } from "@/stores/useCRMStore";
 import { useBillingStore } from "@/stores/useBillingStore";
 import { useFleetStore } from "@/stores/useFleetStore";
@@ -42,6 +43,7 @@ import {
 import { Button } from "@/components/ui/button";
 
 export default function Dashboard() {
+  const navigate = useNavigate();
   const { user } = useAuthStore();
   const { deals, tasks, leads, getOverdueTasks } = useCRMStore();
   const { getTotalRevenue, getOutstandingRevenue } = useBillingStore();
@@ -362,7 +364,11 @@ export default function Dashboard() {
                      All stock levels within nominal range.
                   </div>
                )}
-               <Button variant="ghost" className="w-full mt-2 h-8 text-[10px] font-bold text-amber-700 hover:bg-amber-100/50 rounded-lg">
+               <Button
+                  variant="ghost"
+                  className="w-full mt-2 h-8 text-[10px] font-bold text-amber-700 hover:bg-amber-100/50 rounded-lg"
+                  onClick={() => navigate('/inventory')}
+               >
                   Manage Inventory <ArrowRight className="w-3 h-3 ml-1.5" />
                </Button>
             </div>

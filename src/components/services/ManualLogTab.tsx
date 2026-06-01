@@ -8,6 +8,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import seedData from "@/data/seed-data.json";
 import type { Client, Equipment } from "@/types";
 import { SignaturePad } from "./SignaturePad";
 
@@ -124,11 +125,11 @@ export function ManualLogTab({
                     <SelectValue placeholder="Select type..." />
                   </SelectTrigger>
                   <SelectContent className="bg-white dark:bg-[#1A1A20] border-gray-200 dark:border-white/10 z-50">
-                    <SelectItem value="Heavy Equipment PMS" className="text-gray-900 dark:text-[#EAEAEA]">Heavy Equipment PMS</SelectItem>
-                    <SelectItem value="Calibration PMS" className="text-gray-900 dark:text-[#EAEAEA]">Calibration PMS</SelectItem>
-                    <SelectItem value="Repair" className="text-gray-900 dark:text-[#EAEAEA]">General Repair</SelectItem>
-                    <SelectItem value="Inspection" className="text-gray-900 dark:text-[#EAEAEA]">Standard Inspection</SelectItem>
-                    <SelectItem value="Installation" className="text-gray-900 dark:text-[#EAEAEA]">New Installation</SelectItem>
+                    {seedData.serviceTypes.map((type) => (
+                      <SelectItem key={type.value} value={type.value} className="text-gray-900 dark:text-[#EAEAEA]">
+                        {type.label}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
