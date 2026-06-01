@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fetchAllTimeWorkingMs } from "../src/services/gps51";
+import { fetchAllTimeWorkingMs } from "../src/features/fleet/gps51";
 
 function jsonResponse(payload: unknown): Response {
   return new Response(JSON.stringify(payload), {

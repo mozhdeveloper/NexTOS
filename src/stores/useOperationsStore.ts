@@ -1,7 +1,14 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import type { Equipment, ServiceRecord, ServicePhoto, Booking, ServiceCategory, Package } from "@/types";
-import { useBillingStore } from "./useBillingStore";
+import type {
+  Equipment,
+  ServiceRecord,
+  ServicePhoto,
+  Booking,
+  ServiceCategory,
+  Package,
+} from "@/types";
+import { useBillingStore } from "../features/billing/useBillingStore";
 import { toast } from "sonner";
 import seedData from "@/data/seed-data.json";
 
@@ -50,8 +57,8 @@ export interface DraftExecution {
 // Full payload shape that mirrors the tRPC seedServiceRecords.complete input.
 // Stored in Zustand when the mutation fails so it can be retried automatically.
 export interface PendingSubmission {
-  id: number;        // task ID — used for dedup
-  queuedAt: string;  // ISO timestamp — for diagnostics
+  id: number; // task ID — used for dedup
+  queuedAt: string; // ISO timestamp — for diagnostics
   payload: {
     id: number;
     completedDate: string;
@@ -77,7 +84,12 @@ export interface PendingSubmission {
     serviceInterval?: number;
     serviceIntervalUnit?: string;
     metricAtService?: string;
-    safetyChecklist?: { ppeChecked: boolean; engineOff: boolean; areaSecured: boolean; lotoApplied: boolean };
+    safetyChecklist?: {
+      ppeChecked: boolean;
+      engineOff: boolean;
+      areaSecured: boolean;
+      lotoApplied: boolean;
+    };
     beforePhoto?: string;
     beforeNotes?: string;
     afterPhoto?: string;
@@ -111,7 +123,9 @@ interface OperationsState {
   // Actions
   addEquipment: (eq: Omit<Equipment, "id">) => void;
   updateEquipment: (id: string, data: Partial<Equipment>) => void;
-  addServiceRecord: (record: Omit<ServiceRecord, "id" | "createdAt" | "invoiceId">) => void;
+  addServiceRecord: (
+    record: Omit<ServiceRecord, "id" | "createdAt" | "invoiceId">
+  ) => void;
   updateServiceRecord: (id: number, data: Partial<ServiceRecord>) => void;
   addServicePhoto: (photo: Omit<ServicePhoto, "id" | "uploadedAt">) => void;
   addBooking: (booking: Omit<Booking, "id">) => void;
@@ -137,7 +151,9 @@ interface OperationsState {
   // Logic Helpers
   getHoursRemaining: (equipmentId: string) => number | null;
   getDaysUntilCalibration: (equipmentId: string) => number | null;
-  getEquipmentStatus: (equipmentId: string) => "OK" | "Near Service" | "Service Due" | "Overdue" | "Due Soon" | "Due";
+  getEquipmentStatus: (
+    equipmentId: string
+  ) => "OK" | "Near Service" | "Service Due" | "Overdue" | "Due Soon" | "Due";
 
   // Selectors
   getEquipmentByClient: (clientId: string) => Equipment[];
@@ -147,7 +163,7 @@ interface OperationsState {
   syncWithFleet: (fleetUnits: any[]) => void;
 }
 
-const seedEquipment: Equipment[] = (seedData.equipment as any[]).map((e) => ({
+const seedEquipment: Equipment[] = (seedData.equipment as any[]).map(e => ({
   id: String(e.id),
   name: e.name ?? "",
   clientId: String(e.clientId ?? ""),
@@ -163,7 +179,7 @@ const seedEquipment: Equipment[] = (seedData.equipment as any[]).map((e) => ({
   pmsConfiguration: e.pmsConfiguration,
 }));
 
-const seedBookings: Booking[] = (seedData.bookings as any[]).map((b) => ({
+const seedBookings: Booking[] = (seedData.bookings as any[]).map(b => ({
   id: String(b.id),
   clientId: String(b.clientId ?? ""),
   equipmentId: String(b.equipmentId ?? ""),
@@ -185,61 +201,69 @@ export const useOperationsStore = create<OperationsState>()(
       draftExecutions: {},
       pendingSubmissions: [],
 
-      queuePendingSubmission: (sub) => {
-        set((state) => ({
+      queuePendingSubmission: sub => {
+        set(state => ({
           pendingSubmissions: [
-            ...state.pendingSubmissions.filter((s) => s.id !== sub.id),
+            ...state.pendingSubmissions.filter(s => s.id !== sub.id),
             sub,
           ],
         }));
       },
 
-      removePendingSubmission: (id) => {
-        set((state) => ({
-          pendingSubmissions: state.pendingSubmissions.filter((s) => s.id !== id),
+      removePendingSubmission: id => {
+        set(state => ({
+          pendingSubmissions: state.pendingSubmissions.filter(s => s.id !== id),
         }));
       },
 
-      addEquipment: (eq) => {
+      addEquipment: eq => {
         const newEq: Equipment = { ...eq, id: `EQ-${Date.now()}` };
-        set((state) => ({ equipment: [...state.equipment, newEq] }));
+        set(state => ({ equipment: [...state.equipment, newEq] }));
       },
 
       updateEquipment: (id, data) => {
-        set((state) => ({
-          equipment: state.equipment.map((e) => (e.id === id ? { ...e, ...data } : e)),
+        set(state => ({
+          equipment: state.equipment.map(e =>
+            e.id === id ? { ...e, ...data } : e
+          ),
         }));
         if (data.hoursTotal !== undefined) {
           get().checkServiceThresholds();
         }
       },
 
-      addServiceRecord: (record) => {
+      addServiceRecord: record => {
         const newRecord = {
           ...record,
           id: Date.now(),
           invoiceId: null,
           createdAt: new Date().toISOString(),
         };
-        set((state) => ({ serviceRecords: [...state.serviceRecords, newRecord] }));
+        set(state => ({
+          serviceRecords: [...state.serviceRecords, newRecord],
+        }));
       },
 
       updateServiceRecord: (id, data) => {
-        set((state) => {
-          const updatedRecords = state.serviceRecords.map((r) =>
+        set(state => {
+          const updatedRecords = state.serviceRecords.map(r =>
             r.id === id ? { ...r, ...data } : r
           );
-          const record = updatedRecords.find((r) => r.id === id);
+          const record = updatedRecords.find(r => r.id === id);
 
           if (record && data.status === "completed") {
             const eq = state.equipment.find(e => e.id === record.equipmentId);
             if (eq && record.hoursAtService !== undefined) {
               const h = Math.floor(record.hoursAtService);
               const m = Math.round((record.hoursAtService - h) * 60);
-              setTimeout(() => get().updateEquipment(eq.id, {
-                status: "active",
-                hoursTotal: `${h}h ${m}m`,
-              }), 0);
+              setTimeout(
+                () =>
+                  get().updateEquipment(eq.id, {
+                    status: "active",
+                    hoursTotal: `${h}h ${m}m`,
+                  }),
+                0
+              );
             }
 
             if (!record.invoiceId) {
@@ -264,25 +288,34 @@ export const useOperationsStore = create<OperationsState>()(
         });
       },
 
-      addServicePhoto: (photo) => {
-        const newPhoto = { ...photo, id: Date.now(), uploadedAt: new Date().toISOString() };
-        set((state) => ({ servicePhotos: [...state.servicePhotos, newPhoto] }));
+      addServicePhoto: photo => {
+        const newPhoto = {
+          ...photo,
+          id: Date.now(),
+          uploadedAt: new Date().toISOString(),
+        };
+        set(state => ({ servicePhotos: [...state.servicePhotos, newPhoto] }));
       },
 
-      addBooking: (booking) => {
+      addBooking: booking => {
         const newBooking: Booking = { ...booking, id: `BK-${Date.now()}` };
-        set((state) => ({ bookings: [...state.bookings, newBooking] }));
+        set(state => ({ bookings: [...state.bookings, newBooking] }));
       },
 
       updateBooking: (id, data) => {
-        set((state) => ({
-          bookings: state.bookings.map((b) => (b.id === id ? { ...b, ...data } : b)),
+        set(state => ({
+          bookings: state.bookings.map(b =>
+            b.id === id ? { ...b, ...data } : b
+          ),
         }));
       },
 
       updateDraftExecution: (id, data) => {
-        set((state) => {
-          const currentDraft = state.draftExecutions[id] || { currentStep: 0, partsUsed: "Pending" };
+        set(state => {
+          const currentDraft = state.draftExecutions[id] || {
+            currentStep: 0,
+            partsUsed: "Pending",
+          };
           return {
             draftExecutions: {
               ...state.draftExecutions,
@@ -298,8 +331,8 @@ export const useOperationsStore = create<OperationsState>()(
         }
       },
 
-      clearDraftExecution: (id) => {
-        set((state) => {
+      clearDraftExecution: id => {
+        set(state => {
           const { [id]: _removed, ...rest } = state.draftExecutions;
           return { draftExecutions: rest };
         });
@@ -316,7 +349,13 @@ export const useOperationsStore = create<OperationsState>()(
           equipmentType: "Heavy Equipment",
           status: "service_due",
           hoursTotal: "1005h 0m",
-          pmsConfiguration: [{ serviceInterval: 1000, serviceIntervalUnit: "Hours", serviceType: "Heavy Equipment PMS" }],
+          pmsConfiguration: [
+            {
+              serviceInterval: 1000,
+              serviceIntervalUnit: "Hours",
+              serviceType: "Heavy Equipment PMS",
+            },
+          ],
         };
 
         const simTask: ServiceRecord = {
@@ -325,7 +364,8 @@ export const useOperationsStore = create<OperationsState>()(
           clientId: 1,
           technician: "Unassigned",
           serviceCategory: "Heavy Equipment PMS",
-          description: "SIMULATION TASK: Complete the guided flow (Photos & Signatures) to test automation.",
+          description:
+            "SIMULATION TASK: Complete the guided flow (Photos & Signatures) to test automation.",
           partsUsed: "Pending",
           status: "scheduled",
           scheduledDate: new Date().toISOString(),
@@ -339,19 +379,25 @@ export const useOperationsStore = create<OperationsState>()(
           createdAt: new Date().toISOString(),
         };
 
-        set((state) => ({
+        set(state => ({
           equipment: [...state.equipment, simUnit],
           serviceRecords: [...state.serviceRecords, simTask],
         }));
 
-        toast.success("Simulation task created!", { description: `Unit ${simUnit.name} is ready in 'My Tasks'.` });
+        toast.success("Simulation task created!", {
+          description: `Unit ${simUnit.name} is ready in 'My Tasks'.`,
+        });
       },
 
       clearSimulationData: () => {
-        set((state) => ({
+        set(state => ({
           equipment: state.equipment.filter(e => !e.id.startsWith("SIM-")),
-          serviceRecords: state.serviceRecords.filter(r => !r.description.includes("SIMULATION")),
-          servicePhotos: state.servicePhotos.filter(p => !p.caption.includes("Simulation")),
+          serviceRecords: state.serviceRecords.filter(
+            r => !r.description.includes("SIMULATION")
+          ),
+          servicePhotos: state.servicePhotos.filter(
+            p => !p.caption.includes("Simulation")
+          ),
         }));
         toast.info("Simulation data cleared.");
       },
@@ -365,10 +411,18 @@ export const useOperationsStore = create<OperationsState>()(
         const nextH = Math.floor(currentH / threshold) * threshold + threshold;
         const h = Math.floor(nextH);
         get().updateEquipment(equipmentId, {
-          pmsConfiguration: [{ serviceInterval: threshold, serviceIntervalUnit: "Hours", serviceType: "Heavy Equipment PMS" }],
+          pmsConfiguration: [
+            {
+              serviceInterval: threshold,
+              serviceIntervalUnit: "Hours",
+              serviceType: "Heavy Equipment PMS",
+            },
+          ],
           hoursTotal: `${Math.floor(currentH)}h ${Math.round((currentH - Math.floor(currentH)) * 60)}m`,
         });
-        toast.success(`Equipment Registered`, { description: `Registered under ${pkg.name}. Next PMS at ${h}h.` });
+        toast.success(`Equipment Registered`, {
+          description: `Registered under ${pkg.name}. Next PMS at ${h}h.`,
+        });
       },
 
       checkServiceThresholds: () => {
@@ -380,16 +434,18 @@ export const useOperationsStore = create<OperationsState>()(
           if (currentHours <= 0) return;
 
           eq.pmsConfiguration.forEach(config => {
-            if ((config.serviceIntervalUnit ?? "").toLowerCase() !== "hours") return;
+            if ((config.serviceIntervalUnit ?? "").toLowerCase() !== "hours")
+              return;
             if (config.serviceInterval <= 0) return;
 
             const milestone = Math.floor(currentHours / config.serviceInterval);
             if (milestone <= 0) return;
 
-            const hasOpenTask = serviceRecords.some(r =>
-              r.equipmentId === eq.id &&
-              r.status !== "completed" &&
-              r.status !== "cancelled"
+            const hasOpenTask = serviceRecords.some(
+              r =>
+                r.equipmentId === eq.id &&
+                r.status !== "completed" &&
+                r.status !== "cancelled"
             );
             if (hasOpenTask) return;
 
@@ -397,7 +453,9 @@ export const useOperationsStore = create<OperationsState>()(
               equipmentId: eq.id,
               clientId: Number(String(eq.clientId).replace(/\D/g, "")) || 0,
               technician: "Unassigned",
-              serviceCategory: config.serviceType as ServiceCategory ?? "Heavy Equipment PMS",
+              serviceCategory:
+                (config.serviceType as ServiceCategory) ??
+                "Heavy Equipment PMS",
               description: `AUTOMATED: ${config.serviceType} threshold reached (${Math.floor(currentHours)}h).`,
               partsUsed: "Pending Inspection",
               status: "scheduled",
@@ -418,19 +476,23 @@ export const useOperationsStore = create<OperationsState>()(
       },
 
       // Logic Helpers
-      getHoursRemaining: (equipmentId) => {
+      getHoursRemaining: equipmentId => {
         const eq = get().equipment.find(e => e.id === equipmentId);
         if (!eq || eq.equipmentType !== "Heavy Equipment") return null;
-        const config = eq.pmsConfiguration?.find(c => c.serviceIntervalUnit?.toLowerCase() === "hours");
+        const config = eq.pmsConfiguration?.find(
+          c => c.serviceIntervalUnit?.toLowerCase() === "hours"
+        );
         if (!config) return null;
         const currentH = parseHoursText(eq.hoursTotal ?? "0h 0m");
-        const nextMilestone = (Math.floor(currentH / config.serviceInterval) + 1) * config.serviceInterval;
+        const nextMilestone =
+          (Math.floor(currentH / config.serviceInterval) + 1) *
+          config.serviceInterval;
         return nextMilestone - currentH;
       },
 
-      getDaysUntilCalibration: (_equipmentId) => null,
+      getDaysUntilCalibration: _equipmentId => null,
 
-      getEquipmentStatus: (equipmentId) => {
+      getEquipmentStatus: equipmentId => {
         const remaining = get().getHoursRemaining(equipmentId);
         if (remaining === null) return "OK";
         if (remaining <= 0) return "Overdue";
@@ -439,26 +501,30 @@ export const useOperationsStore = create<OperationsState>()(
         return "OK";
       },
 
-      getEquipmentByClient: (clientId) =>
-        get().equipment.filter((e) => e.clientId === clientId),
-      getServiceHistory: (equipmentId) =>
-        get().serviceRecords.filter((r) => r.equipmentId === equipmentId),
-      getClientServiceHistory: (clientId) =>
-        get().serviceRecords.filter((r) => r.clientId === clientId),
-      generateQRData: (serialNumber) =>
-        JSON.stringify({ serial: serialNumber, company: "NexVision", scannedAt: new Date().toISOString() }),
+      getEquipmentByClient: clientId =>
+        get().equipment.filter(e => e.clientId === clientId),
+      getServiceHistory: equipmentId =>
+        get().serviceRecords.filter(r => r.equipmentId === equipmentId),
+      getClientServiceHistory: clientId =>
+        get().serviceRecords.filter(r => r.clientId === clientId),
+      generateQRData: serialNumber =>
+        JSON.stringify({
+          serial: serialNumber,
+          company: "NexVision",
+          scannedAt: new Date().toISOString(),
+        }),
 
       pruneStaleEquipment: () => {
-        const validIds = new Set(seedEquipment.map((e) => e.id));
-        set((state) => ({
-          equipment: state.equipment.filter((e) => validIds.has(e.id)),
+        const validIds = new Set(seedEquipment.map(e => e.id));
+        set(state => ({
+          equipment: state.equipment.filter(e => validIds.has(e.id)),
         }));
       },
 
-      syncWithFleet: (fleetUnits) => {
-        set((state) => ({
-          equipment: state.equipment.map((eq) => {
-            const unit = fleetUnits.find((u) => u.equipmentId === eq.id);
+      syncWithFleet: fleetUnits => {
+        set(state => ({
+          equipment: state.equipment.map(eq => {
+            const unit = fleetUnits.find(u => u.equipmentId === eq.id);
             if (!unit) return eq;
             const h = Math.floor(unit.telemetry.hours ?? 0);
             const m = Math.round(((unit.telemetry.hours ?? 0) - h) * 60);

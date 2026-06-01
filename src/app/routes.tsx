@@ -1,29 +1,34 @@
+// src/app/routes.tsx
+
 import { Routes, Route, Navigate } from "react-router";
+
 import AppShell from "@/app/layouts/AppShell";
 import ClientPortalShell from "@/features/client-portal/layout/ClientPortalShell";
+
 import Login from "@/shared/pages/LoginPage";
+import Landing from "@/features/landing/pages/LandingPage";
 import Dashboard from "@/features/dashboard/pages/DashboardPage";
 import CRM from "@/features/crm/pages/CRMPage";
 import Services from "@/features/services/pages/ServicesPage";
 import Fleet from "@/features/fleet/pages/FleetPage";
 import ClientPortal from "@/features/client-portal/pages/admin/ClientPortal";
-import ClientEquipment from "@/features/client-portal/pages/client/ClientEquipment";
-import ClientServiceHistory from "@/features/client-portal/pages/client/ClientServiceHistory";
-import ClientDashboard from "@/features/client-portal/pages/client/ClientDashboard";
-import ClientPackages from "@/features/client-portal/pages/client/ClientPackages";
-import ClientBilling from "@/features/client-portal/pages/client/ClientBilling";
-import ClientReports from "@/features/client-portal/pages/client/ClientReports";
 import Billing from "@/features/billing/pages/BillingPage";
 import Reports from "@/features/reports/pages/ReportsPage";
-import ClientBookings from "@/features/client-portal/pages/client/ClientBookings";
-import Landing from "@/features/landing/pages/LandingPage";
 import Marketing from "@/features/marketing/pages/MarketingPage";
 import Inventory from "@/features/inventory/pages/InventoryPage";
 import Settings from "@/shared/pages/Settings";
 import AssetScanner from "@/features/services/components/AssetScanner";
 import NotFound from "@/shared/pages/NotFound";
+
+import ClientDashboard from "@/features/client-portal/pages/client/ClientDashboard";
+import ClientEquipment from "@/features/client-portal/pages/client/ClientEquipment";
+import ClientServiceHistory from "@/features/client-portal/pages/client/ClientServiceHistory";
+import ClientBookings from "@/features/client-portal/pages/client/ClientBookings";
+import ClientPackages from "@/features/client-portal/pages/client/ClientPackages";
+import ClientBilling from "@/features/client-portal/pages/client/ClientBilling";
+import ClientReports from "@/features/client-portal/pages/client/ClientReports";
+
 import { useAuthStore } from "@/features/auth/useAuthStore";
-import { Toaster } from "@/shared/components/ui/sonner";
 
 function ClientPortalRoutes() {
   return (
@@ -64,29 +69,26 @@ function AuthenticatedRoutes() {
   );
 }
 
-export default function App() {
+export function AppRoutes() {
   const { isAuthenticated, user } = useAuthStore();
 
   return (
-    <>
-      <Toaster />
-      <Routes>
-        <Route path="/login" element={<Login />} />
-        <Route path="/landing" element={<Landing />} />
-        <Route
-          path="/*"
-          element={
-            !isAuthenticated ? (
-              <Login />
-            ) : user?.role === "client" ? (
-              <ClientPortalRoutes />
-            ) : (
-              <AuthenticatedRoutes />
-            )
-          }
-        />
-      </Routes>
-    </>
+    <Routes>
+      <Route path="/login" element={<Login />} />
+      <Route path="/landing" element={<Landing />} />
+
+      <Route
+        path="/*"
+        element={
+          !isAuthenticated ? (
+            <Login />
+          ) : user?.role === "client" ? (
+            <ClientPortalRoutes />
+          ) : (
+            <AuthenticatedRoutes />
+          )
+        }
+      />
+    </Routes>
   );
 }
-
