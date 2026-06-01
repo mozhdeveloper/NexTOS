@@ -4,8 +4,13 @@
             "id": "CL-001",
             "companyName": "MetroBuild Construction Corp.",
             "industry": "Construction",
-            "location": "Quezon City",
+            "address": "123 Commonwealth Ave, Quezon City",
             "mainContact": "Engr. Michael Santos",
+            "email": "msantos@metrobuild.ph",
+            "phone": "+63 2 8123 4567",
+            "status": "active",
+            "contractValue": 850000,
+            "lastContact": "2026-05-20",
             "departments": [
                 "Engineering",
                 "Procurement",
@@ -16,24 +21,39 @@
             "id": "CL-002",
             "companyName": "Prime Infra Solutions",
             "industry": "Infrastructure",
-            "location": "Makati",
+            "address": "456 Ayala Ave, Makati City",
             "mainContact": "Anna Reyes",
+            "email": "anna.reyes@primeinfra.ph",
+            "phone": "+63 2 8234 5678",
+            "status": "active",
+            "contractValue": 650000,
+            "lastContact": "2026-05-15",
             "departments": []
         },
         {
             "id": "CL-003",
             "companyName": "Delta Testing Laboratories",
             "industry": "Materials Testing",
-            "location": "Pasig",
-            "mainContact": null,
+            "address": "789 Ortigas Center, Pasig City",
+            "mainContact": "Dr. Jose Reyes",
+            "email": "info@deltalabs.ph",
+            "phone": "+63 2 8345 6789",
+            "status": "active",
+            "contractValue": 280000,
+            "lastContact": "2026-05-10",
             "departments": []
         },
         {
             "id": "CL-004",
             "companyName": "GreenBuild Developers",
             "industry": "Real Estate Development",
-            "location": null,
-            "mainContact": null,
+            "address": "321 BGC, Taguig City",
+            "mainContact": "Maria Santos",
+            "email": "info@greenbuild.ph",
+            "phone": "+63 2 8456 7890",
+            "status": "prospect",
+            "contractValue": 120000,
+            "lastContact": "2026-04-30",
             "departments": []
         }
     ],
@@ -1496,6 +1516,96 @@
             "minQuantity": 100,
             "unitType": "Pcs",
             "status": "In Stock"
+        }
+    ],
+    "deals": [
+        {
+            "id": 1,
+            "clientId": 1,
+            "title": "Annual PMS Contract — MetroBuild",
+            "value": 85000,
+            "stage": "inquiry",
+            "probability": 20,
+            "expectedClose": "2026-09-15",
+            "assignedTo": "Sales Team",
+            "createdAt": "2026-06-01"
+        },
+        {
+            "id": 2,
+            "clientId": 3,
+            "title": "Calibration Package — Delta Labs",
+            "value": 42000,
+            "stage": "inquiry",
+            "probability": 20,
+            "expectedClose": "2026-09-30",
+            "assignedTo": "Sales Team",
+            "createdAt": "2026-06-01"
+        },
+        {
+            "id": 3,
+            "clientId": 2,
+            "title": "Infrastructure Equipment Service Agreement",
+            "value": 65000,
+            "stage": "proposal",
+            "probability": 45,
+            "expectedClose": "2026-08-31",
+            "assignedTo": "Sales Team",
+            "createdAt": "2026-06-01"
+        },
+        {
+            "id": 4,
+            "clientId": 4,
+            "title": "GreenBuild Site Equipment Maintenance",
+            "value": 38000,
+            "stage": "proposal",
+            "probability": 45,
+            "expectedClose": "2026-08-20",
+            "assignedTo": "Sales Team",
+            "createdAt": "2026-06-01"
+        },
+        {
+            "id": 5,
+            "clientId": 1,
+            "title": "Heavy Equipment Overhaul Package",
+            "value": 110000,
+            "stage": "negotiation",
+            "probability": 70,
+            "expectedClose": "2026-08-10",
+            "assignedTo": "Sales Team",
+            "createdAt": "2026-06-01"
+        },
+        {
+            "id": 6,
+            "clientId": 3,
+            "title": "Lab Instrument Calibration Renewal",
+            "value": 28000,
+            "stage": "negotiation",
+            "probability": 70,
+            "expectedClose": "2026-08-05",
+            "assignedTo": "Sales Team",
+            "createdAt": "2026-06-01"
+        },
+        {
+            "id": 7,
+            "clientId": 2,
+            "title": "Q1 Preventative Maintenance — Prime Infra",
+            "value": 72000,
+            "stage": "closed_won",
+            "probability": 100,
+            "expectedClose": "2026-05-30",
+            "assignedTo": "Sales Team",
+            "createdAt": "2026-06-01"
+        },
+        {
+            "id": 8,
+            "clientId": 4,
+            "title": "GreenBuild Equipment Inspection Bundle",
+            "value": 19500,
+            "stage": "closed_won",
+            "probability": 100,
+            "expectedClose": "2026-05-25",
+            "assignedTo": "Sales Team",
+            "createdAt": "2026-06-01"
         }
     ]
 }

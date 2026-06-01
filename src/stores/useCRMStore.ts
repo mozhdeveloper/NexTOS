@@ -11,6 +11,7 @@ interface CRMState {
   tasks: Task[];
   addClient: (client: Omit<Client, "id" | "createdAt">) => void;
   updateClient: (id: number, data: Partial<Client>) => void;
+  deleteClient: (id: number) => void;
   addDeal: (deal: Omit<Deal, "id" | "createdAt">) => void;
   updateDeal: (dealId: number, data: Partial<Deal>) => void;
   deleteDeal: (dealId: number) => void;
@@ -31,16 +32,22 @@ const lastWeek = new Date(Date.now() - 7 * 86400000).toISOString();
 const tomorrow = new Date(Date.now() + 86400000).toISOString();
 const threeDaysAgo = new Date(Date.now() - 3 * 86400000).toISOString();
 
-const mockClients: Client[] = [
-  { id: 1, companyName: "Acme Security", industry: "Security Services", contactName: "Robert Hale", email: "robert@acme.com", phone: "+1-555-0101", status: "active", address: "100 Industrial Way", city: "Austin", country: "USA", contractValue: 125000, lastContact: yesterday, notes: "Enterprise client, multiple sites", createdAt: lastWeek },
-  { id: 2, companyName: "TechCorp Industries", industry: "Technology", contactName: "Lisa Park", email: "lisa@techcorp.com", phone: "+1-555-0102", status: "active", address: "500 Innovation Dr", city: "San Jose", country: "USA", contractValue: 85000, lastContact: now, notes: "Growing fast, needs expansion", createdAt: lastWeek },
-  { id: 3, companyName: "Guardian Properties", industry: "Real Estate", contactName: "David Kim", email: "david@guardian.com", phone: "+1-555-0103", status: "prospect", address: "200 Marina Blvd", city: "Miami", country: "USA", contractValue: 45000, lastContact: threeDaysAgo, notes: "High-value prospect", createdAt: lastWeek },
-  { id: 4, companyName: "Metro Logistics", industry: "Transportation", contactName: "Amanda Foster", email: "amanda@metrolog.com", phone: "+1-555-0104", status: "active", address: "300 Freight Lane", city: "Chicago", country: "USA", contractValue: 67000, lastContact: yesterday, notes: "Fleet tracking client", createdAt: lastWeek },
-  { id: 5, companyName: "SecureNet Solutions", industry: "Cybersecurity", contactName: "Carlos Mendez", email: "carlos@securenet.com", phone: "+1-555-0105", status: "active", address: "800 Cyber Ave", city: "Seattle", country: "USA", contractValue: 150000, lastContact: now, notes: "Premium support tier", createdAt: lastWeek },
-  { id: 6, companyName: "BrightStar Energy", industry: "Energy", contactName: "Jennifer Walsh", email: "jen@brightstar.com", phone: "+1-555-0106", status: "inactive", address: "400 Solar Rd", city: "Phoenix", country: "USA", contractValue: 32000, lastContact: lastWeek, notes: "Contract ending soon", createdAt: lastWeek },
-  { id: 7, companyName: "Harbor Medical", industry: "Healthcare", contactName: "Dr. Sam Patel", email: "sam@harbormed.com", phone: "+1-555-0107", status: "prospect", address: "700 Health St", city: "Boston", country: "USA", contractValue: 95000, lastContact: threeDaysAgo, notes: "Compliance requirements", createdAt: lastWeek },
-  { id: 8, companyName: "Atlas Construction", industry: "Construction", contactName: "Mike Torres", email: "mike@atlas.com", phone: "+1-555-0108", status: "active", address: "900 Builder Way", city: "Denver", country: "USA", contractValue: 78000, lastContact: yesterday, notes: "Site security systems", createdAt: lastWeek },
-];
+const seedClients: Client[] = seedData.clients.map((c: any) => ({
+  id: Number(c.id.replace("CL-", "")),
+  companyName: c.companyName,
+  industry: c.industry ?? "",
+  contactName: c.mainContact ?? "",
+  email: c.email ?? "",
+  phone: c.phone ?? "",
+  status: (c.status as "active" | "inactive" | "prospect") ?? "active",
+  address: c.address ?? "",
+  city: "",
+  country: "Philippines",
+  contractValue: c.contractValue ?? 0,
+  lastContact: c.lastContact ?? new Date().toISOString(),
+  notes: "",
+  createdAt: new Date().toISOString(),
+}));
 
 const mockContacts: Contact[] = [
   { id: 1, clientId: 1, name: "Robert Hale", role: "Security Director", department: "Operations", email: "robert@acme.com", phone: "+1-555-0101", isPrimary: true },
@@ -75,18 +82,17 @@ const mockLeads: Lead[] = [
   { id: 12, clientId: 5, source: "Email Campaign", status: "contacted", priority: "high", score: 80, assignedTo: "Sarah Blake", notes: "International expansion", createdAt: lastWeek },
 ];
 
-const mockDeals: Deal[] = [
-  { id: 1, clientId: 1, title: "Enterprise Upgrade Q2", value: 75000, stage: "negotiation", probability: 75, expectedClose: tomorrow, assignedTo: "Sarah Blake", createdAt: lastWeek },
-  { id: 2, clientId: 2, title: "TechCorp Site Expansion", value: 45000, stage: "proposal", probability: 50, expectedClose: tomorrow, assignedTo: "Sarah Blake", createdAt: lastWeek },
-  { id: 3, clientId: 5, title: "SecureNet Global License", value: 120000, stage: "inquiry", probability: 25, expectedClose: tomorrow, assignedTo: "Sarah Blake", createdAt: lastWeek },
-  { id: 4, clientId: 4, title: "Metro Fleet Add-on", value: 28000, stage: "closed_won", probability: 100, expectedClose: yesterday, assignedTo: "Sarah Blake", createdAt: lastWeek },
-  { id: 5, clientId: 7, title: "Harbor Medical Compliance", value: 60000, stage: "proposal", probability: 45, expectedClose: tomorrow, assignedTo: "Sarah Blake", createdAt: lastWeek },
-  { id: 6, clientId: 3, title: "Guardian Full Package", value: 38000, stage: "negotiation", probability: 70, expectedClose: tomorrow, assignedTo: "Sarah Blake", createdAt: lastWeek },
-  { id: 7, clientId: 8, title: "Atlas Multi-Site Install", value: 55000, stage: "inquiry", probability: 30, expectedClose: tomorrow, assignedTo: "Sarah Blake", createdAt: lastWeek },
-  { id: 8, clientId: 1, title: "Acme Annual Renewal", value: 95000, stage: "closed_won", probability: 100, expectedClose: yesterday, assignedTo: "Sarah Blake", createdAt: lastWeek },
-  { id: 9, clientId: 6, title: "BrightStar Re-engagement", value: 22000, stage: "proposal", probability: 40, expectedClose: tomorrow, assignedTo: "Sarah Blake", createdAt: lastWeek },
-  { id: 10, clientId: 2, title: "TechCorp Support Tier Up", value: 32000, stage: "negotiation", probability: 65, expectedClose: tomorrow, assignedTo: "Sarah Blake", createdAt: lastWeek },
-];
+const seedDeals: Deal[] = (seedData as any).deals.map((d: any) => ({
+  id: d.id,
+  clientId: d.clientId,
+  title: d.title,
+  value: d.value,
+  stage: d.stage as DealStage,
+  probability: d.probability,
+  expectedClose: d.expectedClose,
+  assignedTo: d.assignedTo,
+  createdAt: d.createdAt,
+}));
 
 const mockTasks: Task[] = [
   { id: 1, title: "Follow up on Guardian proposal", description: "Send revised pricing", assignedTo: "Sarah Blake", relatedType: "deal", relatedId: 6, dueDate: yesterday, priority: "high", status: "overdue", createdAt: lastWeek },
@@ -114,10 +120,10 @@ const mockTasks: Task[] = [
 export const useCRMStore = create<CRMState>()(
   persist(
     (set, get) => ({
-      clients: mockClients,
+      clients: seedClients,
       contacts: mockContacts,
       leads: mockLeads,
-      deals: mockDeals,
+      deals: seedDeals,
       tasks: mockTasks,
 
       addClient: (client) => {
@@ -129,6 +135,10 @@ export const useCRMStore = create<CRMState>()(
         set((state) => ({
           clients: state.clients.map((c) => (c.id === id ? { ...c, ...data } : c)),
         }));
+      },
+
+      deleteClient: (id) => {
+        set((state) => ({ clients: state.clients.filter((c) => c.id !== id) }));
       },
 
       addDeal: (deal) => {
@@ -248,7 +258,7 @@ export const useCRMStore = create<CRMState>()(
       },
     }),
     {
-      name: "nextos-crm",
+      name: "nextos-crm-v3",
     }
   )
 );

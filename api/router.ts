@@ -761,6 +761,74 @@ export const appRouter = createRouter({
         return { ok: true };
       }),
   }),
+  deals: createRouter({
+    add: publicQuery
+      .input(
+        z.object({
+          id: z.number(),
+          clientId: z.number(),
+          title: z.string(),
+          value: z.number(),
+          stage: z.string(),
+          probability: z.number(),
+          expectedClose: z.string(),
+          assignedTo: z.string(),
+          createdAt: z.string(),
+        })
+      )
+      .mutation(async ({ input }) => {
+        const parsed = await readSeedData();
+        const deals: any[] = Array.isArray((parsed as any).deals) ? (parsed as any).deals : [];
+        (parsed as any).deals = [...deals, input];
+        await writeSeedData(parsed);
+        return { ok: true };
+      }),
+
+    update: publicQuery
+      .input(
+        z.object({
+          id: z.number(),
+          data: z.object({
+            clientId: z.number().optional(),
+            title: z.string().optional(),
+            value: z.number().optional(),
+            probability: z.number().optional(),
+            stage: z.string().optional(),
+          }),
+        })
+      )
+      .mutation(async ({ input }) => {
+        const parsed = await readSeedData();
+        const deals: any[] = Array.isArray((parsed as any).deals) ? (parsed as any).deals : [];
+        const idx = deals.findIndex((d: any) => d.id === input.id);
+        if (idx !== -1) deals[idx] = { ...deals[idx], ...input.data };
+        (parsed as any).deals = deals;
+        await writeSeedData(parsed);
+        return { ok: true };
+      }),
+
+    delete: publicQuery
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        const parsed = await readSeedData();
+        const deals: any[] = Array.isArray((parsed as any).deals) ? (parsed as any).deals : [];
+        (parsed as any).deals = deals.filter((d: any) => d.id !== input.id);
+        await writeSeedData(parsed);
+        return { ok: true };
+      }),
+
+    move: publicQuery
+      .input(z.object({ id: z.number(), stage: z.string(), probability: z.number() }))
+      .mutation(async ({ input }) => {
+        const parsed = await readSeedData();
+        const deals: any[] = Array.isArray((parsed as any).deals) ? (parsed as any).deals : [];
+        const idx = deals.findIndex((d: any) => d.id === input.id);
+        if (idx !== -1) deals[idx] = { ...deals[idx], stage: input.stage, probability: input.probability };
+        (parsed as any).deals = deals;
+        await writeSeedData(parsed);
+        return { ok: true };
+      }),
+  }),
 });
 
 export type AppRouter = typeof appRouter;

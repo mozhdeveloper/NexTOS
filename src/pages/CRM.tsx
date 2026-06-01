@@ -6,6 +6,7 @@ import { useBillingStore } from "@/stores/useBillingStore";
 import type { Deal, DealStage, Task, Client, Contact, Equipment, ServiceRecord, Booking, Package, Invoice, Lead } from "@/types";
 import { QRCodeSVG } from "qrcode.react";
 import CRMDashboard from "@/components/CRMDashboard";
+import { trpc } from "@/providers/trpc";
 import {
   Search,
   Filter,
@@ -32,6 +33,7 @@ import {
   MoreVertical,
   Trash2,
   PenTool,
+  Pencil,
   LayoutDashboard,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -102,6 +104,34 @@ export default function CRM() {
   const [eqLocation, setEqLocation] = useState("");
   const [eqHours, setEqHours] = useState("");
 
+  // Add Client modal state
+  const [addClientOpen, setAddClientOpen] = useState(false);
+  const [acCompanyName, setAcCompanyName] = useState("");
+  const [acIndustry, setAcIndustry] = useState("");
+  const [acContactName, setAcContactName] = useState("");
+  const [acEmail, setAcEmail] = useState("");
+  const [acPhone, setAcPhone] = useState("");
+  const [acStatus, setAcStatus] = useState<"active" | "inactive" | "prospect">("active");
+  const [acAddress, setAcAddress] = useState("");
+  const [acCity, setAcCity] = useState("");
+  const [acCountry, setAcCountry] = useState("");
+  const [acContractValue, setAcContractValue] = useState("");
+  const [acLastContact, setAcLastContact] = useState("");
+  const [acNotes, setAcNotes] = useState("");
+
+  // Edit Client modal state
+  const [editClientOpen, setEditClientOpen] = useState(false);
+  const [editingClient, setEditingClient] = useState<Client | null>(null);
+  const [editClientCompany, setEditClientCompany] = useState("");
+  const [editClientIndustry, setEditClientIndustry] = useState("");
+  const [editClientContactName, setEditClientContactName] = useState("");
+  const [editClientEmail, setEditClientEmail] = useState("");
+  const [editClientPhone, setEditClientPhone] = useState("");
+  const [editClientStatus, setEditClientStatus] = useState<"active" | "inactive" | "prospect">("active");
+  const [editClientAddress, setEditClientAddress] = useState("");
+  const [editClientContractValue, setEditClientContractValue] = useState("");
+  const [editClientLastContact, setEditClientLastContact] = useState("");
+
   // Filter clients
   const filteredClients = clients.filter((c) => {
     const matchesSearch =
@@ -142,6 +172,11 @@ export default function CRM() {
   ];
 
   const overdueTasks = getOverdueTasks();
+
+  const addDealMutation = trpc.deals.add.useMutation();
+  const updateDealMutation = trpc.deals.update.useMutation();
+  const deleteDealMutation = trpc.deals.delete.useMutation();
+  const moveDealMutation = trpc.deals.move.useMutation();
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -194,13 +229,28 @@ export default function CRM() {
     setOpenMenuDealId(null);
   };
 
+  const stageFromProbability = (prob: number): DealStage => {
+    if (prob >= 100) return "closed_won";
+    if (prob >= 70)  return "negotiation";
+    if (prob >= 45)  return "proposal";
+    if (prob > 0)    return "inquiry";
+    return "closed_lost";
+  };
+
   const handleSaveDealChanges = () => {
     if (!selectedActionDeal || editDealClientId === null) return;
-    useCRMStore.getState().updateDeal(selectedActionDeal.id, {
+    const newProb = Number(editDealProbability) || selectedActionDeal.probability;
+    const derivedStage = stageFromProbability(newProb);
+    const patch = {
       clientId: editDealClientId,
       title: editDealTitle,
       value: Number(editDealValue) || selectedActionDeal.value,
-      probability: Number(editDealProbability) || selectedActionDeal.probability,
+      probability: newProb,
+      ...(derivedStage !== selectedActionDeal.stage ? { stage: derivedStage } : {}),
+    };
+    useCRMStore.getState().updateDeal(selectedActionDeal.id, patch);
+    updateDealMutation.mutate({ id: selectedActionDeal.id, data: patch }, {
+      onError: (err) => console.error("deals.update failed", err),
     });
     setEditDealOpen(false);
     setSelectedActionDeal(null);
@@ -208,7 +258,11 @@ export default function CRM() {
 
   const handleConfirmDeleteDeal = () => {
     if (!selectedActionDeal) return;
-    useCRMStore.getState().deleteDeal(selectedActionDeal.id);
+    const id = selectedActionDeal.id;
+    useCRMStore.getState().deleteDeal(id);
+    deleteDealMutation.mutate({ id }, {
+      onError: (err) => console.error("deals.delete failed", err),
+    });
     setDeleteDealOpen(false);
     setSelectedActionDeal(null);
   };
@@ -224,7 +278,11 @@ export default function CRM() {
   const handleDrop = (e: React.DragEvent, stage: DealStage) => {
     e.preventDefault();
     if (draggingDeal !== null) {
+      const probMap: Record<DealStage, number> = { inquiry: 20, proposal: 45, negotiation: 70, closed_won: 100, closed_lost: 0 };
       moveDealStage(draggingDeal, stage);
+      moveDealMutation.mutate({ id: draggingDeal, stage, probability: probMap[stage] }, {
+        onError: (err) => console.error("deals.move failed", err),
+      });
       setDraggingDeal(null);
     }
   };
@@ -409,12 +467,20 @@ export default function CRM() {
           {/* Clients Tab */}
           {activeTab === "clients" && (
             <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-black">All Clients</h3>
+                <Button onClick={() => setAddClientOpen(true)} className="h-8 bg-[#66B2B2] hover:bg-[#66B2B2]/80 text-white text-xs font-bold">
+                  <Plus className="w-3.5 h-3.5 mr-1.5" />
+                  Add Client
+                </Button>
+              </div>
               <div className="data-card overflow-auto">
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="bg-gray-50">
                       <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Company</th>
                       <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Contact</th>
+                      <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Address</th>
                       <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Status</th>
                       <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Value</th>
                       <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Last Contact</th>
@@ -423,10 +489,23 @@ export default function CRM() {
                   </thead>
                   <tbody>
                     {filteredClients.map((client) => (
-                      <ClientRow 
-                        key={client.id} 
-                        client={client} 
+                      <ClientRow
+                        key={client.id}
+                        client={client}
                         onClick={() => setSelectedClientId(client.id)}
+                        onEdit={() => {
+                          setEditingClient(client);
+                          setEditClientCompany(client.companyName);
+                          setEditClientIndustry(client.industry);
+                          setEditClientContactName(client.contactName);
+                          setEditClientEmail(client.email);
+                          setEditClientPhone(client.phone);
+                          setEditClientStatus(client.status);
+                          setEditClientAddress(client.address);
+                          setEditClientContractValue(client.contractValue.toString());
+                          setEditClientLastContact(client.lastContact);
+                          setEditClientOpen(true);
+                        }}
                       />
                     ))}
                   </tbody>
@@ -514,28 +593,40 @@ export default function CRM() {
               <button onClick={() => setDealModalOpen(false)} className="absolute top-3 right-3 text-gray-500"><X className="w-4 h-4" /></button>
               <h3 className="text-sm font-semibold text-black mb-3">New Deal</h3>
               <div className="space-y-3">
-                <Input placeholder="Deal title" value={dealTitle} onChange={(e) => setDealTitle(e.target.value)} className="bg-white border-gray-200 text-black" />
-                <Input placeholder="Value" value={dealValue} onChange={(e) => setDealValue(e.target.value)} className="bg-white border-gray-200 text-black" />
-                <Select value={dealStage} onValueChange={(v) => setDealStage(v as DealStage)}>
-                  <SelectTrigger className="h-8 bg-white border-gray-200 text-black text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="bg-white border-gray-200">
-                    {stages.map((s) => (
-                      <SelectItem key={s.id} value={s.id} className="text-xs text-black">{s.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Select value={String(dealClientId ?? "")} onValueChange={(v) => setDealClientId(Number(v))}>
-                  <SelectTrigger className="h-8 bg-white border-gray-200 text-black text-xs">
-                    <SelectValue placeholder="Select client" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-white border-gray-200">
-                    {clients.map((c) => (
-                      <SelectItem key={c.id} value={String(c.id)} className="text-xs text-black">{c.companyName}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-gray-600">Deal Title</label>
+                  <Input placeholder="Deal title" value={dealTitle} onChange={(e) => setDealTitle(e.target.value)} className="bg-white border-gray-200 text-black" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-gray-600">Value (₱)</label>
+                  <Input placeholder="Value" value={dealValue} onChange={(e) => setDealValue(e.target.value)} className="bg-white border-gray-200 text-black" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-gray-600">Stage</label>
+                  <Select value={dealStage} onValueChange={(v) => setDealStage(v as DealStage)}>
+                    <SelectTrigger className="h-8 bg-white border-gray-200 text-black text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="bg-white border-gray-200">
+                      {stages.map((s) => (
+                        <SelectItem key={s.id} value={s.id} className="text-xs text-black">{s.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-gray-600">Client</label>
+                  <Select value={String(dealClientId ?? "")} onValueChange={(v) => setDealClientId(Number(v))}>
+                    <SelectTrigger className="h-8 bg-white border-gray-200 text-black text-xs">
+                      <SelectValue placeholder="Select client" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-white border-gray-200">
+                      {clients.map((c) => (
+                        <SelectItem key={c.id} value={String(c.id)} className="text-xs text-black">{c.companyName}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
                 <div className="flex gap-2">
                   <Button variant="outline" onClick={() => setDealModalOpen(false)} className="flex-1">Cancel</Button>
                   <Button
@@ -543,15 +634,25 @@ export default function CRM() {
                     onClick={() => {
                       const probMap: Record<DealStage, number> = { inquiry: 20, proposal: 45, negotiation: 70, closed_won: 100, closed_lost: 0 };
                       const value = Number(dealValue) || 0;
-                      useCRMStore.getState().addDeal({
+                      const now = new Date().toISOString();
+                      const storePayload = {
                         clientId: dealClientId ?? clients[0].id,
                         title: dealTitle,
                         value,
                         stage: dealStage,
                         probability: probMap[dealStage],
-                        expectedClose: new Date().toISOString(),
+                        expectedClose: now,
                         assignedTo: user?.name || "Sales",
-                      });
+                      };
+                      useCRMStore.getState().addDeal(storePayload);
+                      const allDeals = useCRMStore.getState().deals;
+                      const added = allDeals[allDeals.length - 1];
+                      if (added) {
+                        addDealMutation.mutate(
+                          { ...storePayload, id: added.id, createdAt: added.createdAt },
+                          { onError: (err) => console.error("deals.add failed", err) }
+                        );
+                      }
                       setTimeout(() => {
                         setDealModalOpen(false);
                         setDealTitle("");
@@ -699,36 +800,48 @@ export default function CRM() {
               <button onClick={() => setEditDealOpen(false)} className="absolute top-3 right-3 text-gray-500"><X className="w-4 h-4" /></button>
               <h3 className="text-sm font-semibold text-black mb-3">Edit Deal</h3>
               <div className="space-y-3">
-                <Select value={String(editDealClientId ?? "")} onValueChange={(v) => setEditDealClientId(Number(v))}>
-                  <SelectTrigger className="h-8 bg-white border-gray-200 text-black text-xs">
-                    <SelectValue placeholder="Select client" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-white border-gray-200">
-                    {clients.map((c) => (
-                      <SelectItem key={c.id} value={String(c.id)} className="text-xs text-black">
-                        {c.companyName}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Input
-                  placeholder="Deal title"
-                  value={editDealTitle}
-                  onChange={(e) => setEditDealTitle(e.target.value)}
-                  className="bg-white border-gray-200 text-black"
-                />
-                <Input
-                  placeholder="Revenue"
-                  value={editDealValue}
-                  onChange={(e) => setEditDealValue(e.target.value)}
-                  className="bg-white border-gray-200 text-black"
-                />
-                <Input
-                  placeholder="Probability (%)"
-                  value={editDealProbability}
-                  onChange={(e) => setEditDealProbability(e.target.value)}
-                  className="bg-white border-gray-200 text-black"
-                />
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-gray-600">Client</label>
+                  <Select value={String(editDealClientId ?? "")} onValueChange={(v) => setEditDealClientId(Number(v))}>
+                    <SelectTrigger className="h-8 bg-white border-gray-200 text-black text-xs">
+                      <SelectValue placeholder="Select client" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-white border-gray-200">
+                      {clients.map((c) => (
+                        <SelectItem key={c.id} value={String(c.id)} className="text-xs text-black">
+                          {c.companyName}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-gray-600">Deal Title</label>
+                  <Input
+                    placeholder="Deal title"
+                    value={editDealTitle}
+                    onChange={(e) => setEditDealTitle(e.target.value)}
+                    className="bg-white border-gray-200 text-black"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-gray-600">Revenue (₱)</label>
+                  <Input
+                    placeholder="Revenue"
+                    value={editDealValue}
+                    onChange={(e) => setEditDealValue(e.target.value)}
+                    className="bg-white border-gray-200 text-black"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-gray-600">Probability (%)</label>
+                  <Input
+                    placeholder="Probability (%)"
+                    value={editDealProbability}
+                    onChange={(e) => setEditDealProbability(e.target.value)}
+                    className="bg-white border-gray-200 text-black"
+                  />
+                </div>
                 <div className="flex gap-2">
                   <Button variant="outline" onClick={() => setEditDealOpen(false)} className="flex-1">Cancel</Button>
                   <Button onClick={handleSaveDealChanges} className="flex-1 bg-[#10B981] hover:bg-[#10B981]/80">
@@ -757,6 +870,178 @@ export default function CRM() {
                 <Button onClick={handleConfirmDeleteDeal} className="flex-1 bg-[#EF4444] hover:bg-[#EF4444]/80">
                   Delete
                 </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Client Modal */}
+      {addClientOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/60" onClick={() => setAddClientOpen(false)} />
+          <div className="relative z-10 w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
+            <div className="bg-white border border-gray-200 rounded p-5">
+              <button onClick={() => setAddClientOpen(false)} className="absolute top-3 right-3 text-gray-500"><X className="w-4 h-4" /></button>
+              <h3 className="text-sm font-semibold text-black mb-4">Add Client</h3>
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-gray-600">Company Name</label>
+                  <Input value={acCompanyName} onChange={(e) => setAcCompanyName(e.target.value)} className="bg-white border-gray-200 text-black" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-gray-600">Industry</label>
+                  <Input value={acIndustry} onChange={(e) => setAcIndustry(e.target.value)} className="bg-white border-gray-200 text-black" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-gray-600">Contact Name</label>
+                  <Input value={acContactName} onChange={(e) => setAcContactName(e.target.value)} className="bg-white border-gray-200 text-black" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-gray-600">Email</label>
+                  <Input type="email" value={acEmail} onChange={(e) => setAcEmail(e.target.value)} className="bg-white border-gray-200 text-black" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-gray-600">Phone</label>
+                  <Input value={acPhone} onChange={(e) => setAcPhone(e.target.value)} className="bg-white border-gray-200 text-black" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-gray-600">Status</label>
+                  <Select value={acStatus} onValueChange={(v) => setAcStatus(v as "active" | "inactive" | "prospect")}>
+                    <SelectTrigger className="h-8 bg-white border-gray-200 text-black text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="bg-white border-gray-200">
+                      <SelectItem value="active" className="text-xs text-black">Active</SelectItem>
+                      <SelectItem value="inactive" className="text-xs text-black">Inactive</SelectItem>
+                      <SelectItem value="prospect" className="text-xs text-black">Prospect</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-gray-600">Address</label>
+                  <Input value={acAddress} onChange={(e) => setAcAddress(e.target.value)} className="bg-white border-gray-200 text-black" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-gray-600">Contract Value (₱)</label>
+                  <Input type="number" min={0} value={acContractValue} onChange={(e) => setAcContractValue(e.target.value)} className="bg-white border-gray-200 text-black" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-gray-600">Last Contact</label>
+                  <Input type="date" value={acLastContact} onChange={(e) => setAcLastContact(e.target.value)} className="bg-white border-gray-200 text-black" />
+                </div>
+                <div className="flex gap-2 pt-1">
+                  <Button variant="outline" onClick={() => setAddClientOpen(false)} className="flex-1">Cancel</Button>
+                  <Button
+                    className="flex-1 bg-[#66B2B2] hover:bg-[#66B2B2]/80 text-white"
+                    onClick={() => {
+                      useCRMStore.getState().addClient({
+                        companyName: acCompanyName,
+                        industry: acIndustry,
+                        contactName: acContactName,
+                        email: acEmail,
+                        phone: acPhone,
+                        status: acStatus,
+                        address: acAddress,
+                        city: "",
+                        country: "",
+                        contractValue: Number(acContractValue) || 0,
+                        lastContact: acLastContact || new Date().toISOString(),
+                        notes: "",
+                      });
+                      setAddClientOpen(false);
+                      setAcCompanyName(""); setAcIndustry(""); setAcContactName("");
+                      setAcEmail(""); setAcPhone(""); setAcStatus("active");
+                      setAcAddress(""); setAcContractValue(""); setAcLastContact("");
+                    }}
+                  >
+                    Add Client →
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Client Modal */}
+      {editClientOpen && editingClient && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/60" onClick={() => setEditClientOpen(false)} />
+          <div className="relative z-10 w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
+            <div className="bg-white border border-gray-200 rounded p-5">
+              <button onClick={() => setEditClientOpen(false)} className="absolute top-3 right-3 text-gray-500"><X className="w-4 h-4" /></button>
+              <h3 className="text-sm font-semibold text-black mb-4">Edit Client</h3>
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-gray-600">Company Name</label>
+                  <Input value={editClientCompany} onChange={(e) => setEditClientCompany(e.target.value)} className="bg-white border-gray-200 text-black" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-gray-600">Industry</label>
+                  <Input value={editClientIndustry} onChange={(e) => setEditClientIndustry(e.target.value)} className="bg-white border-gray-200 text-black" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-gray-600">Contact Name</label>
+                  <Input value={editClientContactName} onChange={(e) => setEditClientContactName(e.target.value)} className="bg-white border-gray-200 text-black" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-gray-600">Email</label>
+                  <Input type="email" value={editClientEmail} onChange={(e) => setEditClientEmail(e.target.value)} className="bg-white border-gray-200 text-black" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-gray-600">Phone</label>
+                  <Input value={editClientPhone} onChange={(e) => setEditClientPhone(e.target.value)} className="bg-white border-gray-200 text-black" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-gray-600">Status</label>
+                  <Select value={editClientStatus} onValueChange={(v) => setEditClientStatus(v as "active" | "inactive" | "prospect")}>
+                    <SelectTrigger className="h-8 bg-white border-gray-200 text-black text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="bg-white border-gray-200">
+                      <SelectItem value="active" className="text-xs text-black">Active</SelectItem>
+                      <SelectItem value="inactive" className="text-xs text-black">Inactive</SelectItem>
+                      <SelectItem value="prospect" className="text-xs text-black">Prospect</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-gray-600">Address</label>
+                  <Input value={editClientAddress} onChange={(e) => setEditClientAddress(e.target.value)} className="bg-white border-gray-200 text-black" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-gray-600">Contract Value (₱)</label>
+                  <Input type="number" min={0} value={editClientContractValue} onChange={(e) => setEditClientContractValue(e.target.value)} className="bg-white border-gray-200 text-black" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-gray-600">Last Contact</label>
+                  <Input type="date" value={editClientLastContact} onChange={(e) => setEditClientLastContact(e.target.value)} className="bg-white border-gray-200 text-black" />
+                </div>
+                <div className="flex gap-2 pt-1">
+                  <Button variant="outline" onClick={() => setEditClientOpen(false)} className="flex-1">Cancel</Button>
+                  <Button
+                    className="flex-1 bg-[#66B2B2] hover:bg-[#66B2B2]/80 text-white"
+                    onClick={() => {
+                      if (!editingClient) return;
+                      useCRMStore.getState().updateClient(editingClient.id, {
+                        companyName: editClientCompany,
+                        industry: editClientIndustry,
+                        contactName: editClientContactName,
+                        email: editClientEmail,
+                        phone: editClientPhone,
+                        status: editClientStatus,
+                        address: editClientAddress,
+                        contractValue: Number(editClientContractValue) || 0,
+                        lastContact: editClientLastContact,
+                      });
+                      setEditClientOpen(false);
+                      setEditingClient(null);
+                    }}
+                  >
+                    Save Changes
+                  </Button>
+                </div>
               </div>
             </div>
           </div>
@@ -1267,7 +1552,9 @@ function DealCard({
   );
 }
 
-function ClientRow({ client, onClick }: { client: Client; onClick: () => void }) {
+function ClientRow({ client, onClick, onEdit }: { client: Client; onClick: () => void; onEdit: () => void }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+
   const statusColors = {
     active: "bg-[#10B981]/20 text-[#10B981]",
     prospect: "bg-[#66B2B2]/20 text-[#66B2B2]",
@@ -1275,7 +1562,7 @@ function ClientRow({ client, onClick }: { client: Client; onClick: () => void })
   };
 
   return (
-    <tr 
+    <tr
       className="grid-table-row border-b border-gray-200 cursor-pointer hover:bg-gray-50 transition-colors"
       onClick={onClick}
     >
@@ -1284,12 +1571,14 @@ function ClientRow({ client, onClick }: { client: Client; onClick: () => void })
         <div className="text-[10px] text-gray-600">{client.industry}</div>
       </td>
       <td className="py-2.5 px-3">
-        <div className="text-black">{client.contactName}</div>
-        <div className="flex items-center gap-2 mt-0.5">
-          <Mail className="w-2.5 h-2.5 text-gray-600" />
-          <span className="text-[10px] text-gray-600">{client.email}</span>
+        <div>
+          <p className="text-xs font-medium text-black">{client.contactName || "—"}</p>
+          <p className="text-[11px] text-gray-400 mt-0.5">
+            {client.email || "—"} {client.phone ? `| ${client.phone}` : ""}
+          </p>
         </div>
       </td>
+      <td className="py-2.5 px-3 text-xs text-gray-600">{client.address || "—"}</td>
       <td className="py-2.5 px-3">
         <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${statusColors[client.status]}`}>
           {client.status}
@@ -1303,12 +1592,40 @@ function ClientRow({ client, onClick }: { client: Client; onClick: () => void })
       </td>
       <td className="py-2.5 px-3">
         <div className="flex items-center gap-1">
-          <button className="p-1 rounded hover:bg-gray-100">
+          <button className="p-1 rounded hover:bg-gray-100" onClick={(e) => { e.stopPropagation(); if (client.phone) window.location.href = `tel:${client.phone}`; }}>
             <Phone className="w-3 h-3 text-gray-600" />
           </button>
-          <button className="p-1 rounded hover:bg-gray-100">
+          <button className="p-1 rounded hover:bg-gray-100" onClick={(e) => { e.stopPropagation(); if (client.email) window.location.href = `mailto:${client.email}`; }}>
             <Mail className="w-3 h-3 text-gray-600" />
           </button>
+          <div className="relative">
+            <button
+              className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-colors"
+              onClick={(e) => { e.stopPropagation(); setMenuOpen((o) => !o); }}
+            >
+              <MoreVertical className="w-3.5 h-3.5" />
+            </button>
+            {menuOpen && (
+              <div className="absolute right-0 top-7 z-50 min-w-[120px] rounded border border-gray-200 bg-white py-1 shadow-lg">
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-100 transition-colors"
+                  onClick={(e) => { e.stopPropagation(); setMenuOpen(false); onEdit(); }}
+                >
+                  <Pencil className="w-3 h-3" />
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-[#EF4444] hover:bg-[#EF4444]/10 transition-colors"
+                  onClick={(e) => { e.stopPropagation(); setMenuOpen(false); useCRMStore.getState().deleteClient(client.id); }}
+                >
+                  <Trash2 className="w-3 h-3" />
+                  Delete
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </td>
     </tr>
