@@ -131,7 +131,7 @@ export type LabTestingStatus =
 export interface ServiceRecord {
   id: number;
   equipmentId: string;   // matches Equipment.id / seedEquipmentId
-  clientId: number;
+  clientId: string | number; // Support both old mock integers and seed-data string prefixes
   technician: string;
   serviceCategory: ServiceCategory;
   serviceType?: ServiceType; // Legacy
