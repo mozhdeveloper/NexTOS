@@ -6,6 +6,9 @@ interface BillingState {
   packages: Package[];
   invoices: Invoice[];
   addPackage: (pkg: Omit<Package, "id" | "createdAt">) => void;
+  activatePackageForEquipment: (pkg: Package, clientId: number, equipmentId: string) => Package;
+  linkPackageToEquipment: (packageId: number, equipmentId: string) => Package | undefined;
+  unsubscribePackage: (packageId: number) => void;
   addInvoice: (invoice: Omit<Invoice, "id" | "createdAt">) => void;
   _addInvoice: (invoice: Invoice) => void;
   markInvoicePaid: (invoiceId: number) => void;
@@ -146,6 +149,59 @@ export const useBillingStore = create<BillingState>()(
       addPackage: (pkg) => {
         const newPkg = { ...pkg, id: Date.now(), createdAt: new Date().toISOString() };
         set((state) => ({ packages: [...state.packages, newPkg] }));
+      },
+
+      activatePackageForEquipment: (pkg, clientId, equipmentId) => {
+        const now = new Date();
+        const durationMonths = pkg.durationMonths || pkg.validityMonths || 12;
+        const endDate = new Date(now);
+        endDate.setMonth(endDate.getMonth() + durationMonths);
+
+        const activatedPackage: Package = {
+          ...pkg,
+          id: Date.now(),
+          clientId,
+          linkedEquipmentId: equipmentId,
+          startDate: now.toISOString(),
+          endDate: endDate.toISOString(),
+          totalVisits: pkg.totalVisits || 1,
+          visitsRemaining: pkg.totalVisits || pkg.visitsRemaining || 1,
+          usageCount: 0,
+          status: "active",
+          createdAt: now.toISOString(),
+        };
+
+        set((state) => ({ packages: [...state.packages, activatedPackage] }));
+        return activatedPackage;
+      },
+
+      linkPackageToEquipment: (packageId, equipmentId) => {
+        let linkedPackage: Package | undefined;
+
+        set((state) => ({
+          packages: state.packages.map((pkg) => {
+            if (pkg.id !== packageId) return pkg;
+
+            linkedPackage = {
+              ...pkg,
+              linkedEquipmentId: equipmentId,
+            };
+
+            return linkedPackage;
+          }),
+        }));
+
+        return linkedPackage;
+      },
+
+      unsubscribePackage: (packageId) => {
+        set((state) => ({
+          packages: state.packages.map((pkg) =>
+            pkg.id === packageId
+              ? { ...pkg, status: "cancelled" as const }
+              : pkg
+          ),
+        }));
       },
 
       addInvoice: (invoice) => {

@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAuthStore } from "@/stores/useAuthStore";
 import { useOperationsStore } from "@/stores/useOperationsStore";
+import { useBillingStore } from "@/stores/useBillingStore";
 import { useClientPortalStore } from "@/stores/useClientPortalStore";
-import seedData from "@/data/seed-data.json";
-import type { Booking, ServiceType } from "@/types";
+import type { Booking, Package, ServiceType } from "@/types";
 import {
   Calendar,
   CalendarDays,
   Clock,
-  Package,
+  Package as PackageIcon,
   ArrowRight,
   X,
   CheckCircle2,
@@ -19,7 +19,6 @@ import {
   Eye,
   MoreVertical,
   Play,
-  Check,
   Ban,
   RotateCcw,
   Download,
@@ -38,6 +37,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 type ExtendedBookingStatus =
   | "pending"
@@ -49,7 +54,8 @@ type ExtendedBookingStatus =
   | "rescheduled";
 
 type BookingTab = "all" | "upcoming" | "today" | "this_week" | "past";
-type PackageOption = "pms_1000" | "repair_6" | "one_time";
+type LegacyPackageOption = "pms_1000" | "repair_6" | "one_time";
+type PackageSelection = { value: string; label: string; package?: Package };
 
 const STATUS_ORDER: ExtendedBookingStatus[] = [
   "pending",
@@ -79,7 +85,7 @@ const SERVICE_COLORS: Record<ServiceType, string> = {
   calibration: "bg-[#F59E0B]/20 text-[#F59E0B]",
 };
 
-const PACKAGE_LABELS: Record<PackageOption, string> = {
+const LEGACY_PACKAGE_LABELS: Record<LegacyPackageOption, string> = {
   pms_1000: "PMS Package (1000 hrs)",
   repair_6: "Repair Package (6 visits)",
   one_time: "One-time Service",
@@ -103,6 +109,18 @@ function formatServiceType(serviceType?: ServiceType | string | null) {
   return normalized.charAt(0).toUpperCase() + normalized.slice(1);
 }
 
+function parseHoursText(text: string | undefined) {
+  const match = String(text ?? "").match(/(\d+)\s*h\s*(\d+)\s*m/i);
+  return match ? Number(match[1]) + Number(match[2]) / 60 : 0;
+}
+
+function isPackageCompatible(pkg: Package, serviceType: ServiceType) {
+  if (serviceType === "pms") return pkg.packageType === "Heavy Equipment PMS Package";
+  if (serviceType === "calibration") return pkg.packageType === "Calibration Package";
+  if (serviceType === "repair" || serviceType === "inspection" || serviceType === "installation") return false;
+  return true;
+}
+
 function toServiceCategory(serviceType: ServiceType): Booking["serviceCategory"] {
   if (serviceType === "pms") return "Heavy Equipment PMS";
   if (serviceType === "calibration") return "Calibration PMS";
@@ -111,9 +129,21 @@ function toServiceCategory(serviceType: ServiceType): Booking["serviceCategory"]
   return "Installation";
 }
 
-function formatBookingId(id: number, requestedDate: string) {
+function formatBookingId(id: string | number, requestedDate: string) {
+  if (typeof id === "string" && id.startsWith("BK-")) return id;
   const year = new Date(requestedDate).getFullYear();
   return `BK-${year}-${String(id).padStart(4, "0")}`;
+}
+
+function normalizeClientId(value: string | number | undefined) {
+  return Number(String(value ?? "").replace(/\D/g, ""));
+}
+
+function matchesClientAccount(value: string | number | undefined, selectedCompanyId: string, numericClientId: number) {
+  const rawValue = String(value ?? "");
+  if (!rawValue) return false;
+  if (rawValue === selectedCompanyId) return true;
+  return normalizeClientId(rawValue) === numericClientId;
 }
 
 function getTechnicianFromEquipmentId(equipmentId: string) {
@@ -158,15 +188,30 @@ function toBaseStatus(status: ExtendedBookingStatus): Booking["status"] {
 }
 
 function getExtendedStatus(booking: Booking): ExtendedBookingStatus {
-  const meta = getTag(booking.notes, "status") as ExtendedBookingStatus | null;
+  const normalized = String(booking.status ?? "pending").toLowerCase() as ExtendedBookingStatus;
+  if (normalized === "scheduled" || normalized === "in_progress" || normalized === "confirmed") return normalized;
+  if (normalized === "completed" || normalized === "cancelled") return normalized;
+  if (booking.rescheduledFrom) return "rescheduled";
+  const meta = getTag(booking.notes ?? "", "status") as ExtendedBookingStatus | null;
   if (meta && STATUS_ORDER.includes(meta)) return meta;
-  return booking.status;
+  return "pending";
 }
 
-function getPackageOption(booking: Booking): PackageOption {
-  const meta = getTag(booking.notes, "package") as PackageOption | null;
-  if (meta && Object.prototype.hasOwnProperty.call(PACKAGE_LABELS, meta)) return meta;
+function getLegacyPackageOption(booking: Booking): LegacyPackageOption {
+  const meta = getTag(booking.notes ?? "", "package") as LegacyPackageOption | null;
+  if (meta && Object.prototype.hasOwnProperty.call(LEGACY_PACKAGE_LABELS, meta)) return meta;
   return booking.serviceType === "pms" ? "pms_1000" : "one_time";
+}
+
+function getBookingPackageLabel(booking: Booking, packages: Package[]) {
+  if (booking.packageName) return booking.packageName;
+  if (booking.packageId) return packages.find((pkg) => pkg.id === booking.packageId)?.name ?? "Package";
+  return LEGACY_PACKAGE_LABELS[getLegacyPackageOption(booking)];
+}
+
+function getBookingPackageValue(booking: Booking) {
+  if (booking.packageId) return String(booking.packageId);
+  return getLegacyPackageOption(booking) === "one_time" ? "one_time" : getLegacyPackageOption(booking);
 }
 
 function getBookingDateWithStartTime(booking: Booking) {
@@ -186,6 +231,14 @@ function getHoursState(currentHours: number, nextPms: number) {
   return "text-[#10B981]";
 }
 
+function getPmsMetric(eq: { hoursTotal?: string; pmsConfiguration?: Array<{ serviceInterval: number; serviceIntervalUnit: string }> } | undefined) {
+  const currentHours = parseHoursText(eq?.hoursTotal);
+  const config = eq?.pmsConfiguration?.find((item) => item.serviceIntervalUnit?.toLowerCase() === "hours");
+  if (!config || config.serviceInterval <= 0) return { currentHours, nextPms: 0 };
+  const nextPms = (Math.floor(currentHours / config.serviceInterval) + 1) * config.serviceInterval;
+  return { currentHours, nextPms };
+}
+
 function arcPath(cx: number, cy: number, radius: number, startAngle: number, endAngle: number) {
   const x1 = cx + radius * Math.cos(startAngle);
   const y1 = cy + radius * Math.sin(startAngle);
@@ -203,7 +256,7 @@ function formatDate(dateISO: string) {
   });
 }
 
-function getDisplayTime(timeRange: string) {
+function getDisplayTime(timeRange?: string) {
   if (!timeRange) return "—";
   const [start] = timeRange.split("-");
   const [h, m] = start.split(":").map(Number);
@@ -227,21 +280,37 @@ function formatDateRangeLabel(from: string, to: string): string {
 export default function ClientBookings() {
   const { user } = useAuthStore();
   const { bookings, equipment, addBooking, updateBooking } = useOperationsStore();
+  const { packages, invoices } = useBillingStore();
   const { selectedCompanyId } = useClientPortalStore();
   
-  // Map seedData company ID to numeric clientId
-  const selectedCompanyIndex = seedData.clients.findIndex(c => c.id === selectedCompanyId);
-  const clientId = selectedCompanyIndex !== -1 ? selectedCompanyIndex + 1 : (user?.clientId || 1);
+  const selectedCompanyNumericId = normalizeClientId(selectedCompanyId);
+  const clientId = selectedCompanyNumericId || user?.clientId || 1;
 
-  const eqClientNum = (id: string) => Number(String(id).replace(/\D/g, ""));
-  const clientEquipment = useMemo(() => equipment.filter((e) => eqClientNum(e.clientId) === clientId), [equipment, clientId]);
+  const clientEquipment = useMemo(
+    () => equipment.filter((e) => matchesClientAccount(e.clientId, selectedCompanyId, clientId)),
+    [equipment, selectedCompanyId, clientId]
+  );
   const equipmentById = useMemo(() => new Map(clientEquipment.map((eq) => [eq.id, eq])), [clientEquipment]);
+  const clientEquipmentIds = useMemo(() => new Set(clientEquipment.map((eq) => eq.id)), [clientEquipment]);
+  const clientPackages = useMemo(
+    () => packages.filter((pkg) => pkg.clientId === clientId && pkg.status === "active"),
+    [packages, clientId]
+  );
+  const clientInvoices = useMemo(
+    () => invoices.filter((invoice) => invoice.clientId === clientId),
+    [invoices, clientId]
+  );
 
   const clientBookings = useMemo(
     () => bookings
-      .filter((b) => eqClientNum(b.clientId) === clientId)
+      .filter((b) => {
+        const bookingClientMatches = matchesClientAccount(b.clientId, selectedCompanyId, clientId);
+        const bookingEquipmentMatches = b.equipmentId ? clientEquipmentIds.has(b.equipmentId) : true;
+
+        return bookingClientMatches && bookingEquipmentMatches;
+      })
       .sort((a, b) => getBookingDateWithStartTime(a).getTime() - getBookingDateWithStartTime(b).getTime()),
-    [bookings, clientId]
+    [bookings, selectedCompanyId, clientId, clientEquipmentIds]
   );
 
   const isBookingPast = (b: { requestedDate: string; preferredTime?: string }) => {
@@ -267,34 +336,66 @@ export default function ClientBookings() {
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [datePickerOpen, setDatePickerOpen] = useState(false);
-  const [openActionMenuFor, setOpenActionMenuFor] = useState<number | null>(null);
+  const [openActionMenuFor, setOpenActionMenuFor] = useState<string | null>(null);
 
   const [bookingStep, setBookingStep] = useState(0);
   const [bookingEquipment, setBookingEquipment] = useState("");
   const [bookingType, setBookingType] = useState<ServiceType>("pms");
-  const [bookingPackage, setBookingPackage] = useState<PackageOption>("pms_1000");
+  const [bookingPackageId, setBookingPackageId] = useState("one_time");
   const [bookingDate, setBookingDate] = useState("");
   const [bookingTime, setBookingTime] = useState("");
   const [bookingTechnician, setBookingTechnician] = useState("No preference");
   const [bookingNotes, setBookingNotes] = useState("");
   const [bookingComplete, setBookingComplete] = useState(false);
   const [bookingModalOpen, setBookingModalOpen] = useState(false);
-  const [editBookingId, setEditBookingId] = useState<number | null>(null);
+  const [editBookingId, setEditBookingId] = useState<string | null>(null);
+  const [rescheduleFrom, setRescheduleFrom] = useState<string | null>(null);
+  const [detailsBookingId, setDetailsBookingId] = useState<string | null>(null);
   const [calendarMonth, setCalendarMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
 
   const seedKey = `nextos-bookings-seeded-client-${clientId}-v2`;
+  const todayISO = new Date().toISOString().slice(0, 10);
+  const selectedPackage = clientPackages.find((pkg) => String(pkg.id) === bookingPackageId);
+  const selectedEquipment = equipmentById.get(bookingEquipment);
+  const compatiblePackages = clientPackages
+    .filter((pkg) => isPackageCompatible(pkg, bookingType))
+    .sort((a, b) => {
+      const aLinked = a.linkedEquipmentId === bookingEquipment ? 0 : 1;
+      const bLinked = b.linkedEquipmentId === bookingEquipment ? 0 : 1;
+      return aLinked - bLinked;
+    });
+  const legacySelectedPackage =
+    !selectedPackage && bookingPackageId !== "one_time" && LEGACY_PACKAGE_LABELS[bookingPackageId as LegacyPackageOption]
+      ? { value: bookingPackageId, label: LEGACY_PACKAGE_LABELS[bookingPackageId as LegacyPackageOption] }
+      : null;
+  const packageOptions: PackageSelection[] = [
+    ...compatiblePackages.map((pkg) => ({
+      value: String(pkg.id),
+      label: `${pkg.name}${pkg.linkedEquipmentId === bookingEquipment ? " - linked" : ""}`,
+      package: pkg,
+    })),
+    ...(legacySelectedPackage ? [legacySelectedPackage] : []),
+    { value: "one_time", label: "One-time Service" },
+  ];
+  const selectedPackageLabel =
+    selectedPackage?.name ?? LEGACY_PACKAGE_LABELS[bookingPackageId as LegacyPackageOption] ?? "One-time Service";
+  const isBookingDatePast = Boolean(bookingDate) && bookingDate < todayISO;
+  const totalSpent = clientInvoices
+    .filter((invoice) => invoice.status === "paid")
+    .reduce((sum, invoice) => sum + invoice.total, 0);
 
   const resetModalState = () => {
     setBookingStep(0);
     setBookingEquipment("");
     setBookingType("pms");
-    setBookingPackage("pms_1000");
+    setBookingPackageId("one_time");
     setBookingDate("");
     setBookingTime("");
     setBookingTechnician("No preference");
     setBookingNotes("");
     setBookingComplete(false);
     setEditBookingId(null);
+    setRescheduleFrom(null);
   };
 
   useEffect(() => {
@@ -324,7 +425,7 @@ export default function ClientBookings() {
       const tech = getTechnicianFromEquipmentId(eq.id);
       const notes = `[package:${seed.pkg}] [tech:${tech}] [status:${seed.status}]`;
       addBooking({
-        clientId: String(clientId),
+        clientId: selectedCompanyId,
         equipmentId: eq.id,
         serviceCategory: toServiceCategory(seed.type),
         serviceType: seed.type,
@@ -336,57 +437,70 @@ export default function ClientBookings() {
     });
 
     window.localStorage.setItem(seedKey, "1");
-  }, [addBooking, clientBookings.length, clientEquipment, clientId, seedKey]);
+  }, [addBooking, clientBookings.length, clientEquipment, selectedCompanyId, seedKey]);
 
   const setBookingStatus = (booking: Booking, status: ExtendedBookingStatus) => {
-    const notes = setTag(booking.notes, "status", status);
+    const notes = setTag(booking.notes ?? "", "status", status);
     updateBooking(booking.id, { status: toBaseStatus(status), notes });
   };
 
   const openReschedule = (booking: Booking) => {
-    const pkg = getPackageOption(booking);
-    const tech = getTag(booking.notes, "tech") ?? getTechnicianFromEquipmentId(booking.equipmentId);
+    const packageValue = getBookingPackageValue(booking);
+    const tech = booking.preferredTechnician ?? getTag(booking.notes ?? "", "tech") ?? "No preference";
     setEditBookingId(booking.id);
     setBookingEquipment(String(booking.equipmentId));
     setBookingType(booking.serviceType ?? "pms");
-    setBookingPackage(pkg);
+    setBookingPackageId(packageValue);
     setBookingDate(booking.requestedDate.slice(0, 10));
-    setBookingTime(booking.preferredTime);
+    setBookingTime(booking.preferredTime ?? "");
     setBookingTechnician(tech);
-    setBookingNotes(stripMetaTags(booking.notes));
+    setBookingNotes(stripMetaTags(booking.notes ?? ""));
+    setRescheduleFrom(booking.requestedDate);
     setBookingStep(1);
     setBookingModalOpen(true);
     setOpenActionMenuFor(null);
   };
 
   const handleBookingSubmit = () => {
-    if (!bookingEquipment || !bookingDate || !bookingTime) return;
+    if (!bookingEquipment || !bookingDate || !bookingTime || isBookingDatePast) return;
 
     const normalizedDate = new Date(bookingDate);
     normalizedDate.setHours(0, 0, 0, 0);
-    const noteWithPackage = setTag(bookingNotes.trim(), "package", bookingPackage);
+    const legacyPackageTag: LegacyPackageOption =
+      bookingPackageId === "repair_6" ? "repair_6" : bookingPackageId === "one_time" ? "one_time" : bookingType === "pms" ? "pms_1000" : "one_time";
+    const noteWithPackage = setTag(bookingNotes.trim(), "package", legacyPackageTag);
     const noteWithTech = setTag(noteWithPackage, "tech", bookingTechnician);
+    const packageId = selectedPackage?.id;
+    const packageName = selectedPackage?.name ?? selectedPackageLabel;
 
     if (editBookingId) {
       const noteWithStatus = setTag(noteWithTech, "status", "rescheduled");
       updateBooking(editBookingId, {
-        equipmentId: bookingEquipment,
-        serviceType: bookingType,
-        requestedDate: normalizedDate.toISOString(),
-        preferredTime: bookingTime,
-        status: "pending",
-        notes: noteWithStatus,
-      });
-    } else {
-      const noteWithStatus = setTag(noteWithTech, "status", "pending");
-      addBooking({
-        clientId: String(clientId),
         equipmentId: bookingEquipment,
         serviceCategory: toServiceCategory(bookingType),
         serviceType: bookingType,
         requestedDate: normalizedDate.toISOString(),
         preferredTime: bookingTime,
         status: "pending",
+        packageId,
+        packageName,
+        preferredTechnician: bookingTechnician,
+        rescheduledFrom: rescheduleFrom ?? undefined,
+        notes: noteWithStatus,
+      });
+    } else {
+      const noteWithStatus = setTag(noteWithTech, "status", "pending");
+      addBooking({
+        clientId: selectedCompanyId,
+        equipmentId: bookingEquipment,
+        serviceCategory: toServiceCategory(bookingType),
+        serviceType: bookingType,
+        requestedDate: normalizedDate.toISOString(),
+        preferredTime: bookingTime,
+        status: "pending",
+        packageId,
+        packageName,
+        preferredTechnician: bookingTechnician,
         notes: noteWithStatus,
       });
     }
@@ -411,17 +525,18 @@ export default function ClientBookings() {
     () => clientBookings.map((booking) => {
       const eq = equipmentById.get(booking.equipmentId);
       const status = getExtendedStatus(booking);
-      const pkg = getPackageOption(booking);
-      const tech = getTag(booking.notes, "tech") ?? getTechnicianFromEquipmentId(booking.equipmentId);
-      const currentHours = 0;
-      const nextPms = 0;
+      const legacyPackage = getLegacyPackageOption(booking);
+      const packageLabel = getBookingPackageLabel(booking, clientPackages);
+      const tech = booking.preferredTechnician ?? getTag(booking.notes ?? "", "tech") ?? getTechnicianFromEquipmentId(booking.equipmentId);
+      const { currentHours, nextPms } = getPmsMetric(eq);
       const bookingDate = getBookingDateWithStartTime(booking);
 
       return {
         booking,
         equipment: eq,
         status,
-        packageType: pkg,
+        packageType: legacyPackage,
+        packageLabel,
         technician: tech,
         currentHours,
         nextPms,
@@ -431,8 +546,9 @@ export default function ClientBookings() {
         isThisWeek: bookingDate >= dayStart && bookingDate <= weekEnd,
       };
     }),
-    [clientBookings, dayEnd, dayStart, equipmentById, weekEnd]
+    [clientBookings, clientPackages, dayEnd, dayStart, equipmentById, weekEnd]
   );
+  const selectedDetails = enrichedBookings.find((item) => item.booking.id === detailsBookingId);
 
   const filteredBookings = useMemo(
     () => enrichedBookings.filter((item) => {
@@ -510,7 +626,7 @@ export default function ClientBookings() {
   const recentActivity = useMemo(() => {
     const sorted = [...enrichedBookings].sort((a, b) => b.bookingDate.getTime() - a.bookingDate.getTime());
     const seenStatus = new Set<ExtendedBookingStatus>();
-    const seenIds = new Set<number>();
+    const seenIds = new Set<string>();
     const varied: typeof enrichedBookings = [];
     // First pass: one per status, no duplicate IDs
     for (const item of sorted) {
@@ -577,16 +693,6 @@ export default function ClientBookings() {
 
     return cells;
   }, [calendarMonth, enrichedBookings, now]);
-
-  const actionTransitions: Record<ExtendedBookingStatus, ExtendedBookingStatus[]> = {
-    pending: ["confirmed", "cancelled"],
-    confirmed: ["scheduled", "cancelled", "in_progress"],
-    scheduled: ["in_progress", "cancelled", "rescheduled"],
-    in_progress: ["completed", "cancelled"],
-    completed: [],
-    cancelled: [],
-    rescheduled: ["scheduled", "cancelled"],
-  };
 
   const ACTIVITY_CONFIG: Record<ExtendedBookingStatus, {
     icon: React.ReactNode;
@@ -691,9 +797,7 @@ export default function ClientBookings() {
                           onValueChange={(v) => {
                             const nextType = v as ServiceType;
                             setBookingType(nextType);
-                            if (nextType === "pms") {
-                              setBookingPackage("pms_1000");
-                            }
+                            setBookingPackageId("one_time");
                           }}
                         >
                           <SelectTrigger className="h-9 bg-white border-gray-200 text-gray-900 text-xs">
@@ -711,21 +815,26 @@ export default function ClientBookings() {
 
                       <div>
                         <label className="text-[10px] uppercase tracking-wider text-gray-500 mb-1 block">Package</label>
-                        <Select value={bookingPackage} onValueChange={(v) => setBookingPackage(v as PackageOption)}>
+                        <Select value={bookingPackageId} onValueChange={setBookingPackageId}>
                           <SelectTrigger className="h-9 bg-white border-gray-200 text-gray-900 text-xs">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent className="bg-white border-gray-200">
-                            <SelectItem value="pms_1000" className="text-xs text-gray-900">PMS Package (1000 hrs)</SelectItem>
-                            <SelectItem value="repair_6" className="text-xs text-gray-900">Repair Package (6 visits)</SelectItem>
-                            <SelectItem value="one_time" className="text-xs text-gray-900">One-time Service</SelectItem>
+                            {packageOptions.map((option) => (
+                              <SelectItem key={option.value} value={option.value} className="text-xs text-gray-900">
+                                {option.label}
+                              </SelectItem>
+                            ))}
                           </SelectContent>
                         </Select>
+                        {compatiblePackages.length === 0 && (
+                          <div className="mt-1 text-[10px] text-gray-500">No active package matches this service. You can continue as one-time service.</div>
+                        )}
                       </div>
 
                       <Button
                         onClick={() => setBookingStep(1)}
-                        disabled={!bookingEquipment}
+                        disabled={!bookingEquipment || !bookingPackageId}
                         className="w-full h-9 bg-[#66B2B2] hover:bg-[#66B2B2]/80 text-white font-bold disabled:opacity-50"
                       >
                         Continue <ArrowRight className="w-4 h-4 ml-1" />
@@ -741,9 +850,13 @@ export default function ClientBookings() {
                         <Input
                           type="date"
                           value={bookingDate}
+                          min={todayISO}
                           onChange={(e) => setBookingDate(e.target.value)}
                           className="h-9 bg-white border-gray-200 text-gray-900 text-xs"
                         />
+                        {isBookingDatePast && (
+                          <div className="mt-1 text-[10px] text-[#EF4444]">Choose today or a future date.</div>
+                        )}
                       </div>
                       <div>
                         <label className="text-[10px] uppercase tracking-wider text-gray-500 mb-1 block">Preferred Time</label>
@@ -779,7 +892,7 @@ export default function ClientBookings() {
                         </Button>
                         <Button
                           onClick={() => setBookingStep(2)}
-                          disabled={!bookingDate || !bookingTime}
+                          disabled={!bookingDate || !bookingTime || isBookingDatePast}
                           className="flex-1 h-9 bg-[#66B2B2] hover:bg-[#66B2B2]/80 text-white font-bold disabled:opacity-50"
                         >
                           Continue <ArrowRight className="w-4 h-4 ml-1" />
@@ -794,7 +907,7 @@ export default function ClientBookings() {
                       <div className="p-3 rounded bg-gray-50 border border-gray-200 space-y-1 text-xs">
                         <div className="flex justify-between">
                           <span className="text-gray-500">Equipment</span>
-                          <span className="text-gray-900 font-mono">{clientEquipment.find((e) => e.id === bookingEquipment)?.name ?? bookingEquipment}</span>
+                          <span className="text-gray-900 font-mono">{selectedEquipment?.name ?? bookingEquipment}</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-gray-500">Service Type</span>
@@ -802,7 +915,7 @@ export default function ClientBookings() {
                         </div>
                         <div className="flex justify-between">
                           <span className="text-gray-500">Package</span>
-                          <span className="text-gray-900">{PACKAGE_LABELS[bookingPackage]}</span>
+                          <span className="text-gray-900">{selectedPackageLabel}</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-gray-500">Date</span>
@@ -845,6 +958,64 @@ export default function ClientBookings() {
         </div>
       )}
 
+      <Dialog open={Boolean(selectedDetails)} onOpenChange={(open) => !open && setDetailsBookingId(null)}>
+        <DialogContent className="max-w-2xl bg-white border-gray-200">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-gray-900">
+              <Eye className="h-5 w-5 text-[#66B2B2]" />
+              Booking Details
+            </DialogTitle>
+          </DialogHeader>
+
+          {selectedDetails && (
+            <div className="space-y-4 text-xs">
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="font-mono text-sm font-semibold text-gray-900">
+                      {formatBookingId(selectedDetails.booking.id, selectedDetails.booking.requestedDate)}
+                    </div>
+                    <div className="mt-1 text-[11px] text-gray-500">
+                      {formatServiceType(selectedDetails.booking.serviceType)} for {selectedDetails.equipment?.name ?? "Selected equipment"}
+                    </div>
+                  </div>
+                  <span className={`rounded px-2 py-1 text-[10px] font-semibold capitalize ${STATUS_COLORS[selectedDetails.status]}`}>
+                    {selectedDetails.status.replace("_", " ")}
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <DetailItem label="Equipment" value={selectedDetails.equipment?.name ?? selectedDetails.booking.equipmentId} />
+                <DetailItem label="Serial Number" value={selectedDetails.equipment?.serialNumber ?? "Not available"} />
+                <DetailItem label="Service Type" value={formatServiceType(selectedDetails.booking.serviceType)} />
+                <DetailItem label="Package" value={selectedDetails.packageLabel} />
+                <DetailItem label="Requested Date" value={formatDate(selectedDetails.booking.requestedDate)} />
+                <DetailItem label="Time Window" value={selectedDetails.booking.preferredTime ?? "Not selected"} />
+                <DetailItem label="Technician Preference" value={selectedDetails.technician} />
+                <DetailItem label="PMS Metric" value={selectedDetails.nextPms > 0 ? `${selectedDetails.currentHours.toLocaleString()} / ${selectedDetails.nextPms.toLocaleString()} hrs` : "Not applicable"} />
+              </div>
+
+              <div className="rounded-lg border border-gray-200 bg-white p-3">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Notes</div>
+                <div className="mt-1 text-gray-900">{stripMetaTags(selectedDetails.booking.notes ?? "") || "No additional notes."}</div>
+              </div>
+
+              <div className="rounded-lg border border-[#66B2B2]/30 bg-[#66B2B2]/5 p-3">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-[#0F766E]">Timeline</div>
+                <div className="mt-2 space-y-2">
+                  <TimelineRow label="Submitted" value={formatDate(selectedDetails.booking.createdAt ?? selectedDetails.booking.requestedDate)} />
+                  {selectedDetails.booking.rescheduledFrom && (
+                    <TimelineRow label="Rescheduled From" value={formatDate(selectedDetails.booking.rescheduledFrom)} />
+                  )}
+                  <TimelineRow label="Requested Schedule" value={`${formatDate(selectedDetails.booking.requestedDate)} - ${getDisplayTime(selectedDetails.booking.preferredTime ?? "")}`} />
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 items-stretch">
         <div className="xl:col-span-9 flex flex-col gap-3">
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3">
@@ -852,7 +1023,7 @@ export default function ClientBookings() {
             <StatCard title="Today" value={todayCount} subtitle="Scheduled for today" icon={<Clock className="w-4 h-4 text-[#66B2B2]" />} iconBg="bg-[#66B2B2]/20" />
             <StatCard title="Completed" value={completedCount} subtitle="This month" icon={<CheckCircle2 className="w-4 h-4 text-[#10B981]" />} iconBg="bg-[#10B981]/20" />
             <StatCard title="Overdue" value={overdueCount} subtitle="Requires attention" icon={<Ban className="w-4 h-4 text-[#EF4444]" />} iconBg="bg-[#EF4444]/20" />
-            <StatCard title="Total Spent" value={formatMoneyPeso(24850)} subtitle="This month" icon={<DollarSign className="w-4 h-4 text-[#8B5CF6]" />} iconBg="bg-[#8B5CF6]/20" />
+            <StatCard title="Total Spent" value={formatMoneyPeso(totalSpent)} subtitle="Paid invoices" icon={<DollarSign className="w-4 h-4 text-[#8B5CF6]" />} iconBg="bg-[#8B5CF6]/20" />
           </div>
 
           <div className="data-card p-3">
@@ -1013,23 +1184,22 @@ export default function ClientBookings() {
                   {filteredBookings.length === 0 && (
                     <tr>
                       <td colSpan={9} className="py-10 text-center text-gray-500">
-                        <Package className="w-6 h-6 mx-auto mb-2" />
+                        <PackageIcon className="w-6 h-6 mx-auto mb-2" />
                         No bookings found
                       </td>
                     </tr>
                   )}
 
                   {filteredBookings.map((item) => {
-                    const transitions = actionTransitions[item.status];
-                    const isStartVisible = item.status === "in_progress" || item.status === "confirmed" || item.status === "scheduled";
                     const serviceTypeKey = typeof item.booking.serviceType === "string"
                       ? item.booking.serviceType.toLowerCase()
                       : "";
+                    const canClientChange = item.status !== "completed" && item.status !== "cancelled" && item.status !== "in_progress";
                     return (
                       <tr key={item.booking.id} className="border-b border-gray-200 hover:bg-gray-50 transition-colors duration-150">
                         <td className="py-2 px-2">
                           <div className="font-mono text-gray-900 font-semibold">{formatBookingId(item.booking.id, item.booking.requestedDate)}</div>
-                          <div className="text-[10px] text-gray-500">{formatDate(item.booking.createdAt)}</div>
+                          <div className="text-[10px] text-gray-500">{formatDate(item.booking.createdAt ?? item.booking.requestedDate)}</div>
                         </td>
 
                         <td className="py-2 px-2">
@@ -1073,7 +1243,7 @@ export default function ClientBookings() {
                         </td>
 
                         <td className="py-2 px-2">
-                          <div className="flex items-center gap-1 text-gray-900"><Package className="w-3.5 h-3.5 text-[#8B5CF6]" />{PACKAGE_LABELS[item.packageType]}</div>
+                          <div className="flex items-center gap-1 text-gray-900"><PackageIcon className="w-3.5 h-3.5 text-[#8B5CF6]" />{item.packageLabel}</div>
                           <div className="text-[10px] text-gray-500 mt-1">{item.packageType === "repair_6" ? "(6 visits)" : item.packageType === "pms_1000" ? "(1000 hrs)" : "One-time"}</div>
                         </td>
 
@@ -1084,20 +1254,14 @@ export default function ClientBookings() {
 
                         <td className="py-2 px-2">
                           <div className="flex items-center gap-1 relative">
-                            <Button size="icon-sm" variant="outline" className="h-7 w-7 border-gray-200 text-gray-500 hover:text-gray-900">
+                            <Button
+                              size="icon-sm"
+                              variant="outline"
+                              className="h-7 w-7 border-gray-200 text-gray-500 hover:text-gray-900"
+                              onClick={() => setDetailsBookingId(item.booking.id)}
+                            >
                               <Eye className="w-3.5 h-3.5" />
                             </Button>
-
-                            {isStartVisible && (
-                              <Button
-                                size="sm"
-                                className="h-7 px-2 bg-[#66B2B2] hover:bg-[#66B2B2]/80 text-gray-900"
-                                onClick={() => setBookingStatus(item.booking, item.status === "in_progress" ? "completed" : "in_progress")}
-                              >
-                                {item.status === "in_progress" ? <Check className="w-3 h-3 mr-1" /> : <Play className="w-3 h-3 mr-1" />}
-                                {item.status === "in_progress" ? "Complete" : "Start"}
-                              </Button>
-                            )}
 
                             <Button
                               size="icon-sm"
@@ -1109,16 +1273,26 @@ export default function ClientBookings() {
                             </Button>
 
                             {openActionMenuFor === item.booking.id && (
-                              <div className="absolute right-0 top-8 w-40 rounded border border-gray-200 bg-gray-50 p-1 z-20">
-                                <button className="w-full text-left px-2 py-1 text-xs text-gray-900 hover:bg-gray-50 rounded">View Details</button>
+                              <div className="absolute right-0 top-8 w-40 rounded border border-gray-200 bg-white p-1 z-20 shadow-lg">
                                 <button
                                   className="w-full text-left px-2 py-1 text-xs text-gray-900 hover:bg-gray-50 rounded"
+                                  onClick={() => {
+                                    setDetailsBookingId(item.booking.id);
+                                    setOpenActionMenuFor(null);
+                                  }}
+                                >
+                                  View Details
+                                </button>
+                                <button
+                                  disabled={!canClientChange}
+                                  className="w-full text-left px-2 py-1 text-xs text-gray-900 hover:bg-gray-50 rounded disabled:text-gray-400 disabled:cursor-not-allowed"
                                   onClick={() => openReschedule(item.booking)}
                                 >
                                   Reschedule
                                 </button>
                                 <button
-                                  className="w-full text-left px-2 py-1 text-xs text-gray-900 hover:bg-gray-50 rounded"
+                                  disabled={!canClientChange}
+                                  className="w-full text-left px-2 py-1 text-xs text-[#EF4444] hover:bg-red-50 rounded disabled:text-gray-400 disabled:cursor-not-allowed"
                                   onClick={() => {
                                     setBookingStatus(item.booking, "cancelled");
                                     setOpenActionMenuFor(null);
@@ -1126,18 +1300,6 @@ export default function ClientBookings() {
                                 >
                                   Cancel Booking
                                 </button>
-                                {transitions.map((nextStatus) => (
-                                  <button
-                                    key={nextStatus}
-                                    className="w-full text-left px-2 py-1 text-xs text-gray-900 hover:bg-gray-50 rounded capitalize"
-                                    onClick={() => {
-                                      setBookingStatus(item.booking, nextStatus);
-                                      setOpenActionMenuFor(null);
-                                    }}
-                                  >
-                                    Mark {nextStatus.replace("_", " ")}
-                                  </button>
-                                ))}
                               </div>
                             )}
                           </div>
@@ -1344,6 +1506,24 @@ function StatCard({
         </div>
         <div className={`w-8 h-8 rounded flex items-center justify-center ${iconBg}`}>{icon}</div>
       </div>
+    </div>
+  );
+}
+
+function DetailItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-gray-200 bg-white p-3">
+      <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500">{label}</div>
+      <div className="mt-1 font-semibold text-gray-900">{value}</div>
+    </div>
+  );
+}
+
+function TimelineRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between gap-3 text-[11px]">
+      <span className="text-gray-500">{label}</span>
+      <span className="font-medium text-gray-900">{value}</span>
     </div>
   );
 }

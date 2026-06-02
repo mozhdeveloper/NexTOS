@@ -208,6 +208,11 @@ export interface Booking {
   requestedDate: string;
   preferredTime?: string;
   status: "pending" | "confirmed" | "completed" | "cancelled" | "Pending" | "Confirmed" | "Scheduled";
+  packageId?: number;
+  packageName?: string;
+  preferredTechnician?: string;
+  cancelReason?: string;
+  rescheduledFrom?: string;
   notes?: string;
   projectName?: string;
   sampleName?: string;
@@ -240,7 +245,7 @@ export interface Package {
   terms: string;
   startDate: string;
   endDate: string;
-  linkedEquipmentId?: number;
+  linkedEquipmentId?: string;
   linkedServiceCategory?: ServiceCategory;
   status: "active" | "expired" | "cancelled";
   createdAt: string;
