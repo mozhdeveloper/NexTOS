@@ -4,6 +4,32 @@ import type { Equipment, ServiceRecord, ServicePhoto, Booking, ServiceCategory, 
 import { toast } from "sonner";
 import seedData from "@/data/seed-data.json";
 
+type SeedEquipmentRecord = Partial<Equipment> & {
+  id: string | number;
+  clientId?: string | number;
+};
+
+type SeedBookingRecord = {
+  id: string | number;
+  clientId?: string | number;
+  equipmentId?: string | number;
+  type?: string;
+  requestedDate?: string;
+  date?: string;
+  status?: string;
+  projectName?: string;
+  package?: string;
+};
+
+type FleetSyncUnit = {
+  equipmentId: string | number;
+  telemetry: {
+    hours?: number;
+    lat?: number;
+    lng?: number;
+  };
+};
+
 const parseHoursText = (text: string): number => {
   const m = String(text ?? "").match(/(\d+)\s*h\s*(\d+)\s*m/i);
   return m ? Number(m[1]) + Number(m[2]) / 60 : 0;
@@ -143,10 +169,10 @@ interface OperationsState {
   getServiceHistory: (equipmentId: string) => ServiceRecord[];
   getClientServiceHistory: (clientId: number) => ServiceRecord[];
   generateQRData: (serialNumber: string) => string;
-  syncWithFleet: (fleetUnits: any[]) => void;
+  syncWithFleet: (fleetUnits: FleetSyncUnit[]) => void;
 }
 
-const seedEquipment: Equipment[] = (seedData.equipment as any[]).map((e) => ({
+const seedEquipment: Equipment[] = (seedData.equipment as SeedEquipmentRecord[]).map((e) => ({
   id: String(e.id),
   name: e.name ?? "",
   clientId: String(e.clientId ?? ""),
@@ -176,7 +202,7 @@ const seedEquipment: Equipment[] = (seedData.equipment as any[]).map((e) => ({
   pmsConfiguration: e.pmsConfiguration,
 }));
 
-const seedBookings: Booking[] = (seedData.bookings as any[]).map((b) => ({
+const seedBookings: Booking[] = (seedData.bookings as SeedBookingRecord[]).map((b) => ({
   id: String(b.id),
   clientId: String(b.clientId ?? ""),
   equipmentId: String(b.equipmentId ?? ""),
@@ -296,8 +322,9 @@ export const useOperationsStore = create<OperationsState>()(
 
       clearDraftExecution: (id) => {
         set((state) => {
-          const { [id]: _removed, ...rest } = state.draftExecutions;
-          return { draftExecutions: rest };
+          const nextDraftExecutions = { ...state.draftExecutions };
+          delete nextDraftExecutions[id];
+          return { draftExecutions: nextDraftExecutions };
         });
       },
 
@@ -356,15 +383,26 @@ export const useOperationsStore = create<OperationsState>()(
       registerEquipmentToPackage: (equipmentId, pkg) => {
         const eq = get().equipment.find(e => e.id === equipmentId);
         if (!eq) return;
+        const isCalibration = pkg.packageType === "Calibration Package";
+        const isLabTesting = pkg.packageType === "Lab Testing Package";
         const threshold = pkg.tier === "enterprise" ? 1000 : 500;
+        const serviceInterval = isCalibration ? 12 : isLabTesting ? 6 : threshold;
+        const serviceIntervalUnit = isCalibration || isLabTesting ? "Months" : "Hours";
+        const serviceType = isCalibration
+          ? "Calibration"
+          : isLabTesting
+            ? "Lab Testing Service"
+            : "Heavy Equipment PMS";
         const currentH = parseHoursText(eq.hoursTotal ?? "0h 0m");
-        const nextH = Math.floor(currentH / threshold) * threshold + threshold;
-        const h = Math.floor(nextH);
         get().updateEquipment(equipmentId, {
-          pmsConfiguration: [{ serviceInterval: threshold, serviceIntervalUnit: "Hours", serviceType: "Heavy Equipment PMS" }],
+          pmsConfiguration: [{ serviceInterval, serviceIntervalUnit, serviceType }],
           hoursTotal: `${Math.floor(currentH)}h ${Math.round((currentH - Math.floor(currentH)) * 60)}m`,
         });
-        toast.success(`Equipment Registered`, { description: `Registered under ${pkg.name}. Next PMS at ${h}h.` });
+        toast.success("PMS tracking configured", {
+          description: serviceIntervalUnit === "Hours"
+            ? `${eq.name} is set for ${serviceType} every ${serviceInterval}h.`
+            : `${eq.name} is set for ${serviceType} every ${serviceInterval} months.`,
+        });
       },
 
       checkServiceThresholds: () => {
@@ -424,7 +462,7 @@ export const useOperationsStore = create<OperationsState>()(
         return nextMilestone - currentH;
       },
 
-      getDaysUntilCalibration: (_equipmentId) => null,
+      getDaysUntilCalibration: () => null,
 
       getEquipmentStatus: (equipmentId) => {
         const remaining = get().getHoursRemaining(equipmentId);
@@ -451,7 +489,7 @@ export const useOperationsStore = create<OperationsState>()(
         }));
       },
 
-      syncWithFleet: (fleetUnits) => {
+      syncWithFleet: (fleetUnits: FleetSyncUnit[]) => {
         set((state) => ({
           equipment: state.equipment.map((eq) => {
             const unit = fleetUnits.find((u) => u.equipmentId === eq.id);
