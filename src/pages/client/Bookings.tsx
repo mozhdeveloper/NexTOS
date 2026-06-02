@@ -3,7 +3,6 @@ import { useAuthStore } from "@/stores/useAuthStore";
 import { useOperationsStore } from "@/stores/useOperationsStore";
 import { useBillingStore } from "@/stores/useBillingStore";
 import { useClientPortalStore } from "@/stores/useClientPortalStore";
-import seedData from "@/data/seed-data.json";
 import type { Booking, Package, ServiceType } from "@/types";
 import {
   Calendar,
@@ -134,6 +133,17 @@ function formatBookingId(id: string | number, requestedDate: string) {
   if (typeof id === "string" && id.startsWith("BK-")) return id;
   const year = new Date(requestedDate).getFullYear();
   return `BK-${year}-${String(id).padStart(4, "0")}`;
+}
+
+function normalizeClientId(value: string | number | undefined) {
+  return Number(String(value ?? "").replace(/\D/g, ""));
+}
+
+function matchesClientAccount(value: string | number | undefined, selectedCompanyId: string, numericClientId: number) {
+  const rawValue = String(value ?? "");
+  if (!rawValue) return false;
+  if (rawValue === selectedCompanyId) return true;
+  return normalizeClientId(rawValue) === numericClientId;
 }
 
 function getTechnicianFromEquipmentId(equipmentId: string) {
@@ -273,13 +283,15 @@ export default function ClientBookings() {
   const { packages, invoices } = useBillingStore();
   const { selectedCompanyId } = useClientPortalStore();
   
-  // Map seedData company ID to numeric clientId
-  const selectedCompanyIndex = seedData.clients.findIndex(c => c.id === selectedCompanyId);
-  const clientId = selectedCompanyIndex !== -1 ? selectedCompanyIndex + 1 : (user?.clientId || 1);
+  const selectedCompanyNumericId = normalizeClientId(selectedCompanyId);
+  const clientId = selectedCompanyNumericId || user?.clientId || 1;
 
-  const eqClientNum = (id: string) => Number(String(id).replace(/\D/g, ""));
-  const clientEquipment = useMemo(() => equipment.filter((e) => eqClientNum(e.clientId) === clientId), [equipment, clientId]);
+  const clientEquipment = useMemo(
+    () => equipment.filter((e) => matchesClientAccount(e.clientId, selectedCompanyId, clientId)),
+    [equipment, selectedCompanyId, clientId]
+  );
   const equipmentById = useMemo(() => new Map(clientEquipment.map((eq) => [eq.id, eq])), [clientEquipment]);
+  const clientEquipmentIds = useMemo(() => new Set(clientEquipment.map((eq) => eq.id)), [clientEquipment]);
   const clientPackages = useMemo(
     () => packages.filter((pkg) => pkg.clientId === clientId && pkg.status === "active"),
     [packages, clientId]
@@ -291,9 +303,14 @@ export default function ClientBookings() {
 
   const clientBookings = useMemo(
     () => bookings
-      .filter((b) => eqClientNum(b.clientId) === clientId)
+      .filter((b) => {
+        const bookingClientMatches = matchesClientAccount(b.clientId, selectedCompanyId, clientId);
+        const bookingEquipmentMatches = b.equipmentId ? clientEquipmentIds.has(b.equipmentId) : true;
+
+        return bookingClientMatches && bookingEquipmentMatches;
+      })
       .sort((a, b) => getBookingDateWithStartTime(a).getTime() - getBookingDateWithStartTime(b).getTime()),
-    [bookings, clientId]
+    [bookings, selectedCompanyId, clientId, clientEquipmentIds]
   );
 
   const isBookingPast = (b: { requestedDate: string; preferredTime?: string }) => {
@@ -408,7 +425,7 @@ export default function ClientBookings() {
       const tech = getTechnicianFromEquipmentId(eq.id);
       const notes = `[package:${seed.pkg}] [tech:${tech}] [status:${seed.status}]`;
       addBooking({
-        clientId: String(clientId),
+        clientId: selectedCompanyId,
         equipmentId: eq.id,
         serviceCategory: toServiceCategory(seed.type),
         serviceType: seed.type,
@@ -420,7 +437,7 @@ export default function ClientBookings() {
     });
 
     window.localStorage.setItem(seedKey, "1");
-  }, [addBooking, clientBookings.length, clientEquipment, clientId, seedKey]);
+  }, [addBooking, clientBookings.length, clientEquipment, selectedCompanyId, seedKey]);
 
   const setBookingStatus = (booking: Booking, status: ExtendedBookingStatus) => {
     const notes = setTag(booking.notes ?? "", "status", status);
@@ -474,7 +491,7 @@ export default function ClientBookings() {
     } else {
       const noteWithStatus = setTag(noteWithTech, "status", "pending");
       addBooking({
-        clientId: String(clientId),
+        clientId: selectedCompanyId,
         equipmentId: bookingEquipment,
         serviceCategory: toServiceCategory(bookingType),
         serviceType: bookingType,
