@@ -21,12 +21,13 @@ interface TechnicalWorkFormProps {
   seedEquipment?: any;
   seedClients?: any[];
   pmsConfig?: any;
+  taskId: number;
   onSave: (d: Partial<DraftExecution>) => void;
   onBack: () => void;
 }
 
-export function TechnicalWorkForm({ draft, equipment, client, packages, seedEquipment, seedClients, pmsConfig, onSave, onBack }: TechnicalWorkFormProps) {
-    const { items: inventoryItems } = useInventoryStore();
+export function TechnicalWorkForm({ draft, equipment, client, packages, seedEquipment, seedClients, pmsConfig, taskId, onSave, onBack }: TechnicalWorkFormProps) {
+    const { items: inventoryItems, logPartUsage, updateItem } = useInventoryStore();
     const [selectedPartId, setSelectedPartId] = useState<number | "">("");
     const [partQty, setPartQty] = useState<string>("1");
 
@@ -175,6 +176,9 @@ export function TechnicalWorkForm({ draft, equipment, client, packages, seedEqui
                         const item = inventoryItems.find(i => i.id === selectedPartId);
                         if (!item) return;
                         const qty = Math.max(1, Math.floor(Number(partQty)));
+                        // logPartUsage shows an error toast and returns early if insufficient stock
+                        logPartUsage({ serviceRecordId: taskId, inventoryItemId: item.id, quantityUsed: qty });
+                        if (item.stockLevel < qty) return;
                         const already = fields.selectedParts ?? [];
                         const existing = already.find(p => p.inventoryItemId === item.id);
                         const updated = existing
@@ -203,7 +207,11 @@ export function TechnicalWorkForm({ draft, equipment, client, packages, seedEqui
                           <button
                             type="button"
                             className="text-gray-300 hover:text-[#EF4444] transition-colors shrink-0"
-                            onClick={() => setFields({ ...fields, selectedParts: (fields.selectedParts ?? []).filter(p => p.inventoryItemId !== part.inventoryItemId) })}
+                            onClick={() => {
+                              const currentItem = inventoryItems.find(i => i.id === part.inventoryItemId);
+                              if (currentItem) updateItem(part.inventoryItemId, { stockLevel: currentItem.stockLevel + part.quantity });
+                              setFields({ ...fields, selectedParts: (fields.selectedParts ?? []).filter(p => p.inventoryItemId !== part.inventoryItemId) });
+                            }}
                           >
                             ✕
                           </button>

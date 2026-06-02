@@ -1,8 +1,7 @@
 import { authRouter } from "./auth-router";
 import { createRouter, publicQuery } from "./middleware";
 import { z } from "zod";
-import { promises as fs } from "node:fs";
-import { getSeedDataPath, writeSeedData } from "./lib/seed-writer";
+import { writeSeedData, readSeedData, updateSeedData } from "./lib/seed-writer";
 
 type PmsConfigEntry = {
   serviceInterval: number;
@@ -103,13 +102,6 @@ type SeedDataShape = {
   [key: string]: unknown;
 };
 
-/** Read and parse seed-data.json, stripping any UTF-8 BOM that editors like VS Code may add. */
-async function readSeedData(): Promise<SeedDataShape> {
-  const raw = await fs.readFile(getSeedDataPath(), "utf-8");
-  // U+FEFF (BOM) at position 0 causes JSON.parse to throw - strip it defensively.
-  const stripped = raw.charCodeAt(0) === 0xFEFF ? raw.slice(1) : raw;
-  return JSON.parse(stripped) as SeedDataShape;
-}
 
 function getNextEquipmentId(equipment: SeedEquipmentEntry[], prefix: "EQ" | "LAB"): string {
   const maxNumber = equipment
@@ -1034,29 +1026,71 @@ export const appRouter = createRouter({
     deductStock: publicQuery
       .input(z.object({ partId: z.string(), quantityUsed: z.number() }))
       .mutation(async ({ input }) => {
-        const parsed = await readSeedData();
-        const parts: any[] = Array.isArray(parsed.parts) ? parsed.parts : [];
-        const idx = parts.findIndex((p: any) => p.id === input.partId);
-        if (idx !== -1) {
-          parts[idx] = { ...parts[idx], quantity: Math.max(0, (parts[idx].quantity ?? 0) - input.quantityUsed) };
-        }
-        parsed.parts = parts as any;
-        await writeSeedData(parsed);
-        return { ok: true, newQuantity: idx !== -1 ? parts[idx].quantity : 0 };
+        return await updateSeedData((parsed) => {
+          const parts: any[] = Array.isArray(parsed.parts) ? parsed.parts : [];
+          const idx = parts.findIndex((p: any) => p.id === input.partId);
+          if (idx !== -1) {
+            parts[idx] = { ...parts[idx], quantity: Math.max(0, (parts[idx].quantity ?? 0) - input.quantityUsed) };
+          }
+          parsed.parts = parts as any;
+          return { ok: true, newQuantity: idx !== -1 ? parts[idx].quantity : 0 };
+        });
+      }),
+
+    deductAndLog: publicQuery
+      .input(z.object({
+        partId: z.string(),
+        quantityUsed: z.number(),
+        inventoryItemId: z.number(),
+        serviceRecordId: z.number(),
+        unitPriceAtTime: z.number(),
+        createdAt: z.string(),
+      }))
+      .mutation(async ({ input }) => {
+        // Atomic read-modify-write: batched parallel mutations are serialised so
+        // each one reads the previous one's result instead of a stale snapshot.
+        return await updateSeedData((parsed) => {
+          const parts: any[] = Array.isArray(parsed.parts) ? parsed.parts : [];
+          const idx = parts.findIndex((p: any) => p.id === input.partId);
+          if (idx !== -1) {
+            const newQty = Math.max(0, (parts[idx].quantity ?? 0) - input.quantityUsed);
+            parts[idx] = {
+              ...parts[idx],
+              quantity: newQty,
+              status: newQty <= (parts[idx].minQuantity ?? 0) ? "Low Stock" : "In Stock",
+            };
+          }
+          parsed.parts = parts as any;
+
+          const history: any[] = Array.isArray((parsed as any).inventoryUsageHistory)
+            ? (parsed as any).inventoryUsageHistory
+            : [];
+          history.push({
+            id: Date.now(),
+            inventoryItemId: input.inventoryItemId,
+            serviceRecordId: input.serviceRecordId,
+            quantityUsed: input.quantityUsed,
+            unitPriceAtTime: input.unitPriceAtTime,
+            createdAt: input.createdAt,
+          });
+          (parsed as any).inventoryUsageHistory = history;
+
+          return { ok: true, newQuantity: idx !== -1 ? parts[idx].quantity : 0 };
+        });
       }),
 
     restock: publicQuery
       .input(z.object({ partId: z.string(), quantityAdded: z.number() }))
       .mutation(async ({ input }) => {
-        const parsed = await readSeedData();
-        const parts: any[] = Array.isArray(parsed.parts) ? parsed.parts : [];
-        const idx = parts.findIndex((p: any) => p.id === input.partId);
-        if (idx !== -1) {
-          parts[idx] = { ...parts[idx], quantity: (parts[idx].quantity ?? 0) + input.quantityAdded };
-        }
-        parsed.parts = parts as any;
-        await writeSeedData(parsed);
-        return { ok: true, newQuantity: idx !== -1 ? parts[idx].quantity : 0 };
+        return await updateSeedData((parsed) => {
+          const parts: any[] = Array.isArray(parsed.parts) ? parsed.parts : [];
+          const idx = parts.findIndex((p: any) => p.id === input.partId);
+          if (idx !== -1) {
+            parts[idx] = { ...parts[idx], quantity: (parts[idx].quantity ?? 0) + input.quantityAdded };
+          }
+          parsed.parts = parts as any;
+          return { ok: true, newQuantity: idx !== -1 ? parts[idx].quantity : 0 };
+        });
       }),
 
     logUsage: publicQuery
@@ -1068,12 +1102,12 @@ export const appRouter = createRouter({
         createdAt: z.string(),
       }))
       .mutation(async ({ input }) => {
-        const parsed = await readSeedData();
-        const history: any[] = Array.isArray((parsed as any).inventoryUsageHistory) ? (parsed as any).inventoryUsageHistory : [];
-        history.push({ id: Date.now(), ...input });
-        (parsed as any).inventoryUsageHistory = history;
-        await writeSeedData(parsed);
-        return { ok: true };
+        return await updateSeedData((parsed) => {
+          const history: any[] = Array.isArray((parsed as any).inventoryUsageHistory) ? (parsed as any).inventoryUsageHistory : [];
+          history.push({ id: Date.now(), ...input });
+          (parsed as any).inventoryUsageHistory = history;
+          return { ok: true };
+        });
       }),
 
     logRestock: publicQuery
@@ -1084,12 +1118,12 @@ export const appRouter = createRouter({
         createdAt: z.string(),
       }))
       .mutation(async ({ input }) => {
-        const parsed = await readSeedData();
-        const history: any[] = Array.isArray((parsed as any).inventoryRestockHistory) ? (parsed as any).inventoryRestockHistory : [];
-        history.push({ id: Date.now(), ...input });
-        (parsed as any).inventoryRestockHistory = history;
-        await writeSeedData(parsed);
-        return { ok: true };
+        return await updateSeedData((parsed) => {
+          const history: any[] = Array.isArray((parsed as any).inventoryRestockHistory) ? (parsed as any).inventoryRestockHistory : [];
+          history.push({ id: Date.now(), ...input });
+          (parsed as any).inventoryRestockHistory = history;
+          return { ok: true };
+        });
       }),
   }),
 });
