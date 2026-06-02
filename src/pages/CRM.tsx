@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
-import { useCRMStore } from "@/stores/useCRMStore";
+import { useCRMStore, seedStaff } from "@/stores/useCRMStore";
+import seedData from "@/data/seed-data.json";
 import { useAuthStore } from "@/stores/useAuthStore";
 import { useOperationsStore } from "@/stores/useOperationsStore";
 import { useBillingStore } from "@/stores/useBillingStore";
@@ -49,6 +50,8 @@ import {
 
 type TabType = "dashboard" | "clients" | "pipeline" | "tasks" | "leads" | "performance";
 
+const STATUS_ORDER: Record<string, number> = { overdue: 0, in_progress: 1, pending: 2 };
+
 export default function CRM() {
   const { user } = useAuthStore();
   const {
@@ -94,6 +97,19 @@ export default function CRM() {
   const [taskDueDate, setTaskDueDate] = useState("");
   const [taskPriority, setTaskPriority] = useState<"low" | "medium" | "high">("medium");
   const [taskClientId, setTaskClientId] = useState<number | null>(clients[0]?.id ?? null);
+  const [taskDepartment, setTaskDepartment] = useState<"sales" | "technician">("sales");
+  const [taskAssignedTo, setTaskAssignedTo] = useState<string>("");
+  const [taskServiceType, setTaskServiceType] = useState("");
+
+  // Edit Task modal state
+  const [editTaskOpen, setEditTaskOpen] = useState(false);
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [editTaskTitle, setEditTaskTitle] = useState("");
+  const [editTaskDescription, setEditTaskDescription] = useState("");
+  const [editTaskDueDate, setEditTaskDueDate] = useState("");
+  const [editTaskPriority, setEditTaskPriority] = useState<"low" | "medium" | "high">("medium");
+  const [editTaskStatus, setEditTaskStatus] = useState<Task["status"]>("pending");
+  const [editTaskAssignedTo, setEditTaskAssignedTo] = useState("");
 
   // Equipment modal state
   const [equipmentModalOpen, setEquipmentModalOpen] = useState(false);
@@ -176,6 +192,8 @@ export default function CRM() {
   const addDealMutation = trpc.deals.add.useMutation();
   const updateDealMutation = trpc.deals.update.useMutation();
   const deleteDealMutation = trpc.deals.delete.useMutation();
+  const updateTaskMutation = trpc.tasks.update.useMutation();
+  const deleteTaskMutation = trpc.tasks.delete.useMutation();
   const moveDealMutation = trpc.deals.move.useMutation();
 
   useEffect(() => {
@@ -556,28 +574,54 @@ export default function CRM() {
 
               {overdueTasks.length > 0 && (
                 <div className="mb-3 p-3 rounded border border-[#EF4444]/20 bg-[#EF4444]/5">
-                  <div className="flex items-center gap-2 mb-2">
+                  <div className="flex items-center gap-2">
                     <AlertTriangle className="w-4 h-4 text-[#EF4444]" />
                     <span className="text-sm font-semibold text-[#EF4444]">Overdue Tasks ({overdueTasks.length})</span>
-                  </div>
-                  <div className="space-y-1">
-                    {overdueTasks.map((task) => (
-                      <TaskItem key={task.id} task={task} onComplete={completeTask} overdue />
-                    ))}
                   </div>
                 </div>
               )}
 
-              <div className="space-y-1">
-                {tasks
-                  .filter((t) => t.status !== "completed")
-                  .filter(
-                    (t) =>
-                      searchQuery === "" || t.title.toLowerCase().includes(searchQuery.toLowerCase())
-                  )
-                  .map((task) => (
-                    <TaskItem key={task.id} task={task} onComplete={completeTask} />
-                  ))}
+              <div className="data-card overflow-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="bg-gray-50">
+                      <th className="py-2.5 px-3 w-8"></th>
+                      <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Task</th>
+                      <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Created</th>
+                      <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Due Date</th>
+                      <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Assigned To</th>
+                      <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Status</th>
+                      <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {tasks
+                      .filter((t) => t.status !== "completed")
+                      .filter((t) => searchQuery === "" || t.title.toLowerCase().includes(searchQuery.toLowerCase()))
+                      .sort((a, b) => (STATUS_ORDER[a.status] ?? 3) - (STATUS_ORDER[b.status] ?? 3))
+                      .map((task) => (
+                        <TaskRow
+                          key={task.id}
+                          task={task}
+                          onComplete={completeTask}
+                          onEdit={() => {
+                            setEditingTask(task);
+                            setEditTaskTitle(task.title);
+                            setEditTaskDescription(task.description);
+                            setEditTaskDueDate(task.dueDate);
+                            setEditTaskPriority(task.priority);
+                            setEditTaskStatus(task.status);
+                            setEditTaskAssignedTo(task.assignedTo);
+                            setEditTaskOpen(true);
+                          }}
+                          onDelete={(id) => {
+                            useCRMStore.getState().deleteTask(id);
+                            deleteTaskMutation.mutate({ id }, { onError: (err) => console.error("tasks.delete failed", err) });
+                          }}
+                        />
+                      ))}
+                  </tbody>
+                </table>
               </div>
             </div>
           )}
@@ -678,29 +722,93 @@ export default function CRM() {
               <button onClick={() => setTaskModalOpen(false)} className="absolute top-3 right-3 text-gray-500"><X className="w-4 h-4" /></button>
               <h3 className="text-sm font-semibold text-black mb-3">Add Task</h3>
               <div className="space-y-3">
-                <Input placeholder="Task title" value={taskTitle} onChange={(e) => setTaskTitle(e.target.value)} className="bg-white border-gray-200 text-black" />
-                <Input type="date" value={taskDueDate} onChange={(e) => setTaskDueDate(e.target.value)} className="bg-white border-gray-200 text-black" />
-                <Select value={taskPriority} onValueChange={(v) => setTaskPriority(v as any)}>
-                  <SelectTrigger className="h-8 bg-white border-gray-200 text-black text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="bg-white border-gray-200">
-                    <SelectItem value="low" className="text-xs text-black">Low</SelectItem>
-                    <SelectItem value="medium" className="text-xs text-black">Medium</SelectItem>
-                    <SelectItem value="high" className="text-xs text-black">High</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Select value={taskClientId === null ? "none" : String(taskClientId)} onValueChange={(v) => setTaskClientId(v === "none" ? null : Number(v))}>
-                  <SelectTrigger className="h-8 bg-white border-gray-200 text-black text-xs">
-                    <SelectValue placeholder="Assign to client (optional)" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-white border-gray-200">
-                    <SelectItem value="none">None</SelectItem>
-                    {clients.map((c) => (
-                      <SelectItem key={c.id} value={String(c.id)} className="text-xs text-black">{c.companyName}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-gray-600">Task Title</label>
+                  <Input placeholder="Task title" value={taskTitle} onChange={(e) => setTaskTitle(e.target.value)} className="bg-white border-gray-200 text-black" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-gray-600">Due Date</label>
+                  <Input type="date" value={taskDueDate} onChange={(e) => setTaskDueDate(e.target.value)} className="bg-white border-gray-200 text-black" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-gray-600">Priority</label>
+                  <Select value={taskPriority} onValueChange={(v) => setTaskPriority(v as any)}>
+                    <SelectTrigger className="h-8 bg-white border-gray-200 text-black text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="bg-white border-gray-200">
+                      <SelectItem value="low" className="text-xs text-black">Low</SelectItem>
+                      <SelectItem value="medium" className="text-xs text-black">Medium</SelectItem>
+                      <SelectItem value="high" className="text-xs text-black">High</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-gray-600">Department</label>
+                  <Select
+                    value={taskDepartment}
+                    onValueChange={(v) => {
+                      setTaskDepartment(v as "sales" | "technician");
+                      setTaskAssignedTo("");
+                    }}
+                  >
+                    <SelectTrigger className="h-8 bg-white border-gray-200 text-black text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="bg-white border-gray-200">
+                      <SelectItem value="sales" className="text-xs text-black">Sales</SelectItem>
+                      <SelectItem value="technician" className="text-xs text-black">Technician</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-gray-600">Assigned To</label>
+                  <Select value={taskAssignedTo} onValueChange={setTaskAssignedTo}>
+                    <SelectTrigger className="h-8 bg-white border-gray-200 text-black text-xs">
+                      <SelectValue placeholder="Select person" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-white border-gray-200">
+                      {seedStaff
+                        .filter((s) => s.role === taskDepartment)
+                        .map((s) => (
+                          <SelectItem key={s.id} value={s.name} className="text-xs text-black">
+                            {s.name}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {taskDepartment === "technician" && (
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-gray-600">Service Type</label>
+                    <Select value={taskServiceType} onValueChange={setTaskServiceType}>
+                      <SelectTrigger className="h-8 bg-white border-gray-200 text-black text-xs">
+                        <SelectValue placeholder="Select service type" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-white border-gray-200">
+                        {(seedData as any).serviceTypes.map((opt: { value: string; label: string }) => (
+                          <SelectItem key={opt.value} value={opt.value} className="text-xs text-black">
+                            {opt.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-gray-600">Client</label>
+                  <Select value={taskClientId === null ? "none" : String(taskClientId)} onValueChange={(v) => setTaskClientId(v === "none" ? null : Number(v))}>
+                    <SelectTrigger className="h-8 bg-white border-gray-200 text-black text-xs">
+                      <SelectValue placeholder="Assign to client (optional)" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-white border-gray-200">
+                      <SelectItem value="none">None</SelectItem>
+                      {clients.map((c) => (
+                        <SelectItem key={c.id} value={String(c.id)} className="text-xs text-black">{c.companyName}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
                 <div className="flex gap-2">
                   <Button variant="outline" onClick={() => setTaskModalOpen(false)} className="flex-1">Cancel</Button>
                   <Button
@@ -709,21 +817,103 @@ export default function CRM() {
                       useCRMStore.getState().addTask({
                         title: taskTitle,
                         description: "",
-                        assignedTo: user?.name || "", 
+                        assignedTo: taskAssignedTo || user?.name || "Sales Team",
                         relatedType: taskClientId ? "client" : "general",
                         relatedId: taskClientId ?? null,
                         dueDate: taskDueDate || new Date().toISOString(),
                         priority: taskPriority,
                         status: "pending",
+                        serviceType: taskDepartment === "technician" ? taskServiceType || undefined : undefined,
                       });
                       setTimeout(() => {
                         setTaskModalOpen(false);
                         setTaskTitle("");
                         setTaskDueDate("");
+                        setTaskDepartment("sales");
+                        setTaskAssignedTo("");
+                        setTaskServiceType("");
                       }, 1200);
                     }}
                   >
                     Create
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Task Modal */}
+      {editTaskOpen && editingTask && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/60" onClick={() => setEditTaskOpen(false)} />
+          <div className="relative z-10 w-full max-w-md mx-4">
+            <div className="bg-white border border-gray-200 rounded p-5">
+              <button onClick={() => setEditTaskOpen(false)} className="absolute top-3 right-3 text-gray-500"><X className="w-4 h-4" /></button>
+              <h3 className="text-sm font-semibold text-black mb-3">Edit Task</h3>
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-gray-600">Task Title</label>
+                  <Input value={editTaskTitle} onChange={(e) => setEditTaskTitle(e.target.value)} className="bg-white border-gray-200 text-black" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-gray-600">Description</label>
+                  <Input value={editTaskDescription} onChange={(e) => setEditTaskDescription(e.target.value)} className="bg-white border-gray-200 text-black" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-gray-600">Due Date</label>
+                  <Input type="date" value={editTaskDueDate} onChange={(e) => setEditTaskDueDate(e.target.value)} className="bg-white border-gray-200 text-black" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-gray-600">Priority</label>
+                  <Select value={editTaskPriority} onValueChange={(v) => setEditTaskPriority(v as "low" | "medium" | "high")}>
+                    <SelectTrigger className="h-8 bg-white border-gray-200 text-black text-xs"><SelectValue /></SelectTrigger>
+                    <SelectContent className="bg-white border-gray-200">
+                      <SelectItem value="low" className="text-xs text-black">Low</SelectItem>
+                      <SelectItem value="medium" className="text-xs text-black">Medium</SelectItem>
+                      <SelectItem value="high" className="text-xs text-black">High</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-gray-600">Status</label>
+                  <Select value={editTaskStatus} onValueChange={(v) => setEditTaskStatus(v as Task["status"])}>
+                    <SelectTrigger className="h-8 bg-white border-gray-200 text-black text-xs"><SelectValue /></SelectTrigger>
+                    <SelectContent className="bg-white border-gray-200">
+                      <SelectItem value="pending" className="text-xs text-black">Pending</SelectItem>
+                      <SelectItem value="in_progress" className="text-xs text-black">In Progress</SelectItem>
+                      <SelectItem value="overdue" className="text-xs text-black">Overdue</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-gray-600">Assigned To</label>
+                  <Input value={editTaskAssignedTo} onChange={(e) => setEditTaskAssignedTo(e.target.value)} className="bg-white border-gray-200 text-black" />
+                </div>
+                <div className="flex gap-2 pt-1">
+                  <Button variant="outline" onClick={() => setEditTaskOpen(false)} className="flex-1">Cancel</Button>
+                  <Button
+                    className="flex-1 bg-[#66B2B2] hover:bg-[#66B2B2]/80 text-white"
+                    onClick={() => {
+                      if (!editingTask) return;
+                      const taskPatch = {
+                        title: editTaskTitle,
+                        description: editTaskDescription,
+                        dueDate: editTaskDueDate,
+                        priority: editTaskPriority,
+                        status: editTaskStatus,
+                        assignedTo: editTaskAssignedTo,
+                      };
+                      useCRMStore.getState().updateTask(editingTask.id, taskPatch);
+                      updateTaskMutation.mutate({ id: editingTask.id, data: taskPatch }, {
+                        onError: (err) => console.error("tasks.update failed", err),
+                      });
+                      setEditTaskOpen(false);
+                      setEditingTask(null);
+                    }}
+                  >
+                    Save Changes
                   </Button>
                 </div>
               </div>
@@ -1669,44 +1859,80 @@ function LeadCard({ lead, client }: { lead: Lead; client?: Client }) {
   );
 }
 
-function TaskItem({
-  task,
-  onComplete,
-  overdue,
-}: {
+function TaskRow({ task, onComplete, onEdit, onDelete }: {
   task: Task;
   onComplete: (id: number) => void;
-  overdue?: boolean;
+  onEdit: () => void;
+  onDelete: (id: number) => void;
 }) {
-  const priorityColors = {
-    low: "border-l-[#66B2B2]",
-    medium: "border-l-[#66B2B2]",
-    high: "border-l-[#EF4444]",
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  const statusConfig: Record<string, { label: string; color: string; bg: string }> = {
+    pending:     { label: "Pending",     color: "#66B2B2", bg: "#66B2B2" },
+    in_progress: { label: "In Progress", color: "#8B5CF6", bg: "#8B5CF6" },
+    overdue:     { label: "Overdue",     color: "#EF4444", bg: "#EF4444" },
   };
+  const st = statusConfig[task.status] ?? statusConfig.pending;
 
   return (
-    <div
-      className={`flex items-center gap-3 p-2.5 rounded bg-white border border-gray-200 border-l-2 ${priorityColors[task.priority]} hover:bg-gray-50 transition-colors`}
-    >
-      <button
-        onClick={() => onComplete(task.id)}
-        className="w-4 h-4 rounded border border-gray-300 flex items-center justify-center hover:border-[#10B981] hover:bg-[#10B981]/10 transition-colors shrink-0"
-      >
-        {task.status === "completed" && <CheckCircle2 className="w-3 h-3 text-[#10B981]" />}
-      </button>
-      <div className="flex-1 min-w-0">
-        <div className={`text-xs font-medium ${overdue ? "text-[#EF4444]" : "text-black"}`}>
-          {task.title}
-        </div>
-        <div className="text-[10px] text-gray-600 truncate">{task.description}</div>
-      </div>
-      <div className="flex items-center gap-2 shrink-0">
-        <span className="text-[10px] text-gray-600 font-mono-tech">
-          {new Date(task.dueDate).toLocaleDateString()}
+    <tr className="border-b border-gray-200 hover:bg-gray-50">
+      <td className="py-2.5 px-3">
+        <button
+          onClick={() => onComplete(task.id)}
+          className="w-4 h-4 rounded border border-gray-300 flex items-center justify-center hover:border-[#10B981] hover:bg-[#10B981]/10 transition-colors"
+        >
+          {task.status === "completed" && <CheckCircle2 className="w-3 h-3 text-[#10B981]" />}
+        </button>
+      </td>
+      <td className="py-2.5 px-3">
+        <p className={`font-medium ${task.status === "overdue" ? "text-[#EF4444]" : "text-black"}`}>{task.title}</p>
+        {task.description && <p className="text-[10px] text-gray-500 mt-0.5">{task.description}</p>}
+        {task.serviceType && <p className="text-[10px] text-[#66B2B2] mt-0.5">{task.serviceType}</p>}
+      </td>
+      <td className="py-2.5 px-3 text-gray-500 font-mono-tech">
+        {new Date(task.createdAt).toLocaleDateString("en-PH")}
+      </td>
+      <td className="py-2.5 px-3 text-gray-700 font-mono-tech">
+        {new Date(task.dueDate).toLocaleDateString("en-PH")}
+      </td>
+      <td className="py-2.5 px-3 text-gray-700">{task.assignedTo}</td>
+      <td className="py-2.5 px-3">
+        <span
+          className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase"
+          style={{ background: `${st.bg}20`, color: st.color }}
+        >
+          {st.label}
         </span>
-        <span className="text-[10px] text-gray-600">{task.assignedTo}</span>
-      </div>
-    </div>
+      </td>
+      <td className="py-2.5 px-3">
+        <div className="relative">
+          <button
+            className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-colors"
+            onClick={(e) => { e.stopPropagation(); setMenuOpen((o) => !o); }}
+          >
+            <MoreVertical className="w-3.5 h-3.5" />
+          </button>
+          {menuOpen && (
+            <div className="absolute right-0 top-7 z-50 min-w-[120px] rounded border border-gray-200 bg-white py-1 shadow-lg">
+              <button
+                type="button"
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-100 transition-colors"
+                onClick={(e) => { e.stopPropagation(); setMenuOpen(false); onEdit(); }}
+              >
+                <Pencil className="w-3 h-3" /> Edit
+              </button>
+              <button
+                type="button"
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-[#EF4444] hover:bg-[#EF4444]/10 transition-colors"
+                onClick={(e) => { e.stopPropagation(); setMenuOpen(false); onDelete(task.id); }}
+              >
+                <Trash2 className="w-3 h-3" /> Delete
+              </button>
+            </div>
+          )}
+        </div>
+      </td>
+    </tr>
   );
 }
 

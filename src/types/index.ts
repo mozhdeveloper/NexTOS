@@ -82,6 +82,7 @@ export interface Task {
   dueDate: string;
   priority: "low" | "medium" | "high";
   status: "pending" | "in_progress" | "completed" | "overdue";
+  serviceType?: string;
   createdAt: string;
 }
 
@@ -283,6 +284,14 @@ export interface PartUsage {
   serviceRecordId: number;
   inventoryItemId: number;
   quantityUsed: number;
+  unitPriceAtTime: number;
+  createdAt: string;
+}
+
+export interface RestockEvent {
+  id: number;
+  inventoryItemId: number;
+  quantityAdded: number;
   unitPriceAtTime: number;
   createdAt: string;
 }

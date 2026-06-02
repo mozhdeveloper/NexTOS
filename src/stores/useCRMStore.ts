@@ -19,6 +19,7 @@ interface CRMState {
   addTask: (task: Omit<Task, "id" | "createdAt">) => void;
   completeTask: (taskId: number) => void;
   updateTask: (id: number, data: Partial<Task>) => void;
+  deleteTask: (id: number) => void;
   addLead: (lead: Omit<Lead, "id" | "createdAt">) => void;
   convertLeadToDeal: (leadId: number, dealData: Omit<Deal, "id" | "createdAt" | "clientId">) => void;
   getClientDeals: (clientId: number) => Deal[];
@@ -48,6 +49,21 @@ const seedClients: Client[] = seedData.clients.map((c: any) => ({
   notes: "",
   createdAt: new Date().toISOString(),
 }));
+
+const seedTasks: Task[] = (seedData as any).tasks.map((t: any) => ({
+  id: t.id,
+  title: t.title,
+  description: t.description,
+  assignedTo: t.assignedTo,
+  relatedType: t.relatedType as Task["relatedType"],
+  relatedId: t.relatedId,
+  dueDate: t.dueDate,
+  priority: t.priority as Task["priority"],
+  status: t.status as Task["status"],
+  createdAt: t.createdAt ?? new Date().toISOString(),
+}));
+
+export const seedStaff = (seedData as any).staff as { id: string; name: string; email: string; role: string }[];
 
 const mockContacts: Contact[] = [
   { id: 1, clientId: 1, name: "Robert Hale", role: "Security Director", department: "Operations", email: "robert@acme.com", phone: "+1-555-0101", isPrimary: true },
@@ -95,26 +111,11 @@ const seedDeals: Deal[] = (seedData as any).deals.map((d: any) => ({
 }));
 
 const mockTasks: Task[] = [
-  { id: 1, title: "Follow up on Guardian proposal", description: "Send revised pricing", assignedTo: "Sarah Blake", relatedType: "deal", relatedId: 6, dueDate: yesterday, priority: "high", status: "overdue", createdAt: lastWeek },
-  { id: 2, title: "Prepare TechCorp demo", description: "Set up live environment", assignedTo: "Sarah Blake", relatedType: "deal", relatedId: 2, dueDate: tomorrow, priority: "high", status: "pending", createdAt: lastWeek },
-  { id: 3, title: "Acme site visit", description: "Inspect new location", assignedTo: "James Rodriguez", relatedType: "client", relatedId: 1, dueDate: tomorrow, priority: "medium", status: "pending", createdAt: lastWeek },
-  { id: 4, title: "Update SecureNet contract", description: "Legal review complete", assignedTo: "Marcus Chen", relatedType: "client", relatedId: 5, dueDate: yesterday, priority: "high", status: "overdue", createdAt: lastWeek },
-  { id: 5, title: "Fleet unit calibration", description: "Unit GPS-004 needs recalibration", assignedTo: "James Rodriguez", relatedType: "equipment", relatedId: 4, dueDate: tomorrow, priority: "medium", status: "pending", createdAt: lastWeek },
-  { id: 6, title: "Quarterly business review", description: "Prepare Q2 report", assignedTo: "Sarah Blake", relatedType: "general", relatedId: null, dueDate: tomorrow, priority: "low", status: "pending", createdAt: lastWeek },
-  { id: 7, title: "Harbor Medical compliance audit", description: "Schedule on-site visit", assignedTo: "James Rodriguez", relatedType: "client", relatedId: 7, dueDate: yesterday, priority: "high", status: "overdue", createdAt: lastWeek },
-  { id: 8, title: "Metro Logistics training", description: "New fleet dashboard walkthrough", assignedTo: "James Rodriguez", relatedType: "client", relatedId: 4, dueDate: tomorrow, priority: "medium", status: "in_progress", createdAt: lastWeek },
-  { id: 9, title: "Renew BrightStar contract", description: "Present new pricing options", assignedTo: "Sarah Blake", relatedType: "deal", relatedId: 9, dueDate: tomorrow, priority: "medium", status: "pending", createdAt: lastWeek },
-  { id: 10, title: "Atlas installation planning", description: "Site survey for 3 locations", assignedTo: "James Rodriguez", relatedType: "deal", relatedId: 7, dueDate: tomorrow, priority: "low", status: "pending", createdAt: lastWeek },
-  { id: 11, title: "SecureNet international call", description: "Discuss APAC requirements", assignedTo: "Marcus Chen", relatedType: "deal", relatedId: 3, dueDate: yesterday, priority: "high", status: "overdue", createdAt: lastWeek },
-  { id: 12, title: "Equipment inventory check", description: "Verify all units accounted for", assignedTo: "James Rodriguez", relatedType: "general", relatedId: null, dueDate: tomorrow, priority: "low", status: "pending", createdAt: lastWeek },
-  { id: 13, title: "Client feedback survey", description: "Send Q2 satisfaction survey", assignedTo: "Sarah Blake", relatedType: "general", relatedId: null, dueDate: tomorrow, priority: "low", status: "in_progress", createdAt: lastWeek },
-  { id: 14, title: "Harbor Medical proposal revision", description: "Include HIPAA addendum", assignedTo: "Sarah Blake", relatedType: "deal", relatedId: 5, dueDate: yesterday, priority: "high", status: "overdue", createdAt: lastWeek },
-  { id: 15, title: "Update service documentation", description: "Revise PMS procedures", assignedTo: "James Rodriguez", relatedType: "general", relatedId: null, dueDate: tomorrow, priority: "medium", status: "pending", createdAt: lastWeek },
-  { id: 16, title: "TechCorp expansion meeting", description: "Present proposal to executive team", assignedTo: "Sarah Blake", relatedType: "deal", relatedId: 2, dueDate: yesterday, priority: "high", status: "overdue", createdAt: lastWeek },
-  { id: 17, title: "Guardian site assessment", description: "Evaluate Marina Blvd location", assignedTo: "James Rodriguez", relatedType: "client", relatedId: 3, dueDate: tomorrow, priority: "medium", status: "pending", createdAt: lastWeek },
-  { id: 18, title: "Quarterly revenue forecast", description: "Project Q3 pipeline value", assignedTo: "Marcus Chen", relatedType: "general", relatedId: null, dueDate: tomorrow, priority: "medium", status: "pending", createdAt: lastWeek },
-  { id: 19, title: "Atlas contract finalization", description: "Send final terms for signature", assignedTo: "Sarah Blake", relatedType: "deal", relatedId: 7, dueDate: yesterday, priority: "medium", status: "overdue", createdAt: lastWeek },
-  { id: 20, title: "Fleet maintenance schedule", description: "Plan July maintenance windows", assignedTo: "James Rodriguez", relatedType: "general", relatedId: null, dueDate: tomorrow, priority: "low", status: "pending", createdAt: lastWeek },
+  { id: 5,  title: "Fleet unit calibration",       description: "Unit GPS-004 needs recalibration", assignedTo: "James Rodriguez", relatedType: "equipment", relatedId: 4,    dueDate: tomorrow, priority: "medium", status: "pending",     createdAt: lastWeek },
+  { id: 6,  title: "Quarterly business review",    description: "Prepare Q2 report",                assignedTo: "Sarah Blake",     relatedType: "general",   relatedId: null, dueDate: tomorrow, priority: "low",    status: "pending",     createdAt: lastWeek },
+  { id: 12, title: "Equipment inventory check",    description: "Verify all units accounted for",   assignedTo: "James Rodriguez", relatedType: "general",   relatedId: null, dueDate: tomorrow, priority: "low",    status: "pending",     createdAt: lastWeek },
+  { id: 13, title: "Client feedback survey",       description: "Send Q2 satisfaction survey",      assignedTo: "Sarah Blake",     relatedType: "general",   relatedId: null, dueDate: tomorrow, priority: "low",    status: "in_progress", createdAt: lastWeek },
+  { id: 15, title: "Update service documentation", description: "Revise PMS procedures",            assignedTo: "James Rodriguez", relatedType: "general",   relatedId: null, dueDate: tomorrow, priority: "medium", status: "pending",     createdAt: lastWeek },
 ];
 
 export const useCRMStore = create<CRMState>()(
@@ -124,7 +125,7 @@ export const useCRMStore = create<CRMState>()(
       contacts: mockContacts,
       leads: mockLeads,
       deals: seedDeals,
-      tasks: mockTasks,
+      tasks: [...seedTasks, ...mockTasks],
 
       addClient: (client) => {
         const newClient = { ...client, id: Date.now(), createdAt: new Date().toISOString() };
@@ -195,6 +196,10 @@ export const useCRMStore = create<CRMState>()(
         }));
       },
 
+      deleteTask: (id) => {
+        set((state) => ({ tasks: state.tasks.filter((t) => t.id !== id) }));
+      },
+
       addLead: (lead) => {
         const newLead = { ...lead, id: Date.now(), createdAt: new Date().toISOString() };
         set((state) => ({ leads: [...state.leads, newLead] }));
@@ -258,7 +263,7 @@ export const useCRMStore = create<CRMState>()(
       },
     }),
     {
-      name: "nextos-crm-v3",
+      name: "nextos-crm-v4",
     }
   )
 );

@@ -646,7 +646,8 @@ export default function Services() {
   // Compute the status for a single pmsConfiguration entry given an equipment's usage metrics.
   const computeEntryStatus = (
     pms: any,
-    eq: any
+    eq: any,
+    completedRecords?: { equipmentId: number | string; completedDate: string | null }[]
   ): ScheduledMaintenanceEntry["status"] => {
     const interval = Number(pms?.serviceInterval ?? 0);
     if (!Number.isFinite(interval) || interval <= 0) return "—";
@@ -668,17 +669,30 @@ export default function Services() {
         if (match) usage = Number(match[1]) + Number(match[2]) / 60;
       }
     } else if (unit === "km") {
-      const raw = effectiveEq.kmTotal;
-      const parsed = typeof raw === "number" ? raw : parseFloat(String(raw ?? "").replace(/[^\d.]/g, ""));
-      usage = Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
-    } else {
-      const raw = eq.days;
-      const days = typeof raw === "number" ? raw : parseFloat(String(raw ?? ""));
-      if (Number.isFinite(days) && days >= 0) {
-        if (unit === "weeks") usage = days / 7;
-        else if (unit === "months") usage = days / 30.44;
-        else if (unit === "years") usage = days / 365.25;
+      if (eq.id === "EQ-001" && gps001KmTotal > 0) {
+        usage = gps001KmTotal;
+      } else {
+        const raw = effectiveEq.kmTotal;
+        const parsed = typeof raw === "number" ? raw : parseFloat(String(raw ?? "").replace(/[^\d.]/g, ""));
+        usage = Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
       }
+    } else {
+      let days: number | null = null;
+      if (completedRecords && completedRecords.length > 0) {
+        const relevant = completedRecords
+          .filter(r => String(r.equipmentId) === String(eq.id) && r.completedDate)
+          .sort((a, b) => new Date(b.completedDate!).getTime() - new Date(a.completedDate!).getTime());
+        if (relevant.length > 0) {
+          days = (Date.now() - new Date(relevant[0].completedDate!).getTime()) / (1000 * 60 * 60 * 24);
+        }
+      }
+      if (days === null) {
+        const base = eq.installDate ?? eq.createdAt;
+        days = base ? (Date.now() - new Date(base).getTime()) / (1000 * 60 * 60 * 24) : 0;
+      }
+      if (unit === "weeks")       usage = days / 7;
+      else if (unit === "months") usage = days / 30.44;
+      else if (unit === "years")  usage = days / 365.25;
     }
 
     if (usage === null || !Number.isFinite(usage) || usage < 0) return "—";
@@ -690,7 +704,8 @@ export default function Services() {
 
   const computeNextService = (
     pms: { serviceInterval: number; serviceIntervalUnit: string },
-    eq: any
+    eq: any,
+    completedRecords?: { equipmentId: number | string; completedDate: string | null }[]
   ): string => {
     const interval = Number(pms?.serviceInterval ?? 0);
     if (!Number.isFinite(interval) || interval <= 0) return "—";
@@ -710,17 +725,30 @@ export default function Services() {
         if (match) usage = Number(match[1]) + Number(match[2]) / 60;
       }
     } else if (unit === "km") {
-      const raw = effectiveEq.kmTotal;
-      const parsed = typeof raw === "number" ? raw : parseFloat(String(raw ?? "").replace(/[^\d.]/g, ""));
-      usage = Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
-    } else {
-      const raw = eq.days;
-      const days = typeof raw === "number" ? raw : parseFloat(String(raw ?? ""));
-      if (Number.isFinite(days) && days >= 0) {
-        if (unit === "weeks") usage = days / 7;
-        else if (unit === "months") usage = days / 30.44;
-        else if (unit === "years") usage = days / 365.25;
+      if (eq.id === "EQ-001" && gps001KmTotal > 0) {
+        usage = gps001KmTotal;
+      } else {
+        const raw = effectiveEq.kmTotal;
+        const parsed = typeof raw === "number" ? raw : parseFloat(String(raw ?? "").replace(/[^\d.]/g, ""));
+        usage = Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
       }
+    } else {
+      let days: number | null = null;
+      if (completedRecords && completedRecords.length > 0) {
+        const relevant = completedRecords
+          .filter(r => (String(r.equipmentId) === String(eq.id)) && r.completedDate)
+          .sort((a, b) => new Date(b.completedDate!).getTime() - new Date(a.completedDate!).getTime());
+        if (relevant.length > 0) {
+          days = (Date.now() - new Date(relevant[0].completedDate!).getTime()) / (1000 * 60 * 60 * 24);
+        }
+      }
+      if (days === null) {
+        const base = eq.installDate ?? eq.createdAt;
+        days = base ? (Date.now() - new Date(base).getTime()) / (1000 * 60 * 60 * 24) : 0;
+      }
+      if (unit === "weeks")       usage = days / 7;
+      else if (unit === "months") usage = days / 30.44;
+      else if (unit === "years")  usage = days / 365.25;
     }
 
     if (usage === null || !Number.isFinite(usage) || usage < 0) return "—";
@@ -735,11 +763,11 @@ export default function Services() {
   };
 
   // Returns the worst status across ALL pmsConfiguration entries for a seed equipment object.
-  const computeEquipmentWorstStatus = (seedEq: any): "OK" | "Near Service" | "Overdue" | null => {
+  const computeEquipmentWorstStatus = (seedEq: any, completedRecords?: { equipmentId: number | string; completedDate: string | null }[]): "OK" | "Near Service" | "Overdue" | null => {
     if (!seedEq) return null;
     const configs: any[] = Array.isArray(seedEq.pmsConfiguration) ? seedEq.pmsConfiguration : [];
     if (configs.length === 0) return null;
-    const statuses = configs.map((pms) => computeEntryStatus(pms, seedEq));
+    const statuses = configs.map((pms) => computeEntryStatus(pms, seedEq, completedRecords));
     if (statuses.includes("Overdue")) return "Overdue";
     if (statuses.includes("Near Service")) return "Near Service";
     if (statuses.includes("OK")) return "OK";
@@ -768,6 +796,7 @@ export default function Services() {
       const client = liveClients.find((c) => c.id === eq.clientId);
       const clientName = client?.companyName ?? "—";
 
+      const completedRecords = (seedServiceRecordsData?.records ?? []).filter(r => r.status === "completed");
       configs.forEach((pms: any, index: number) => {
         entries.push({
           id: index === 0 ? `seed-pms-${eq.id}` : `seed-sched-${eq.id}-${index}`,
@@ -781,7 +810,7 @@ export default function Services() {
           serviceInterval: Number(pms.serviceInterval ?? 0),
           serviceIntervalUnit: pms.serviceIntervalUnit ?? "Hours",
           estimatedCost: Number(pms.estimatedCost ?? 0),
-          status: computeEntryStatus(pms, eq),
+          status: computeEntryStatus(pms, eq, completedRecords),
         });
       });
     });
@@ -789,7 +818,7 @@ export default function Services() {
     return entries;
   // seedEquipmentQueryData in deps so the memo recomputes whenever live equipment refreshes
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gps001CacheMs, gps001HoursOffsetMs, metricsOverrides, seedEquipmentQueryData]);
+  }, [gps001CacheMs, gps001HoursOffsetMs, metricsOverrides, seedEquipmentQueryData, seedServiceRecordsData]);
 
   // Merge seed entries (overridden by user edits) with any optimistic entries not yet in seed.
   const allScheduledMaintenance = useMemo(() => {
@@ -1217,7 +1246,8 @@ export default function Services() {
 
     const recomputedStatus = computeEntryStatus(
       { serviceInterval: numericInterval, serviceIntervalUnit: editIntervalUnit },
-      seedEq
+      seedEq,
+      (seedServiceRecordsData?.records ?? []).filter(r => r.status === "completed")
     );
     const updatedEntry: ScheduledMaintenanceEntry = {
       ...editingEntry,
@@ -1761,7 +1791,7 @@ export default function Services() {
                   {allScheduledMaintenance.map((entry) => {
                     const _seedEq = liveEquipment.find((e) => e.id === entry.equipmentId);
                     const nextService = _seedEq
-                      ? computeNextService({ serviceInterval: entry.serviceInterval, serviceIntervalUnit: entry.serviceIntervalUnit }, _seedEq)
+                      ? computeNextService({ serviceInterval: entry.serviceInterval, serviceIntervalUnit: entry.serviceIntervalUnit }, _seedEq, (seedServiceRecordsData?.records ?? []).filter(r => r.status === "completed"))
                       : "—";
                     return (
                     <tr key={entry.id} className="border-b border-gray-200 hover:bg-gray-50">
@@ -2712,10 +2742,12 @@ function ExecutionModal({
         addServicePhoto,
         queuePendingSubmission,
     } = useOperationsStore();
-    const { logPartUsage } = useInventoryStore();
+    const { logPartUsage, items: inventoryItems } = useInventoryStore();
     const { packages } = useBillingStore();
     // const { clients } = useCRMStore();
     const completeSeedServiceRecordMutation = trpc.seedServiceRecords.complete.useMutation();
+    const deductStockMutation = trpc.inventory.deductStock.useMutation();
+    const logUsageMutation = trpc.inventory.logUsage.useMutation();
     const trpcUtils = trpc.useUtils();
     
     const draft = task ? draftExecutions[task.id] || { currentStep: 1, partsUsed: "Pending" } : null;
@@ -2823,6 +2855,18 @@ function ExecutionModal({
                     inventoryItemId: part.inventoryItemId,
                     quantityUsed: part.quantity
                 });
+                const seedPartId = inventoryItems.find(i => i.id === part.inventoryItemId)?.partNumber ?? String(part.inventoryItemId);
+                deductStockMutation.mutate(
+                    { partId: seedPartId, quantityUsed: part.quantity },
+                    { onError: (err) => console.error("inventory.deductStock failed", err) }
+                );
+                logUsageMutation.mutate({
+                    inventoryItemId: part.inventoryItemId,
+                    serviceRecordId: task.id,
+                    quantityUsed: part.quantity,
+                    unitPriceAtTime: part.pricePerUnit,
+                    createdAt: new Date().toISOString(),
+                }, { onError: (err) => console.error("inventory.logUsage failed", err) });
             });
         }
 
@@ -2956,6 +3000,8 @@ function ExecutionModal({
                 workDone: draft.workDone ?? "",
                 recommendation: draft.recommendations ?? "",
                 partsUsed: draft.selectedParts?.map((p) => `${p.name} (x${p.quantity})`).join(", ") || "",
+                selectedParts: draft.selectedParts ?? [],
+                partsUsedDetails: (draft.selectedParts ?? []).map(p => ({ name: p.name, quantity: p.quantity, pricePerUnit: p.pricePerUnit })),
                 cost: draft.cost ?? pmsCfg?.estimatedCost ?? task.cost ?? 0,
                 hoursAtService: (draft.hoursAtService ?? parseFloat(String(storeEq?.hoursTotal))) || 0,
                 // Rich completion fields
@@ -3433,6 +3479,7 @@ function VisualEvidence({ label, photo, notes, onSave, onBack }: { label: string
 
 function TechnicalWorkForm({ draft, equipment, client, packages, seedEquipment, seedClients, pmsConfig, onSave, onBack }: { draft: DraftExecution, equipment?: Equipment, client?: Client, packages: any[], seedEquipment?: any, seedClients?: any[], pmsConfig?: any, onSave: (d: Partial<DraftExecution>) => void, onBack: () => void }) {
   void packages;
+    const { items: inventoryItems } = useInventoryStore();
     const [fields, setFields] = useState({
         findings: draft.findings || "",
         workDone: draft.workDone || "",
@@ -3441,6 +3488,12 @@ function TechnicalWorkForm({ draft, equipment, client, packages, seedEquipment, 
         hoursAtService: draft.hoursAtService || parseFloat(String(equipment?.hoursTotal)) || 0,
         cost: draft.cost ?? 0,
     });
+    const [selectedPartId, setSelectedPartId] = useState<number | "">("");
+    const [partQty, setPartQty] = useState<string>("1");
+    const partsTotal = (fields.selectedParts ?? []).reduce(
+        (sum, p) => sum + p.quantity * p.pricePerUnit,
+        0
+    );
 
     // Current metric value for the service context card
     const currentMetric = useMemo(() => {
@@ -3529,29 +3582,99 @@ function TechnicalWorkForm({ draft, equipment, client, packages, seedEquipment, 
                 </div>
 
                 <div className="p-4 rounded-xl bg-gray-50 border border-gray-100 space-y-3">
-                    <div className="flex items-center gap-2">
-                        <div className="text-[10px] font-black text-gray-600 uppercase tracking-widest">Final Service Cost</div>
-                        <div className="text-[9px] text-gray-400 font-medium">(Optional)</div>
+                    <div className="text-[10px] font-black text-gray-600 uppercase tracking-widest">Parts Used</div>
+                    {/* Part selector row */}
+                    <div className="flex gap-2 items-end">
+                        <div className="flex-1 space-y-1">
+                            <label className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Part</label>
+                            <Select
+                                value={selectedPartId === "" ? "" : String(selectedPartId)}
+                                onValueChange={(v) => setSelectedPartId(Number(v))}
+                            >
+                                <SelectTrigger className="h-9 bg-white border-gray-200 text-xs">
+                                    <SelectValue placeholder="Select part…" />
+                                </SelectTrigger>
+                                <SelectContent className="bg-white border-gray-200">
+                                    {inventoryItems.map((item) => (
+                                        <SelectItem key={item.id} value={String(item.id)} className="text-xs">
+                                            {item.name}
+                                            <span className="text-gray-400 ml-1">— ₱{item.pricePerUnit}/{item.unit}</span>
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="w-24 space-y-1">
+                            <label className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">
+                                Qty {selectedPartId !== "" ? `(${inventoryItems.find(i => i.id === selectedPartId)?.unit ?? ""})` : ""}
+                            </label>
+                            <Input
+                                type="number"
+                                min="1"
+                                step="1"
+                                className="h-9 bg-white border-gray-200 text-xs text-center"
+                                value={partQty}
+                                onChange={(e) => setPartQty(e.target.value)}
+                            />
+                        </div>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            className="h-9 px-3 border-gray-200 text-[#66B2B2] hover:bg-[#66B2B2]/10 text-xs font-bold shrink-0"
+                            disabled={selectedPartId === "" || !partQty || Number(partQty) <= 0}
+                            onClick={() => {
+                                const item = inventoryItems.find(i => i.id === selectedPartId);
+                                if (!item) return;
+                                const qty = Math.max(1, Math.floor(Number(partQty)));
+                                const already = fields.selectedParts ?? [];
+                                const existing = already.find(p => p.inventoryItemId === item.id);
+                                const updated = existing
+                                    ? already.map(p => p.inventoryItemId === item.id ? { ...p, quantity: p.quantity + qty } : p)
+                                    : [...already, { inventoryItemId: item.id, name: item.name, quantity: qty, pricePerUnit: item.pricePerUnit }];
+                                setFields({ ...fields, selectedParts: updated });
+                                setSelectedPartId("");
+                                setPartQty("1");
+                            }}
+                        >
+                            + Add
+                        </Button>
                     </div>
-                    <div className="flex items-center gap-3">
-                        <span className="text-sm font-bold text-gray-500 shrink-0">₱</span>
-                        <Input
-                            type="number"
-                            min={0}
-                            step={0.01}
-                            className="h-10 bg-white border-gray-200 font-bold font-mono-tech focus:ring-[#66B2B2]/20 focus:border-[#66B2B2]"
-                            placeholder="0.00"
-                            value={fields.cost === 0 ? "" : fields.cost}
-                            onChange={(e) => setFields({ ...fields, cost: parseFloat(e.target.value) || 0 })}
-                        />
-                    </div>
+                    {/* Selected parts list */}
+                    {(fields.selectedParts ?? []).length > 0 && (
+                        <div className="space-y-1.5 mt-1">
+                            {(fields.selectedParts ?? []).map((part) => (
+                                <div key={part.inventoryItemId} className="flex items-center justify-between bg-white rounded-lg px-3 py-2 border border-gray-100">
+                                    <div className="text-xs font-semibold text-gray-700 flex-1 min-w-0 truncate">{part.name}</div>
+                                    <div className="text-[10px] text-gray-400 mx-3 shrink-0">
+                                        {part.quantity} × ₱{part.pricePerUnit.toLocaleString("en-PH")}
+                                    </div>
+                                    <div className="text-xs font-bold text-[#66B2B2] shrink-0 mr-2">
+                                        ₱{(part.quantity * part.pricePerUnit).toLocaleString("en-PH", { minimumFractionDigits: 2 })}
+                                    </div>
+                                    <button
+                                        type="button"
+                                        className="text-gray-300 hover:text-[#EF4444] transition-colors shrink-0"
+                                        onClick={() => setFields({ ...fields, selectedParts: (fields.selectedParts ?? []).filter(p => p.inventoryItemId !== part.inventoryItemId) })}
+                                    >
+                                        ✕
+                                    </button>
+                                </div>
+                            ))}
+                            <div className="flex justify-between items-center pt-1 border-t border-gray-200 mt-1">
+                                <span className="text-[10px] font-black text-gray-500 uppercase tracking-wider">Total</span>
+                                <span className="text-sm font-black text-gray-900 font-mono-tech">
+                                    ₱{partsTotal.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </span>
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
             <div className="flex gap-3 pt-2">
                 <Button variant="ghost" className="flex-1 h-12 rounded-xl text-gray-400 font-bold" onClick={onBack}>Previous</Button>
                 <Button
                     className="flex-[2] h-12 bg-[#66B2B2] text-white font-bold rounded-xl hover:bg-[#5A9E9E]"
-                    onClick={() => onSave(fields)}
+                    onClick={() => onSave({ ...fields, cost: partsTotal })}
                 >
                     Save Progress & Proceed
                 </Button>

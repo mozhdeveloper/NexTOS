@@ -1,11 +1,13 @@
 import { create } from "zustand";
-import type { InventoryItem, PartUsage } from "@/types";
+import { persist } from "zustand/middleware";
+import type { InventoryItem, PartUsage, RestockEvent } from "@/types";
 import { toast } from "sonner";
 import seedData from "@/data/seed-data.json";
 
 interface InventoryState {
   items: InventoryItem[];
   usageHistory: PartUsage[];
+  restockHistory: RestockEvent[];
   
   // Actions
   setItems: (items: InventoryItem[]) => void;
@@ -39,9 +41,12 @@ const mockInventory: InventoryItem[] = seedData.parts.map((part, index) => ({
   createdAt: new Date().toISOString()
 }));
 
-export const useInventoryStore = create<InventoryState>()((set, get) => ({
+export const useInventoryStore = create<InventoryState>()(
+  persist(
+    (set, get) => ({
       items: mockInventory,
-      usageHistory: [],
+      usageHistory: (seedData as any).inventoryUsageHistory ?? [],
+      restockHistory: (seedData as any).inventoryRestockHistory ?? [],
 
       setItems: (items) => set({ items }),
 
@@ -71,13 +76,24 @@ export const useInventoryStore = create<InventoryState>()((set, get) => ({
       },
 
       restockItem: (id, quantity) => {
-        set((state) => ({
-          items: state.items.map((i) => 
-            i.id === id 
-              ? { ...i, stockLevel: i.stockLevel + quantity, lastRestocked: new Date().toISOString() } 
-              : i
-          )
-        }));
+        set((state) => {
+          const item = state.items.find(i => i.id === id);
+          const event: RestockEvent = {
+            id: Date.now(),
+            inventoryItemId: id,
+            quantityAdded: quantity,
+            unitPriceAtTime: item?.pricePerUnit ?? 0,
+            createdAt: new Date().toISOString(),
+          };
+          return {
+            items: state.items.map(i =>
+              i.id === id
+                ? { ...i, stockLevel: i.stockLevel + quantity, lastRestocked: new Date().toISOString() }
+                : i
+            ),
+            restockHistory: [...state.restockHistory, event],
+          };
+        });
         const item = get().items.find(i => i.id === id);
         toast.success(`Restock Complete`, { description: `Added ${quantity} units to ${item?.name}.` });
       },
@@ -125,7 +141,9 @@ export const useInventoryStore = create<InventoryState>()((set, get) => ({
       getItemsByCategory: (category) => 
         get().items.filter(i => i.category === category),
 
-      getItemByPartNumber: (partNumber) => 
+      getItemByPartNumber: (partNumber) =>
         get().items.find(i => i.partNumber === partNumber)
-    })
+    }),
+    { name: "nextos-inventory-v2" }
+  )
 );

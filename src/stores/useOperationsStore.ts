@@ -1,7 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { Equipment, ServiceRecord, ServicePhoto, Booking, ServiceCategory, Package } from "@/types";
-import { useBillingStore } from "./useBillingStore";
 import { toast } from "sonner";
 import seedData from "@/data/seed-data.json";
 
@@ -242,23 +241,6 @@ export const useOperationsStore = create<OperationsState>()(
               }), 0);
             }
 
-            if (!record.invoiceId) {
-              const invoiceNumber = `INV-${Date.now().toString().slice(-4)}`;
-              useBillingStore.getState()._addInvoice({
-                id: Date.now() + 1,
-                clientId: record.clientId,
-                packageId: null,
-                serviceRecordId: record.id,
-                invoiceNumber,
-                amount: record.cost,
-                tax: record.cost * 0.1,
-                total: record.cost * 1.1,
-                status: "sent",
-                dueDate: new Date(Date.now() + 30 * 86400000).toISOString(),
-                paidDate: null,
-                createdAt: new Date().toISOString(),
-              });
-            }
           }
           return { serviceRecords: updatedRecords };
         });

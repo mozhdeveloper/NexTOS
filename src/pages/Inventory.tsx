@@ -34,6 +34,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 type SeedPartEntry = {
   id: string;
@@ -47,8 +53,10 @@ type SeedPartEntry = {
 };
 
 export default function Inventory() {
-  const { items, restockItem, addItem, updateItem, deleteItem, setItems } = useInventoryStore();
+  const { items, restockItem, addItem, updateItem, deleteItem, setItems, usageHistory, restockHistory } = useInventoryStore();
   const trpcUtils = trpc.useContext();
+  const restockMutation = trpc.inventory.restock.useMutation();
+  const logRestockMutation = trpc.inventory.logRestock.useMutation();
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [showRestock, setShowRestock] = useState<number | null>(null);
@@ -56,7 +64,8 @@ export default function Inventory() {
   const [showAddPart, setShowAddPart] = useState(false);
   const [editingPart, setEditingPart] = useState<number | null>(null);
   const [deletingPart, setDeletingPart] = useState<number | null>(null);
-  const [openKebabId, setOpenKebabId] = useState<number | null>(null);
+  const [showUsageHistory, setShowUsageHistory] = useState(false);
+  const [usageHistoryPartId, setUsageHistoryPartId] = useState<number | null>(null);
 
   const seedPartsQuery = trpc.seedParts.list.useQuery();
 
@@ -65,7 +74,7 @@ export default function Inventory() {
   const deletePartMutation = trpc.seedParts.delete.useMutation();
 
   const mapSeedPartToInventoryItem = (part: SeedPartEntry, index: number) => ({
-    id: Date.now() + index,
+    id: index + 1,
     partNumber: part.id,
     name: part.name,
     category: (part.category.charAt(0) + part.category.slice(1).toLowerCase()) as InventoryItem["category"],
@@ -157,6 +166,17 @@ export default function Inventory() {
   const handleRestock = () => {
     if (showRestock) {
       restockItem(showRestock, restockQty);
+      const seedPartId = items.find(i => i.id === showRestock)?.partNumber ?? String(showRestock);
+      restockMutation.mutate(
+        { partId: seedPartId, quantityAdded: restockQty },
+        { onError: (err) => console.error("inventory.restock failed", err) }
+      );
+      logRestockMutation.mutate({
+        inventoryItemId: showRestock,
+        quantityAdded: restockQty,
+        unitPriceAtTime: items.find(i => i.id === showRestock)?.pricePerUnit ?? 0,
+        createdAt: new Date().toISOString(),
+      }, { onError: (err) => console.error("inventory.logRestock failed", err) });
       setShowRestock(null);
       setPartQty(1);
     }
@@ -171,7 +191,7 @@ export default function Inventory() {
           <p className="text-sm text-gray-500 mt-0.5">Warehouse Control & Spare Parts Logistics</p>
         </div>
         <div className="flex items-center gap-2">
-           <Button variant="outline" className="bg-white text-gray-700 h-10 px-4 font-bold border-gray-200">
+           <Button variant="outline" className="bg-white text-gray-700 h-10 px-4 font-bold border-gray-200" onClick={() => { setUsageHistoryPartId(null); setShowUsageHistory(true); }}>
               <History className="w-4 h-4 mr-2" />
               Usage History
            </Button>
@@ -311,43 +331,37 @@ export default function Inventory() {
                                     <ArrowUpCircle className="w-3.5 h-3.5 mr-1" />
                                     Restock
                                  </Button>
-                                 <div className="relative">
-                                    <button 
-                                       className="p-2 text-gray-300 hover:text-gray-900 transition-colors"
-                                       onClick={(e) => {
-                                          e.stopPropagation();
-                                          setOpenKebabId(openKebabId === item.id ? null : item.id);
-                                       }}
-                                    >
-                                       <MoreVertical className="w-4 h-4" />
-                                    </button>
-                                    {openKebabId === item.id && (
-                                       <div className="absolute right-0 top-7 z-50 min-w-[120px] rounded border border-gray-200 bg-white py-1 shadow-lg">
-                                          <button
-                                             type="button"
-                                             className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-100 transition-colors"
-                                             onClick={() => {
-                                                setEditingPart(item.id);
-                                                setOpenKebabId(null);
-                                             }}
-                                          >
-                                             <Edit2 className="w-3 h-3" />
-                                             Edit
-                                          </button>
-                                          <button
-                                             type="button"
-                                             className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-[#EF4444] hover:bg-[#EF4444]/10 transition-colors"
-                                             onClick={() => {
-                                                setDeletingPart(item.id);
-                                                setOpenKebabId(null);
-                                             }}
-                                          >
-                                             <Trash2 className="w-3 h-3" />
-                                             Delete
-                                          </button>
-                                       </div>
-                                    )}
-                                 </div>
+                                 <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                       <button className="p-2 text-gray-300 hover:text-gray-900 transition-colors rounded">
+                                          <MoreVertical className="w-4 h-4" />
+                                       </button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end" className="min-w-[140px]">
+                                       <DropdownMenuItem
+                                          className="gap-2 text-xs cursor-pointer"
+                                          onClick={() => setEditingPart(item.id)}
+                                       >
+                                          <Edit2 className="w-3 h-3" />
+                                          Edit
+                                       </DropdownMenuItem>
+                                       <DropdownMenuItem
+                                          className="gap-2 text-xs cursor-pointer"
+                                          onClick={() => { setUsageHistoryPartId(item.id); setShowUsageHistory(true); }}
+                                       >
+                                          <History className="w-3 h-3" />
+                                          Usage History
+                                       </DropdownMenuItem>
+                                       <DropdownMenuItem
+                                          variant="destructive"
+                                          className="gap-2 text-xs cursor-pointer"
+                                          onClick={() => setDeletingPart(item.id)}
+                                       >
+                                          <Trash2 className="w-3 h-3" />
+                                          Delete
+                                       </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                 </DropdownMenu>
                               </div>
                            </td>
                         </tr>
@@ -471,6 +485,97 @@ export default function Inventory() {
             >
               Delete Permanently
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Usage History Modal */}
+      <Dialog open={showUsageHistory} onOpenChange={(open) => { if (!open) { setShowUsageHistory(false); setUsageHistoryPartId(null); } }}>
+        <DialogContent className="bg-white border border-gray-200 sm:max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
+          <DialogHeader className="border-b border-gray-100 pb-3">
+            <div className="text-[10px] text-gray-400 font-black uppercase tracking-widest mb-0.5">Inventory</div>
+            <DialogTitle className="text-sm font-bold text-black">
+              Usage History — {usageHistoryPartId !== null ? (items.find(i => i.id === usageHistoryPartId)?.name ?? "—") : "All Parts"}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="overflow-y-auto flex-1">
+            {(() => {
+              const partUsage = (usageHistory ?? [])
+                .filter(u => usageHistoryPartId === null || u.inventoryItemId === usageHistoryPartId)
+                .map(u => ({
+                  type: "Used" as const,
+                  itemId: u.inventoryItemId,
+                  date: u.createdAt,
+                  qty: -u.quantityUsed,
+                  unitPrice: u.unitPriceAtTime,
+                  total: -(u.quantityUsed * u.unitPriceAtTime),
+                }));
+              const partRestock = (restockHistory ?? [])
+                .filter(r => usageHistoryPartId === null || r.inventoryItemId === usageHistoryPartId)
+                .map(r => ({
+                  type: "Restocked" as const,
+                  itemId: r.inventoryItemId,
+                  date: r.createdAt,
+                  qty: r.quantityAdded,
+                  unitPrice: r.unitPriceAtTime,
+                  total: r.quantityAdded * r.unitPriceAtTime,
+                }));
+              const combined = [...partUsage, ...partRestock]
+                .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+              if (combined.length === 0) {
+                return (
+                  <div className="text-center py-12 text-gray-400 text-sm">
+                    No usage history yet.
+                  </div>
+                );
+              }
+
+              return (
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="bg-gray-50 border-y border-gray-100">
+                      {usageHistoryPartId === null && <th className="text-left py-2.5 px-3 text-gray-500 font-black uppercase tracking-widest text-[10px]">Part</th>}
+                      <th className="text-left py-2.5 px-3 text-gray-500 font-black uppercase tracking-widest text-[10px]">Type</th>
+                      <th className="text-left py-2.5 px-3 text-gray-500 font-black uppercase tracking-widest text-[10px]">Date</th>
+                      <th className="text-right py-2.5 px-3 text-gray-500 font-black uppercase tracking-widest text-[10px]">Qty</th>
+                      <th className="text-right py-2.5 px-3 text-gray-500 font-black uppercase tracking-widest text-[10px]">Unit Price</th>
+                      <th className="text-right py-2.5 px-3 text-gray-500 font-black uppercase tracking-widest text-[10px]">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {combined.map((row, i) => (
+                      <tr key={i} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                        {usageHistoryPartId === null && (
+                          <td className="py-2.5 px-3 text-xs font-semibold text-gray-800 max-w-[140px] truncate">
+                            {items.find(it => it.id === row.itemId)?.name ?? "—"}
+                          </td>
+                        )}
+                        <td className="py-2.5 px-3">
+                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${row.type === "Used" ? "bg-[#EF4444]/10 text-[#EF4444]" : "bg-[#10B981]/10 text-[#10B981]"}`}>
+                            {row.type}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3 text-gray-600 font-mono-tech">
+                          {new Date(row.date).toLocaleString("en-PH", { dateStyle: "medium", timeStyle: "short" })}
+                        </td>
+                        <td className={`py-2.5 px-3 text-right font-black font-mono-tech ${row.type === "Used" ? "text-[#EF4444]" : "text-[#10B981]"}`}>
+                          {row.qty > 0 ? `+${row.qty}` : row.qty}
+                        </td>
+                        <td className="py-2.5 px-3 text-right text-gray-600 font-mono-tech">
+                          ₱{row.unitPrice.toLocaleString("en-PH")}
+                        </td>
+                        <td className={`py-2.5 px-3 text-right font-bold font-mono-tech ${row.type === "Used" ? "text-[#EF4444]" : "text-[#10B981]"}`}>
+                          {row.total < 0
+                            ? `-₱${Math.abs(row.total).toLocaleString("en-PH", { minimumFractionDigits: 2 })}`
+                            : `₱${row.total.toLocaleString("en-PH", { minimumFractionDigits: 2 })}`}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              );
+            })()}
           </div>
         </DialogContent>
       </Dialog>

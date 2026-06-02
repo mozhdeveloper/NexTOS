@@ -47,6 +47,7 @@ type SeedServiceRecord = {
   recommendation?: string;
   partsUsed?: string;
   partsUsedDetails?: { name: string; quantity: number; pricePerUnit: number }[];
+  selectedParts?: { inventoryItemId: number; quantity: number; name: string; pricePerUnit: number }[];
   cost?: number;
   hoursAtService?: number;
   // Rich completion fields
@@ -707,6 +708,12 @@ export const appRouter = createRouter({
             quantity: z.number(),
             pricePerUnit: z.number(),
           })).optional(),
+          selectedParts: z.array(z.object({
+            inventoryItemId: z.number(),
+            quantity: z.number(),
+            name: z.string(),
+            pricePerUnit: z.number(),
+          })).optional(),
           cost: z.number().optional(),
           hoursAtService: z.number().optional(),
         })
@@ -753,6 +760,12 @@ export const appRouter = createRouter({
           partsUsedDetails: z.array(z.object({
             name: z.string(),
             quantity: z.number(),
+            pricePerUnit: z.number(),
+          })).optional(),
+          selectedParts: z.array(z.object({
+            inventoryItemId: z.number(),
+            quantity: z.number(),
+            name: z.string(),
             pricePerUnit: z.number(),
           })).optional(),
           cost: z.number().optional(),
@@ -947,6 +960,105 @@ export const appRouter = createRouter({
         const idx = deals.findIndex((d: any) => d.id === input.id);
         if (idx !== -1) deals[idx] = { ...deals[idx], stage: input.stage, probability: input.probability };
         (parsed as any).deals = deals;
+        await writeSeedData(parsed);
+        return { ok: true };
+      }),
+  }),
+
+  tasks: createRouter({
+    update: publicQuery
+      .input(
+        z.object({
+          id: z.number(),
+          data: z.object({
+            title: z.string().optional(),
+            description: z.string().optional(),
+            dueDate: z.string().optional(),
+            priority: z.string().optional(),
+            status: z.string().optional(),
+            assignedTo: z.string().optional(),
+          }),
+        })
+      )
+      .mutation(async ({ input }) => {
+        const parsed = await readSeedData();
+        const tasks: any[] = Array.isArray((parsed as any).tasks) ? (parsed as any).tasks : [];
+        const idx = tasks.findIndex((t: any) => t.id === input.id);
+        if (idx !== -1) tasks[idx] = { ...tasks[idx], ...input.data };
+        (parsed as any).tasks = tasks;
+        await writeSeedData(parsed);
+        return { ok: true };
+      }),
+
+    delete: publicQuery
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        const parsed = await readSeedData();
+        const tasks: any[] = Array.isArray((parsed as any).tasks) ? (parsed as any).tasks : [];
+        (parsed as any).tasks = tasks.filter((t: any) => t.id !== input.id);
+        await writeSeedData(parsed);
+        return { ok: true };
+      }),
+  }),
+
+  inventory: createRouter({
+    deductStock: publicQuery
+      .input(z.object({ partId: z.string(), quantityUsed: z.number() }))
+      .mutation(async ({ input }) => {
+        const parsed = await readSeedData();
+        const parts: any[] = Array.isArray(parsed.parts) ? parsed.parts : [];
+        const idx = parts.findIndex((p: any) => p.id === input.partId);
+        if (idx !== -1) {
+          parts[idx] = { ...parts[idx], quantity: Math.max(0, (parts[idx].quantity ?? 0) - input.quantityUsed) };
+        }
+        parsed.parts = parts as any;
+        await writeSeedData(parsed);
+        return { ok: true, newQuantity: idx !== -1 ? parts[idx].quantity : 0 };
+      }),
+
+    restock: publicQuery
+      .input(z.object({ partId: z.string(), quantityAdded: z.number() }))
+      .mutation(async ({ input }) => {
+        const parsed = await readSeedData();
+        const parts: any[] = Array.isArray(parsed.parts) ? parsed.parts : [];
+        const idx = parts.findIndex((p: any) => p.id === input.partId);
+        if (idx !== -1) {
+          parts[idx] = { ...parts[idx], quantity: (parts[idx].quantity ?? 0) + input.quantityAdded };
+        }
+        parsed.parts = parts as any;
+        await writeSeedData(parsed);
+        return { ok: true, newQuantity: idx !== -1 ? parts[idx].quantity : 0 };
+      }),
+
+    logUsage: publicQuery
+      .input(z.object({
+        inventoryItemId: z.number(),
+        serviceRecordId: z.number(),
+        quantityUsed: z.number(),
+        unitPriceAtTime: z.number(),
+        createdAt: z.string(),
+      }))
+      .mutation(async ({ input }) => {
+        const parsed = await readSeedData();
+        const history: any[] = Array.isArray((parsed as any).inventoryUsageHistory) ? (parsed as any).inventoryUsageHistory : [];
+        history.push({ id: Date.now(), ...input });
+        (parsed as any).inventoryUsageHistory = history;
+        await writeSeedData(parsed);
+        return { ok: true };
+      }),
+
+    logRestock: publicQuery
+      .input(z.object({
+        inventoryItemId: z.number(),
+        quantityAdded: z.number(),
+        unitPriceAtTime: z.number(),
+        createdAt: z.string(),
+      }))
+      .mutation(async ({ input }) => {
+        const parsed = await readSeedData();
+        const history: any[] = Array.isArray((parsed as any).inventoryRestockHistory) ? (parsed as any).inventoryRestockHistory : [];
+        history.push({ id: Date.now(), ...input });
+        (parsed as any).inventoryRestockHistory = history;
         await writeSeedData(parsed);
         return { ok: true };
       }),

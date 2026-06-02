@@ -54,10 +54,12 @@ export function ExecutionModal({
         addServicePhoto,
         queuePendingSubmission,
     } = useOperationsStore();
-    const { logPartUsage } = useInventoryStore();
+    const { logPartUsage, items: inventoryItems } = useInventoryStore();
     const { packages } = useBillingStore();
     const { clients } = useCRMStore();
     const completeSeedServiceRecordMutation = trpc.seedServiceRecords.complete.useMutation();
+    const deductStockMutation = trpc.inventory.deductStock.useMutation();
+    const logUsageMutation = trpc.inventory.logUsage.useMutation();
     const trpcUtils = trpc.useUtils();
 
     const draft = task ? draftExecutions[task.id] || { currentStep: 1, partsUsed: "Pending" } : null;
@@ -160,6 +162,18 @@ export function ExecutionModal({
                     inventoryItemId: part.inventoryItemId,
                     quantityUsed: part.quantity
                 });
+                const seedPartId = inventoryItems.find(i => i.id === part.inventoryItemId)?.partNumber ?? String(part.inventoryItemId);
+                deductStockMutation.mutate(
+                    { partId: seedPartId, quantityUsed: part.quantity },
+                    { onError: (err) => console.error("inventory.deductStock failed", err) }
+                );
+                logUsageMutation.mutate({
+                    inventoryItemId: part.inventoryItemId,
+                    serviceRecordId: task.id,
+                    quantityUsed: part.quantity,
+                    unitPriceAtTime: part.pricePerUnit,
+                    createdAt: new Date().toISOString(),
+                }, { onError: (err) => console.error("inventory.logUsage failed", err) });
             });
         }
 

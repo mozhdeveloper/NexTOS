@@ -206,7 +206,7 @@ export const useBillingStore = create<BillingState>()(
       },
     }),
     {
-      name: "nextos-billing-v4",
+      name: "nextos-billing-v5",
     }
   )
 );
