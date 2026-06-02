@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useAuthStore } from "@/stores/useAuthStore";
 import {
   User,
@@ -5,12 +6,24 @@ import {
   Shield,
   Database,
   Save,
+  Settings as SettingsIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 
 export default function Settings() {
   const { user } = useAuthStore();
+  const [autoAssignTask, setAutoAssignTask] = useState<boolean>(() => {
+    try { return window.localStorage.getItem("nextos-auto-assign-task") !== "false"; }
+    catch { return true; }
+  });
+  const toggleAutoAssign = () => {
+    setAutoAssignTask((prev) => {
+      const next = !prev;
+      try { window.localStorage.setItem("nextos-auto-assign-task", String(next)); } catch {}
+      return next;
+    });
+  };
 
   return (
     <div className="space-y-4 max-w-2xl">
@@ -76,6 +89,25 @@ export default function Settings() {
           ))}
         </div>
       </div>
+
+      {/* Task Management — admin only */}
+      {user?.role === "admin" && (
+        <div className="data-card p-4 bg-white shadow-sm border border-gray-200">
+          <div className="flex items-center gap-2 mb-4">
+            <SettingsIcon className="w-4 h-4 text-[#66B2B2]" />
+            <h3 className="text-sm font-semibold text-black">Task Management</h3>
+          </div>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-xs text-black">Auto Assign Task</div>
+                <div className="text-[10px] text-gray-600">Automatically assign new tasks to available technicians</div>
+              </div>
+              <Switch checked={autoAssignTask} onCheckedChange={toggleAutoAssign} />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Security */}
       <div className="data-card p-4 bg-white shadow-sm border border-gray-200">

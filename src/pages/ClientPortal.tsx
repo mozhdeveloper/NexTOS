@@ -20,6 +20,7 @@ import {
   Package,
   Search,
   Wrench,
+  QrCode,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,9 +31,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { QRCodeSVG } from "qrcode.react";
-
 import { ServiceReportView } from "@/components/ServiceReportView";
+import { QrTagModal } from "@/components/services/QrTagModal";
 import {
   Dialog,
   DialogContent,
@@ -50,6 +50,9 @@ export default function ClientPortal() {
   const [expandedEquipment, setExpandedEquipment] = useState<string | null>(null);
   const [showReport, setShowReport] = useState<ServiceRecord | null>(null);
   const [equipmentSearchQuery, setEquipmentSearchQuery] = useState("");
+  const [qrSerial, setQrSerial] = useState("");
+  const [qrUnitName, setQrUnitName] = useState("");
+  const [showQR, setShowQR] = useState(false);
 
   const normalizeId = (value: string | number | undefined) => {
     if (value === undefined || value === null) return 0;
@@ -81,6 +84,42 @@ export default function ClientPortal() {
   });
 
   // Booking wizard state
+  const [gps001CacheMs, setGps001CacheMs] = useState<number>(() => {
+    try { return Number(window.localStorage.getItem("nextos-gps001-total-hours-ms") ?? "0") || 0; }
+    catch { return 0; }
+  });
+  const [gps001KmTotal, setGps001KmTotal] = useState<number>(() => {
+    try { return Number(window.localStorage.getItem("nextos-gps001-total-km") ?? "0") || 0; }
+    catch { return 0; }
+  });
+  const [gps001WorkingDays, setGps001WorkingDays] = useState<number | null>(() => {
+    try {
+      const raw = window.localStorage.getItem("fleet:gps001WorkingDaysByDay:v2");
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as Record<string, number>;
+      const entries = Object.entries(parsed).sort((a, b) => b[0].localeCompare(a[0]));
+      return entries[0]?.[1] ?? null;
+    } catch { return null; }
+  });
+  useEffect(() => {
+    const refresh = () => {
+      try {
+        const ms = Number(window.localStorage.getItem("nextos-gps001-total-hours-ms") ?? "0") || 0;
+        setGps001CacheMs((prev) => (prev !== ms ? ms : prev));
+        const km = Number(window.localStorage.getItem("nextos-gps001-total-km") ?? "0") || 0;
+        setGps001KmTotal((prev) => (prev !== km ? km : prev));
+        const raw = window.localStorage.getItem("fleet:gps001WorkingDaysByDay:v2");
+        if (raw) {
+          const parsed = JSON.parse(raw) as Record<string, number>;
+          const days = Object.entries(parsed).sort((a, b) => b[0].localeCompare(a[0]))[0]?.[1] ?? null;
+          setGps001WorkingDays((prev) => (prev !== days ? days : prev));
+        }
+      } catch {}
+    };
+    const id = setInterval(refresh, 30_000);
+    window.addEventListener("storage", refresh);
+    return () => { clearInterval(id); window.removeEventListener("storage", refresh); };
+  }, []);
   const [bookingStep, setBookingStep] = useState(0);
   const [bookingEquipment, setBookingEquipment] = useState("");
   const [bookingType, setBookingType] = useState<ServiceType>("pms");
@@ -479,20 +518,26 @@ export default function ClientPortal() {
                 </thead>
                 <tbody>
                   {filteredClientEquipment.map((eq) => {
-                    const hoursDisplay = eq.hoursTotal
-                      ? eq.hoursTotal
-                      : eq.currentHours !== undefined
-                      ? `${eq.currentHours}h`
-                      : "—";
-                    const kmDisplay = typeof eq.kmTotal === "number" && Number.isFinite(eq.kmTotal)
-                      ? `${eq.kmTotal.toFixed(2)} km`
-                      : "—";
-                    const daysValue = typeof (eq as any).days === "number" ? (eq as any).days : null;
-                    const validDays = daysValue !== null && Number.isFinite(daysValue) && daysValue >= 0;
-                    const daysDisplay = validDays ? `${Math.floor(daysValue)}` : "—";
-                    const weeksDisplay = validDays ? `${(daysValue! / 7).toFixed(1)}` : "—";
-                    const monthsDisplay = validDays ? `${(daysValue! / 30.44).toFixed(1)}` : "—";
-                    const yearsDisplay = validDays ? `${(daysValue! / 365.25).toFixed(1)}` : "—";
+                    const isExcavator = (eq as any).id === "EQ-001";
+
+                    const hoursDisplay = isExcavator && gps001CacheMs > 0
+                      ? (() => {
+                          const totalMin = Math.floor(gps001CacheMs / (1000 * 60));
+                          return `${Math.floor(totalMin / 60)}h ${totalMin % 60}m`;
+                        })()
+                      : (eq.hoursTotal ? eq.hoursTotal : eq.currentHours !== undefined ? `${eq.currentHours}h` : "—");
+
+                    const rawKm = isExcavator ? gps001KmTotal : (eq as any).kmTotal;
+                    const kmNum = typeof rawKm === "number" && Number.isFinite(rawKm) ? rawKm : null;
+                    const kmDisplay = kmNum !== null ? `${kmNum.toFixed(2)} km` : "—";
+
+                    const rawDays = isExcavator ? gps001WorkingDays : ((eq as any).days ?? null);
+                    const daysNum = rawDays !== null && typeof rawDays === "number" && Number.isFinite(rawDays) ? rawDays : null;
+                    const validDays = daysNum !== null && daysNum >= 0;
+                    const daysDisplay = validDays ? `${Math.floor(daysNum!)}` : "—";
+                    const weeksDisplay = validDays ? `${(daysNum! / 7).toFixed(1)}` : "—";
+                    const monthsDisplay = validDays ? `${(daysNum! / 30.44).toFixed(1)}` : "—";
+                    const yearsDisplay = validDays ? `${(daysNum! / 365.25).toFixed(1)}` : "—";
 
                     return (
                       <tr key={eq.id} className="border-b border-gray-100 hover:bg-[#66B2B2]/5 transition-all">
@@ -524,9 +569,18 @@ export default function ClientPortal() {
                           )}
                         </td>
                         <td className="py-3 px-3">
-                          <div className="p-1 rounded bg-white border border-gray-100 shadow-sm w-max">
-                            <QRCodeSVG value={eq.serialNumber ?? eq.id} size={32} level="L" includeMargin={false} />
-                          </div>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setQrSerial(eq.serialNumber ?? "");
+                              setQrUnitName(eq.name ?? "");
+                              setShowQR(true);
+                            }}
+                            className="p-1.5 rounded bg-white border border-gray-100 hover:border-[#66B2B2] transition-all shadow-sm active:scale-95"
+                            title="View QR Tag"
+                          >
+                            <QrCode className="w-5 h-5 text-gray-500 hover:text-[#66B2B2] transition-colors" />
+                          </button>
                         </td>
                       </tr>
                     );
@@ -998,6 +1052,8 @@ export default function ClientPortal() {
       )}
 
       {/* Service Report View Modal */}
+      <QrTagModal open={showQR} onOpenChange={setShowQR} qrSerial={qrSerial} unitName={qrUnitName} />
+
       <Dialog open={!!showReport} onOpenChange={() => setShowReport(null)}>
         <DialogContent className="bg-white border-gray-200 max-w-4xl max-h-[95vh] overflow-auto scrollbar-hide rounded-2xl">
           {showReport && (

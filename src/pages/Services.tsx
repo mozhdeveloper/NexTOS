@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef, useMemo, Fragment } from "react";
 import { useLocation } from "react-router";
 import { useOperationsStore, type DraftExecution } from "@/stores/useOperationsStore";
-// import { useCRMStore } from "@/stores/useCRMStore";
+import { seedStaff } from "@/stores/useCRMStore";
 import { useAuthStore } from "@/stores/useAuthStore";
 import { useBillingStore } from "@/stores/useBillingStore";
 import seedData from "@/data/seed-data.json";
@@ -185,13 +185,21 @@ export default function Services() {
     try { sessionStorage.setItem("nextos-services-tab", tab); } catch {}
     setActiveTabRaw(tab);
   };
+  useEffect(() => {
+    const onStorage = () => {
+      try { setAutoAssignTask(window.localStorage.getItem("nextos-auto-assign-task") !== "false"); } catch {}
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+
   const isTech = user?.role === "tech";
   const allowedTabs = isTech
     ? (["tasks", "equipment", "scheduled-maintenance", "reports", "new"] as TabType[])
-    : (["equipment", "scheduled-maintenance", "reports"] as TabType[]);
+    : (["tasks", "equipment", "scheduled-maintenance", "reports"] as TabType[]);
   useEffect(() => {
     if (!allowedTabs.includes(activeTab)) {
-      setActiveTab(isTech ? "tasks" : "equipment");
+      setActiveTab("tasks");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -220,6 +228,17 @@ export default function Services() {
   // Modal State
   const [executionTask, setExecutionTask] = useState<ServiceRecord | null>(null);
   const [confirmTask, setConfirmTask] = useState<ServiceRecord | null>(null);
+  const [svcTaskModalOpen, setSvcTaskModalOpen] = useState(false);
+  const [svcTaskTitle, setSvcTaskTitle] = useState("");
+  const [svcTaskDueDate, setSvcTaskDueDate] = useState("");
+  const [svcTaskPriority, setSvcTaskPriority] = useState<"low" | "medium" | "high">("medium");
+  const [svcTaskServiceType, setSvcTaskServiceType] = useState("");
+  const [svcTaskClientId, setSvcTaskClientId] = useState<string>("");
+  const [svcTaskAssignedTo, setSvcTaskAssignedTo] = useState("");
+  const [autoAssignTask, setAutoAssignTask] = useState<boolean>(() => {
+    try { return window.localStorage.getItem("nextos-auto-assign-task") !== "false"; }
+    catch { return true; }
+  });
   const [showReport, setShowReport] = useState<(ServiceRecord & Record<string, any>) | null>(null);
   // Form state (for Manual Log)
   const [formClientId, setFormClientId] = useState("");
@@ -319,14 +338,14 @@ export default function Services() {
     catch { return 0; }
   });
   // EQ-001: working days — Fleet stores this in fleet:gps001WorkingDaysByDay:v2 as {ymd: count}
-  const [gps001WorkingDays, setGps001WorkingDays] = useState<number>(() => {
+  const [gps001WorkingDays, setGps001WorkingDays] = useState<number | null>(() => {
     try {
       const raw = window.localStorage.getItem("fleet:gps001WorkingDaysByDay:v2");
-      if (!raw) return 0;
+      if (!raw) return null;
       const parsed = JSON.parse(raw) as Record<string, number>;
       const entries = Object.entries(parsed).sort((a, b) => b[0].localeCompare(a[0]));
-      return entries[0]?.[1] ?? 0;
-    } catch { return 0; }
+      return entries[0]?.[1] || null;
+    } catch { return null; }
   });
   useEffect(() => {
     const refresh = () => {
@@ -336,7 +355,7 @@ export default function Services() {
         const raw = window.localStorage.getItem("fleet:gps001WorkingDaysByDay:v2");
         if (raw) {
           const parsed = JSON.parse(raw) as Record<string, number>;
-          const days = Object.entries(parsed).sort((a, b) => b[0].localeCompare(a[0]))[0]?.[1] ?? 0;
+          const days = Object.entries(parsed).sort((a, b) => b[0].localeCompare(a[0]))[0]?.[1] || null;
           setGps001WorkingDays((prev) => (prev !== days ? days : prev));
         }
       } catch {}
@@ -1318,7 +1337,7 @@ export default function Services() {
       {/* Tabs */}
       <div className="flex gap-1 border-b border-gray-200">
         {[
-          { id: "tasks" as TabType, label: "My Tasks", icon: ClipboardList, count: activeTasks.length },
+          { id: "tasks" as TabType, label: isTech ? "My Tasks" : "Tasks", icon: ClipboardList, count: activeTasks.length },
           { id: "equipment" as TabType, label: "Equipment", icon: Package },
           { id: "scheduled-maintenance" as TabType, label: "Scheduled Maintenance", icon: CalendarClock },
           { id: "reports" as TabType, label: "Service Reports", icon: FileText },
@@ -1347,8 +1366,20 @@ export default function Services() {
       {/* Tab Content */}
       <div className="min-h-[400px]">
         {/* Tasks Tab */}
-        {activeTab === "tasks" && isTech && (
-          activeTasks.length === 0 ? (
+        {activeTab === "tasks" && (
+          <>
+            {!isTech && (
+              <div className="flex justify-end mb-3">
+                <Button
+                  onClick={() => setSvcTaskModalOpen(true)}
+                  className="h-8 bg-[#66B2B2] hover:bg-[#66B2B2]/80 text-white text-xs font-bold"
+                >
+                  <Plus className="w-3 h-3 mr-2" />
+                  Add Task
+                </Button>
+              </div>
+            )}
+            {activeTasks.length === 0 ? (
             <div className="data-card py-20 text-center bg-gray-50/50 animate-in fade-in duration-300">
               <ClipboardList className="w-12 h-12 text-gray-300 mx-auto mb-3" />
               <h3 className="text-gray-900 font-bold">No Active Tasks</h3>
@@ -1359,7 +1390,9 @@ export default function Services() {
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-gray-100">
-                    {["Status", "ID", "Equipment", "Client", "Service", "Metric at Service", "Service Interval", "Action"].map((col) => (
+                    {["Status", "ID", "Equipment", "Client", "Service", "Metric at Service", "Service Interval",
+                      ...(isTech ? ["Action"] : [])
+                    ].map((col) => (
                       <th key={col} className="px-3 py-2.5 text-left text-[9px] font-bold uppercase tracking-wider text-gray-400 whitespace-nowrap">
                         {col}
                       </th>
@@ -1405,8 +1438,10 @@ export default function Services() {
                     return (
                       <tr
                         key={task.id}
-                        className="hover:bg-gray-50/60 transition-colors cursor-pointer border-b border-gray-50 last:border-0"
-                        onClick={handleRowClick}
+                        className={`border-b border-gray-50 last:border-0 transition-colors ${
+                          isTech ? "hover:bg-gray-50/60 cursor-pointer" : "cursor-default"
+                        }`}
+                        onClick={isTech ? handleRowClick : undefined}
                       >
                         <td className="px-3 py-3 whitespace-nowrap">
                           {task.status === "scheduled" && !isDraft ? (
@@ -1430,18 +1465,20 @@ export default function Services() {
                         <td className="px-3 py-3 whitespace-nowrap">
                           <span className="font-mono-tech text-xs text-gray-700">{serviceIntervalDisplay ?? "—"}</span>
                         </td>
-                        <td className="px-3 py-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                          <Button
-                            className="h-8 px-3 text-xs bg-gray-900 hover:bg-[#66B2B2] text-white font-bold transition-all"
-                            onClick={handleRowClick}
-                          >
-                            {task.status === "scheduled" && !isDraft ? (
-                              <><Play className="w-3 h-3 mr-1.5" /> Start Service</>
-                            ) : (
-                              <><CheckCircle2 className="w-3 h-3 mr-1.5" /> Continue Execution</>
-                            )}
-                          </Button>
-                        </td>
+                        {isTech && (
+                          <td className="px-3 py-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                            <Button
+                              className="h-8 px-3 text-xs bg-gray-900 hover:bg-[#66B2B2] text-white font-bold transition-all"
+                              onClick={handleRowClick}
+                            >
+                              {task.status === "scheduled" && !isDraft ? (
+                                <><Play className="w-3 h-3 mr-1.5" /> Start Service</>
+                              ) : (
+                                <><CheckCircle2 className="w-3 h-3 mr-1.5" /> Continue Execution</>
+                              )}
+                            </Button>
+                          </td>
+                        )}
                       </tr>
                     );
                   })}
@@ -1449,6 +1486,8 @@ export default function Services() {
               </table>
             </div>
           )
+            }
+          </>
         )}
 
         {/* Equipment Tab */}
@@ -1598,13 +1637,7 @@ export default function Services() {
                               className="p-1 rounded bg-white border border-gray-100 hover:border-[#66B2B2] transition-all shadow-sm active:scale-95 group/qr"
                               title="View QR Tag"
                             >
-                              <QRCodeSVG 
-                                value={seedEq.serialNumber ?? ""} 
-                                size={32} 
-                                level="L"
-                                includeMargin={false}
-                                className="opacity-80 group-hover:opacity-100 transition-opacity"
-                              />
+                              <QrCode className="w-5 h-5 text-gray-500 group-hover/qr:text-[#66B2B2] transition-colors" />
                             </button>
                           </td>
                           <td className="py-3 px-3 w-8 text-center">
@@ -2472,6 +2505,97 @@ export default function Services() {
           </div>
         )}
       </div>
+
+      {/* ADD TASK MODAL */}
+      {svcTaskModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/60" onClick={() => setSvcTaskModalOpen(false)} />
+          <div className="relative z-10 w-full max-w-md mx-4">
+            <div className="bg-white border border-gray-200 rounded p-5">
+              <button
+                onClick={() => setSvcTaskModalOpen(false)}
+                className="absolute top-3 right-3 text-gray-500"
+              >
+                <X className="w-4 h-4" />
+              </button>
+              <h3 className="text-sm font-semibold text-black mb-3">Add Task</h3>
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-gray-600">Task Title</label>
+                  <Input placeholder="Task title" value={svcTaskTitle} onChange={(e) => setSvcTaskTitle(e.target.value)} className="bg-white border-gray-200 text-black" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-gray-600">Due Date</label>
+                  <Input type="date" value={svcTaskDueDate} onChange={(e) => setSvcTaskDueDate(e.target.value)} className="bg-white border-gray-200 text-black" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-gray-600">Priority</label>
+                  <Select value={svcTaskPriority} onValueChange={(v) => setSvcTaskPriority(v as any)}>
+                    <SelectTrigger className="h-8 bg-white border-gray-200 text-black text-xs"><SelectValue /></SelectTrigger>
+                    <SelectContent className="bg-white border-gray-200">
+                      <SelectItem value="low" className="text-xs text-black">Low</SelectItem>
+                      <SelectItem value="medium" className="text-xs text-black">Medium</SelectItem>
+                      <SelectItem value="high" className="text-xs text-black">High</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {!autoAssignTask && (
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-gray-600">Assigned To</label>
+                    <Select value={svcTaskAssignedTo} onValueChange={setSvcTaskAssignedTo}>
+                      <SelectTrigger className="h-8 bg-white border-gray-200 text-black text-xs"><SelectValue placeholder="Select person" /></SelectTrigger>
+                      <SelectContent className="bg-white border-gray-200">
+                        {seedStaff.filter((s) => s.role === "technician").map((s) => (
+                          <SelectItem key={s.id} value={s.name} className="text-xs text-black">{s.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-gray-600">Service Type</label>
+                  <Select value={svcTaskServiceType} onValueChange={setSvcTaskServiceType}>
+                    <SelectTrigger className="h-8 bg-white border-gray-200 text-black text-xs"><SelectValue placeholder="Select service type" /></SelectTrigger>
+                    <SelectContent className="bg-white border-gray-200">
+                      {serviceTypeOptions.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value} className="text-xs text-black">{opt.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-gray-600">Client</label>
+                  <Select value={svcTaskClientId} onValueChange={setSvcTaskClientId}>
+                    <SelectTrigger className="h-8 bg-white border-gray-200 text-black text-xs"><SelectValue placeholder="Select client" /></SelectTrigger>
+                    <SelectContent className="bg-white border-gray-200">
+                      {liveClients.map((c: any) => (
+                        <SelectItem key={c.id} value={String(c.id)} className="text-xs text-black">{c.companyName}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={() => setSvcTaskModalOpen(false)} className="flex-1">Cancel</Button>
+                  <Button
+                    className="flex-1 bg-[#66B2B2] text-white"
+                    onClick={() => {
+                      setSvcTaskModalOpen(false);
+                      setSvcTaskTitle("");
+                      setSvcTaskDueDate("");
+                      setSvcTaskPriority("medium");
+                      setSvcTaskServiceType("");
+                      setSvcTaskClientId("");
+                      setSvcTaskAssignedTo("");
+                    }}
+                  >
+                    Create
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* PRE-SERVICE CONFIRMATION MODAL */}
       <PreServiceConfirmModal
