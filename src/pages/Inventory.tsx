@@ -72,6 +72,7 @@ export default function Inventory() {
   const addPartMutation = trpc.seedParts.add.useMutation();
   const updatePartMutation = trpc.seedParts.update.useMutation();
   const deletePartMutation = trpc.seedParts.delete.useMutation();
+  const restockPartMutation = trpc.seedParts.restock.useMutation();
 
   const mapSeedPartToInventoryItem = (part: SeedPartEntry, index: number) => ({
     id: index + 1,

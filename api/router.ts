@@ -587,6 +587,35 @@ export const appRouter = createRouter({
 
           return { ok: true };
         }),
+
+      restock: publicQuery
+        .input(
+          z.object({
+            id: z.string().min(1),
+            quantity: z.number().min(1),
+          })
+        )
+        .mutation(async ({ input }) => {
+          const parsed = await readSeedData();
+          const parts = Array.isArray(parsed.parts) ? parsed.parts : [];
+          const existingIndex = parts.findIndex((item) => item.id === input.id);
+          if (existingIndex === -1) {
+            throw new Error("Seed part not found");
+          }
+
+          const existing = parts[existingIndex];
+          const updatedPart: SeedPartEntry = {
+            ...existing,
+            quantity: existing.quantity + input.quantity,
+            status: getPartStatus(existing.quantity + input.quantity, existing.minQuantity),
+          };
+
+          parts[existingIndex] = updatedPart;
+          parsed.parts = parts;
+          await writeSeedData(parsed);
+
+          return { ok: true, part: updatedPart };
+        }),
     }),
 
     seedPms: createRouter({
