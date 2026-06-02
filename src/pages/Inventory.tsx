@@ -55,7 +55,6 @@ type SeedPartEntry = {
 export default function Inventory() {
   const { items, restockItem, addItem, updateItem, deleteItem, setItems, usageHistory, restockHistory } = useInventoryStore();
   const trpcUtils = trpc.useContext();
-  const restockMutation = trpc.inventory.restock.useMutation();
   const logRestockMutation = trpc.inventory.logRestock.useMutation();
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
@@ -165,22 +164,29 @@ export default function Inventory() {
   const lowStockCount = items.filter(i => i.stockLevel <= i.minThreshold).length;
 
   const handleRestock = () => {
-    if (showRestock) {
-      restockItem(showRestock, restockQty);
-      const seedPartId = items.find(i => i.id === showRestock)?.partNumber ?? String(showRestock);
-      restockMutation.mutate(
-        { partId: seedPartId, quantityAdded: restockQty },
-        { onError: (err) => console.error("inventory.restock failed", err) }
-      );
-      logRestockMutation.mutate({
-        inventoryItemId: showRestock,
-        quantityAdded: restockQty,
-        unitPriceAtTime: items.find(i => i.id === showRestock)?.pricePerUnit ?? 0,
-        createdAt: new Date().toISOString(),
-      }, { onError: (err) => console.error("inventory.logRestock failed", err) });
-      setShowRestock(null);
-      setPartQty(1);
-    }
+    if (!showRestock || restockQty <= 0) return;
+
+    const existing = items.find(i => i.id === showRestock);
+    if (!existing) return;
+
+    restockPartMutation.mutate(
+      { id: existing.partNumber, quantity: restockQty },
+      {
+        onSuccess: () => {
+          restockItem(showRestock, restockQty);
+          trpcUtils.seedParts.list.invalidate();
+          logRestockMutation.mutate({
+            inventoryItemId: showRestock,
+            quantityAdded: restockQty,
+            unitPriceAtTime: existing.pricePerUnit,
+            createdAt: new Date().toISOString(),
+          }, { onError: (err) => console.error("inventory.logRestock failed", err) });
+          setShowRestock(null);
+          setPartQty(1);
+        },
+        onError: (err) => console.error("seedParts.restock failed", err),
+      }
+    );
   };
 
   return (

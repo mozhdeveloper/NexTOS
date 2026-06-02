@@ -3,6 +3,7 @@ import AppShell from '@/components/AppShell'
 import ClientPortalShell from '@/components/ClientPortalShell'
 import Login from '@/pages/Login'
 import Dashboard from '@/pages/Dashboard'
+import TechnicianDashboard from '@/pages/TechnicianDashboard'
 import CRM from '@/pages/CRM'
 import Services from '@/pages/Services'
 import Fleet from '@/pages/Fleet'
@@ -66,6 +67,27 @@ function AuthenticatedRoutes() {
   )
 }
 
+function TechnicianRoutes() {
+  return (
+    <AppShell>
+      <Routes>
+        <Route path="/" element={<TechnicianDashboard />} />
+        <Route path="/crm" element={<CRM />} />
+        <Route path="/services" element={<Services />} />
+        <Route path="/inventory" element={<Inventory />} />
+        <Route path="/fleet" element={<Fleet />} />
+        <Route path="/portal" element={<ClientPortal />} />
+        <Route path="/billing" element={<Billing />} />
+        <Route path="/marketing" element={<Marketing />} />
+        <Route path="/reports" element={<Reports />} />
+        <Route path="/settings" element={<Settings />} />
+        <Route path="/scan/:serial" element={<AssetScanner />} />
+        <Route path="*" element={<NotFound />} />
+      </Routes>
+    </AppShell>
+  )
+}
+
 export default function App() {
   const { isAuthenticated, user } = useAuthStore()
 
@@ -80,6 +102,7 @@ export default function App() {
           element={
             !isAuthenticated ? <Login /> :
             user?.role === 'client' ? <ClientPortalRoutes /> :
+            (user?.role === 'tech' || user?.role === 'technician') ? <TechnicianRoutes /> :
             <AuthenticatedRoutes />
           }
         />

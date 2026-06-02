@@ -18,7 +18,6 @@ import {
   X,
   ArrowRight,
   Package,
-  Zap,
   Search,
   Wrench,
 } from "lucide-react";
@@ -60,7 +59,10 @@ export default function ClientPortal() {
   const selectedCompanyIndex = seedData.clients.findIndex((c) => c.id === selectedCompanyId);
   const clientId = selectedCompanyIndex !== -1 ? selectedCompanyIndex + 1 : user?.clientId || 1;
   const client = clients.find((c) => c.id === clientId);
-  const clientEquipment = equipment.filter((e) => normalizeId(e.clientId) === clientId);
+  const seedEquipmentById = new Map((seedData.equipment as any[]).map((e) => [String(e.id), e]));
+  const clientEquipment = equipment
+    .map((e) => ({ ...(seedEquipmentById.get(e.id) ?? {}), ...e }))
+    .filter((e) => normalizeId(e.clientId) === clientId);
   const clientRecords = serviceRecords.filter((r) => normalizeId(r.clientId) === clientId);
   const clientInvoices = invoices.filter((i) => normalizeId(i.clientId) === clientId);
   const clientPackages = packages.filter((p) => normalizeId(p.clientId) === clientId);
@@ -496,8 +498,8 @@ export default function ClientPortal() {
                       <tr key={eq.id} className="border-b border-gray-100 hover:bg-[#66B2B2]/5 transition-all">
                         <td className="py-3 px-3">
                           <div className="h-11 w-11 shrink-0 overflow-hidden rounded-md border bg-gray-100 flex items-center justify-center">
-                            {eq.serialNumber ? (
-                              <Wrench className="w-4 h-4 text-gray-400" />
+                            {eq.image ? (
+                              <img src={eq.image} alt={eq.name ?? "Equipment image"} className="h-full w-full object-cover" />
                             ) : (
                               <Wrench className="w-4 h-4 text-gray-400" />
                             )}

@@ -174,6 +174,8 @@ const seedEquipment: Equipment[] = (seedData.equipment as any[]).map((e) => ({
   lat: e.lat,
   lng: e.lng,
   pmsConfiguration: e.pmsConfiguration,
+  image: e.image,
+  days: e.days,
 }));
 
 const seedBookings: Booking[] = (seedData.bookings as any[]).map((b) => ({
