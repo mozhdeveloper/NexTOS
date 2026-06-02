@@ -340,7 +340,7 @@ export default function TechnicianDashboard() {
           </div>
         </div>
 
-        <div className="data-card p-4">
+        <div className="data-card p-4 h-full">
           <div className="flex items-center justify-between mb-3">
             <div>
               <h2 className="text-base font-semibold text-gray-900">Maintenance Analysis</h2>
@@ -432,8 +432,8 @@ export default function TechnicianDashboard() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-        <div className="data-card p-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 items-start">
+        <div className="data-card p-4 h-full">
           <div className="flex items-center justify-between mb-3">
             <div>
               <h2 className="text-base font-semibold text-gray-900">Upcoming Preventive Maintenance</h2>
@@ -458,7 +458,7 @@ export default function TechnicianDashboard() {
           </div>
         </div>
 
-        <div className="data-card p-4">
+        <div className="data-card p-4 h-full">
           <div className="flex items-center justify-between mb-3">
             <div>
               <h2 className="text-base font-semibold text-gray-900">Parts Consumption Analysis</h2>
@@ -480,7 +480,7 @@ export default function TechnicianDashboard() {
                     fontSize: 12,
                   }}
                 />
-                <Bar dataKey="value" radius={[4, 4, 4, 4]}>
+                <Bar dataKey="value" radius={[4, 4, 4, 4]} minPointSize={2}>
                   {partsConsumption.map((entry) => (
                     <Cell key={entry.name} fill={entry.color} />
                   ))}
