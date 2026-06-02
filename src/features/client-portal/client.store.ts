@@ -7,7 +7,7 @@ interface ClientPortalState {
   setSelectedCompanyId: (id: string) => void;
 }
 
-export const useClientPortalStore = create<ClientPortalState>()(
+export const clientStore = create<ClientPortalState>()(
   persist(
     (set) => ({
       selectedCompanyId: seedData.clients[0]?.id ?? "CL-001",

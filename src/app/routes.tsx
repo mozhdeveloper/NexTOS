@@ -11,7 +11,7 @@ import Dashboard from "@/features/dashboard/pages/DashboardPage";
 import CRM from "@/features/crm/pages/CRMPage";
 import Services from "@/features/services/pages/ServicesPage";
 import Fleet from "@/features/fleet/pages/FleetPage";
-import ClientPortal from "@/features/client-portal/pages/admin/ClientPortal";
+import ClientPortal from "@/features/client-portal/admin/pages/ClientPortal";
 import Billing from "@/features/billing/pages/BillingPage";
 import Reports from "@/features/reports/pages/ReportsPage";
 import Marketing from "@/features/marketing/pages/MarketingPage";
@@ -20,13 +20,13 @@ import Settings from "@/shared/pages/Settings";
 import AssetScanner from "@/features/services/components/AssetScanner";
 import NotFound from "@/shared/pages/NotFound";
 
-import ClientDashboard from "@/features/client-portal/pages/client/ClientDashboard";
-import ClientEquipment from "@/features/client-portal/pages/client/ClientEquipment";
-import ClientServiceHistory from "@/features/client-portal/pages/client/ClientServiceHistory";
-import ClientBookings from "@/features/client-portal/pages/client/ClientBookings";
-import ClientPackages from "@/features/client-portal/pages/client/ClientPackages";
-import ClientBilling from "@/features/client-portal/pages/client/ClientBilling";
-import ClientReports from "@/features/client-portal/pages/client/ClientReports";
+import ClientDashboard from "@/features/client-portal/client/pages/ClientDashboard";
+import ClientEquipment from "@/features/client-portal/client/pages/ClientEquipment";
+import ClientServiceHistory from "@/features/client-portal/client/pages/ClientServiceHistory";
+import ClientBookings from "@/features/client-portal/client/pages/ClientBookings";
+import ClientPackages from "@/features/client-portal/client/pages/ClientPackages";
+import ClientBilling from "@/features/client-portal/client/pages/ClientBilling";
+import ClientReports from "@/features/client-portal/client/pages/ClientReports";
 
 import { useAuthStore } from "@/features/auth/useAuthStore";
 

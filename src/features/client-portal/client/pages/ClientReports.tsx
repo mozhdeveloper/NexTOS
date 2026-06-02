@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { useAuthStore } from "@/features/auth/useAuthStore";
 import { useOperationsStore } from "@/stores/useOperationsStore";
 import { useBillingStore } from "@/features/billing/useBillingStore";
-import { useClientPortalStore } from "@/features/client-portal/useClientPortalStore";
+import { useClientPortalStore } from "@/features/client-portal/client.store";
 import seedData from "@/data/seed-data.json";
 import {
   ResponsiveContainer,

@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { useAuthStore } from "@/features/auth/useAuthStore";
 import { useOperationsStore } from "@/stores/useOperationsStore";
-import { useClientPortalStore } from "@/features/client-portal/useClientPortalStore";
+import { useClientPortalStore } from "@/features/client-portal/client.store";
 import seedData from "@/data/seed-data.json";
 import {
   Package,
@@ -551,4 +551,3 @@ export default function ClientEquipment() {
     </div>
   );
 }
-

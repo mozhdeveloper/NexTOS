@@ -4,7 +4,7 @@ import { useAuthStore } from "@/features/auth/useAuthStore";
 import { useOperationsStore } from "@/stores/useOperationsStore";
 import { useBillingStore } from "@/features/billing/useBillingStore";
 import { useCRMStore } from "@/features/crm/useCRMStore";
-import { useClientPortalStore } from "@/features/client-portal/useClientPortalStore";
+import { useClientPortalStore } from "@/features/client-portal/client.store";
 import seedData from "@/data/seed-data.json";
 import type {
   Booking,
@@ -1735,4 +1735,3 @@ function ServiceReportView({ record, equipment, client, photos }: any) {
     </div>
   );
 }
-

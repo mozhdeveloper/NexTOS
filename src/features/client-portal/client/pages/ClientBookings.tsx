@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAuthStore } from "@/features/auth/useAuthStore";
 import { useOperationsStore } from "@/stores/useOperationsStore";
-import { useClientPortalStore } from "@/features/client-portal/useClientPortalStore";
+import { useClientPortalStore } from "@/features/client-portal/client.store";
 import seedData from "@/data/seed-data.json";
 import type { Booking, ServiceType } from "@/types";
 import {
@@ -2060,4 +2060,3 @@ function StatCard({
     </div>
   );
 }
-

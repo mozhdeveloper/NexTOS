@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate, useLocation } from "react-router";
 import { useAuthStore } from "@/features/auth/useAuthStore";
-import { useClientPortalStore } from "@/features/client-portal/useClientPortalStore";
+import { useClientPortalStore } from "@/features/client-portal/client.store";
 import type { UserRole } from "@/types";
 import {
   LayoutDashboard,
@@ -41,7 +41,7 @@ interface NavItem {
 const navItems: NavItem[] = [
   { label: "Dashboard", path: "/client", icon: LayoutDashboard },
   { label: "My Equipment", path: "/client/equipment", icon: Monitor },
-  { label: "Service Reports", path: "/client/history", icon: FileText },
+  { label: "Service History", path: "/client/history", icon: FileText },
   { label: "Bookings", path: "/client/bookings", icon: Calendar },
   { label: "Packages", path: "/client/packages", icon: Package },
   { label: "Billing", path: "/client/billing", icon: CreditCard },
@@ -250,4 +250,3 @@ export default function ClientPortalShell({
     </div>
   );
 }
-

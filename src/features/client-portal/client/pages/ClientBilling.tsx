@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useAuthStore } from "@/features/auth/useAuthStore";
 import { useBillingStore } from "@/features/billing/useBillingStore";
 import { useOperationsStore } from "@/stores/useOperationsStore";
-import { useClientPortalStore } from "@/features/client-portal/useClientPortalStore";
+import { useClientPortalStore } from "@/features/client-portal/client.store";
 import seedData from "@/data/seed-data.json";
 import { Button } from "@/shared/components/ui/button";
 import {
@@ -802,4 +802,3 @@ export default function ClientBilling() {
     </div>
   );
 }
-
