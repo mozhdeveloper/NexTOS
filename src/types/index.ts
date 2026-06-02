@@ -125,6 +125,8 @@ export interface Equipment {
   lat?: number;
   lng?: number;
   pmsConfiguration?: PmsConfig[];
+  image?: string;
+  days?: number;
 }
 
 export type ServiceCategory = 

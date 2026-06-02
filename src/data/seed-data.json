@@ -1680,10 +1680,10 @@
             "name": "Heavy Duty Air Filter",
             "category": "FILTER",
             "unitPrice": 3400,
-            "quantity": 12,
+            "quantity": 30,
             "minQuantity": 15,
             "unitType": "Pcs",
-            "status": "Low Stock"
+            "status": "In Stock"
         },
         {
             "id": "OIL-15W40",
@@ -1974,6 +1974,13 @@
             "quantityAdded": 1,
             "unitPriceAtTime": 3400,
             "createdAt": "2026-06-02T00:53:22.702Z"
+        },
+        {
+            "id": 1780379086330,
+            "inventoryItemId": 2,
+            "quantityAdded": 20,
+            "unitPriceAtTime": 3400,
+            "createdAt": "2026-06-02T05:44:42.540Z"
         }
     ]
 }
