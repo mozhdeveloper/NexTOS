@@ -5,8 +5,12 @@ import { useOperationsStore } from "@/stores/useOperationsStore";
 import { useBillingStore } from "@/stores/useBillingStore";
 import { useCRMStore } from "@/stores/useCRMStore";
 import { useClientPortalStore } from "@/stores/useClientPortalStore";
+import {
+  mapServiceRecordsToDashboardPhotos,
+  mapServiceRecordsToDashboardRecords,
+} from "@/lib/client-service-history";
 import seedData from "@/data/seed-data.json";
-import type { Booking, Equipment, ServiceCategory, ServiceRecord } from "@/types";
+import type { Booking, Client, Equipment, Package as ClientPackage, ServiceCategory, ServicePhoto, ServiceRecord } from "@/types";
 import { ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 import {
   ArrowRight,
@@ -95,25 +99,25 @@ const LAB_COLORS = {
 };
 
 const CATEGORY_BADGE: Record<ServiceCategory, string> = {
-  "Heavy Equipment PMS": "bg-blue-50 text-[#66B2B2] border border-[#60A5FA]/20",
-  "Calibration PMS": "bg-emerald-50 text-[#059669] border border-[#4ADE80]/20",
-  "Lab Testing Service": "bg-purple-50 text-[#7C3AED] border border-[#C084FC]/20",
-  Repair: "bg-red-50 text-[#DC2626] border border-[#F87171]/20",
-  Inspection: "bg-amber-50 text-[#D97706] border border-[#FBBF24]/20",
-  Installation: "bg-cyan-50 text-[#0891B2] border border-[#22D3EE]/20",
+  "Heavy Equipment PMS": "bg-[#66B2B2]/10 text-[#3B8F8F] border border-[#66B2B2]/20",
+  "Calibration PMS": "bg-emerald-50 text-[#059669] border border-emerald-200",
+  "Lab Testing Service": "bg-violet-50 text-[#7C3AED] border border-violet-200",
+  Repair: "bg-red-50 text-[#DC2626] border border-red-200",
+  Inspection: "bg-amber-50 text-[#D97706] border border-amber-200",
+  Installation: "bg-cyan-50 text-[#0891B2] border border-cyan-200",
 };
 
 const STATUS_BADGE: Record<string, string> = {
-  OK: "bg-emerald-50/50 text-[#059669] border border-[#4ADE80]/20",
-  "Near Service": "bg-amber-50/50 text-[#D97706] border border-[#FBBF24]/20",
-  "Due Soon": "bg-blue-50/60 text-[#66B2B2] border border-[#60A5FA]/20",
-  Due: "bg-blue-50/60 text-[#66B2B2] border border-[#60A5FA]/20",
-  Overdue: "bg-red-50/50 text-[#DC2626] border border-[#F87171]/20",
-  Scheduled: "bg-blue-50/60 text-[#66B2B2] border border-[#60A5FA]/20",
-  Requested: "bg-amber-50/60 text-[#D97706] border border-[#FBBF24]/20",
-  Completed: "bg-emerald-50/50 text-[#059669] border border-[#4ADE80]/20",
-  Released: "bg-cyan-50/50 text-[#0891B2] border border-[#22D3EE]/20",
-  "In Progress": "bg-blue-50/50 text-[#66B2B2] border border-[#60A5FA]/20",
+  OK: "bg-emerald-50 text-[#059669] border border-emerald-200",
+  "Near Service": "bg-amber-50 text-[#D97706] border border-amber-200",
+  "Due Soon": "bg-[#66B2B2]/10 text-[#3B8F8F] border border-[#66B2B2]/20",
+  Due: "bg-[#66B2B2]/10 text-[#3B8F8F] border border-[#66B2B2]/20",
+  Overdue: "bg-red-50 text-[#DC2626] border border-red-200",
+  Scheduled: "bg-[#66B2B2]/10 text-[#3B8F8F] border border-[#66B2B2]/20",
+  Requested: "bg-amber-50 text-[#D97706] border border-amber-200",
+  Completed: "bg-emerald-50 text-[#059669] border border-emerald-200",
+  Released: "bg-cyan-50 text-[#0891B2] border border-cyan-200",
+  "In Progress": "bg-[#66B2B2]/10 text-[#3B8F8F] border border-[#66B2B2]/20",
 };
 
 function formatPeso(amount: number) {
@@ -173,7 +177,7 @@ function getTag(notes: string, tag: string) {
 }
 
 function getTechnicianFromBooking(booking: Booking) {
-  return getTag(booking.notes, "tech") ?? "Unassigned";
+  return booking.preferredTechnician ?? getTag(booking.notes ?? "", "tech") ?? "Unassigned";
 }
 
 function parseHoursNum(text?: string): number {
@@ -197,7 +201,7 @@ function getHeavyStatus(equipment: Equipment): HeavyStatus {
   return "OK";
 }
 
-function getCalibrationStatus(nextCalibrationDate: string | null, now: Date): CalibrationStatus {
+function getCalibrationStatus(nextCalibrationDate: string | null | undefined, now: Date): CalibrationStatus {
   if (!nextCalibrationDate) return "OK";
   const diffDays = Math.ceil((new Date(nextCalibrationDate).getTime() - now.getTime()) / 86400000);
   if (diffDays <= 0) return "Overdue";
@@ -220,8 +224,61 @@ function getEquipmentSubLabel(equipment?: Equipment) {
   return `SN: ${equipment.serialNumber}`;
 }
 
-function createServiceId(prefix: string, id: number) {
+function createServiceId(prefix: string, id: string | number) {
   return `${prefix}-${new Date().getFullYear()}-${String(id).padStart(4, "0")}`;
+}
+
+function normalizeClientId(value: string | number | undefined) {
+  return Number(String(value ?? "").replace(/\D/g, ""));
+}
+
+function matchesClientAccount(value: string | number | undefined, selectedCompanyId: string, numericClientId: number) {
+  const rawValue = String(value ?? "");
+  if (!rawValue) return false;
+  if (rawValue === selectedCompanyId) return true;
+  return normalizeClientId(rawValue) === numericClientId;
+}
+
+function getServiceCategoryFromBooking(booking: Booking): ServiceCategory {
+  if (booking.serviceCategory) return booking.serviceCategory;
+  if (booking.serviceType === "calibration") return "Calibration PMS";
+  if (booking.serviceType === "repair") return "Repair";
+  if (booking.serviceType === "inspection") return "Inspection";
+  if (booking.serviceType === "installation") return "Installation";
+  return "Heavy Equipment PMS";
+}
+
+function getBookingStatusLabel(booking: Booking) {
+  const normalized = String(booking.status ?? "pending").toLowerCase();
+  if (normalized === "confirmed" || normalized === "scheduled") return "Scheduled";
+  if (normalized === "completed") return "Completed";
+  if (normalized === "cancelled") return "Cancelled";
+  if (booking.rescheduledFrom) return "Rescheduled";
+  return "Requested";
+}
+
+function getPackageBaseKey(pkg: ClientPackage) {
+  return `${pkg.name}|${pkg.packageType}`;
+}
+
+function getDisplayActivePackages(packages: ClientPackage[]) {
+  const linkedBaseKeys = new Set(
+    packages
+      .filter((pkg) => Boolean(pkg.linkedEquipmentId))
+      .map(getPackageBaseKey)
+  );
+  const seenDisplayKeys = new Set<string>();
+
+  return packages.filter((pkg) => {
+    const baseKey = getPackageBaseKey(pkg);
+    if (!pkg.linkedEquipmentId && linkedBaseKeys.has(baseKey)) return false;
+
+    const displayKey = `${baseKey}|${pkg.linkedEquipmentId ?? "unlinked"}`;
+    if (seenDisplayKeys.has(displayKey)) return false;
+
+    seenDisplayKeys.add(displayKey);
+    return true;
+  });
 }
 
 function donutCenterLabel(total: number, label: string) {
@@ -237,29 +294,60 @@ export default function ClientDashboard() {
   const navigate = useNavigate();
   const { user } = useAuthStore();
   const { equipment, serviceRecords, servicePhotos, bookings } = useOperationsStore();
-  const { invoices } = useBillingStore();
+  const { invoices, packages } = useBillingStore();
   const { clients } = useCRMStore();
   const { selectedCompanyId } = useClientPortalStore();
 
-  // Map seedData company ID to numeric clientId
-  const selectedCompanyIndex = seedData.clients.findIndex(c => c.id === selectedCompanyId);
-  const clientId = selectedCompanyIndex !== -1 ? selectedCompanyIndex + 1 : (user?.clientId || 1);
+  const selectedCompanyNumericId = normalizeClientId(selectedCompanyId);
+  const clientId = selectedCompanyNumericId || user?.clientId || 1;
   const clientObj = useMemo(() => clients.find(c => c.id === clientId), [clients, clientId]);
   const [serviceTab, setServiceTab] = useState<DashboardServiceTab>("upcoming");
   const [showReport, setShowReport] = useState<ServiceRecord | null>(null);
 
-  const eqClientNum = (id: string) => Number(String(id).replace(/\D/g, ""));
-  const clientEquipment = useMemo(() => equipment.filter((entry) => eqClientNum(entry.clientId) === clientId), [equipment, clientId]);
+  const clientEquipment = useMemo(
+    () => equipment.filter((entry) => matchesClientAccount(entry.clientId, selectedCompanyId, clientId)),
+    [equipment, selectedCompanyId, clientId]
+  );
   const clientEquipmentIds = useMemo(() => new Set(clientEquipment.map(e => e.id)), [clientEquipment]);
-  const clientServices = useMemo(() => serviceRecords.filter((entry) => clientEquipmentIds.has(entry.equipmentId)), [serviceRecords, clientEquipmentIds]);
-  const clientBookings = useMemo(() => bookings.filter((entry) => eqClientNum(entry.clientId) === clientId), [bookings, clientId]);
+  const clientBookings = useMemo(
+    () => bookings.filter((entry) => {
+      const bookingClientMatches = matchesClientAccount(entry.clientId, selectedCompanyId, clientId);
+      const bookingEquipmentMatches = entry.equipmentId ? clientEquipmentIds.has(entry.equipmentId) : true;
+
+      return bookingClientMatches && bookingEquipmentMatches;
+    }),
+    [bookings, selectedCompanyId, clientId, clientEquipmentIds]
+  );
   const clientInvoices = useMemo(() => invoices.filter((entry) => entry.clientId === clientId), [invoices, clientId]);
+  const seedDashboardServices = useMemo(() => mapServiceRecordsToDashboardRecords(seedData), []);
+  const seedDashboardPhotos = useMemo(() => mapServiceRecordsToDashboardPhotos(seedData), []);
+  const dashboardServices = useMemo(() => {
+    const recordsById = new Map<number, ServiceRecord>();
+
+    seedDashboardServices.forEach((entry) => recordsById.set(entry.id, entry));
+    serviceRecords.forEach((entry) => recordsById.set(entry.id, entry));
+
+    return Array.from(recordsById.values());
+  }, [seedDashboardServices, serviceRecords]);
+  const dashboardPhotos = useMemo(() => {
+    const photosById = new Map<number, ServicePhoto>();
+
+    seedDashboardPhotos.forEach((entry) => photosById.set(entry.id, entry));
+    servicePhotos.forEach((entry) => photosById.set(entry.id, entry));
+
+    return Array.from(photosById.values());
+  }, [seedDashboardPhotos, servicePhotos]);
+  const clientServices = useMemo(() => dashboardServices.filter((entry) => clientEquipmentIds.has(entry.equipmentId)), [dashboardServices, clientEquipmentIds]);
+  const activePackages = useMemo(
+    () => getDisplayActivePackages(packages.filter((entry) => entry.clientId === clientId && entry.status === "active")),
+    [packages, clientId]
+  );
 
   const equipmentById = useMemo(() => new Map(clientEquipment.map((entry) => [entry.id, entry])), [clientEquipment]);
 
-  const now = new Date();
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+  const now = useMemo(() => new Date(), []);
+  const monthStart = useMemo(() => new Date(now.getFullYear(), now.getMonth(), 1), [now]);
+  const monthEnd = useMemo(() => new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999), [now]);
 
   const heavyEquipment = clientEquipment.filter((entry) => entry.equipmentType === "Heavy Equipment");
   const calibrationEquipment = clientEquipment.filter(
@@ -269,6 +357,24 @@ export default function ClientDashboard() {
 
   const openInvoices = clientInvoices.filter((entry) => entry.status !== "paid");
   const outstandingBalance = openInvoices.reduce((sum, entry) => sum + entry.total, 0);
+  const paidInvoiceTotal = clientInvoices
+    .filter((entry) => entry.status === "paid")
+    .reduce((sum, entry) => sum + entry.total, 0);
+  const linkedPackageCount = activePackages.filter((entry) => Boolean(entry.linkedEquipmentId)).length;
+  const upcomingBookings = useMemo(
+    () => clientBookings.filter((entry) => {
+      const status = String(entry.status ?? "").toLowerCase();
+      return getBookingEndDate(entry) >= now && status !== "completed" && status !== "cancelled";
+    }),
+    [clientBookings, now]
+  );
+  const pendingBookings = useMemo(
+    () => upcomingBookings.filter((entry) => {
+      const status = String(entry.status ?? "pending").toLowerCase();
+      return status === "pending" || Boolean(entry.rescheduledFrom);
+    }),
+    [upcomingBookings]
+  );
 
   const heavyCounts = useMemo(() => {
     const counts: Record<HeavyStatus, number> = {
@@ -348,33 +454,34 @@ export default function ClientDashboard() {
   ].filter((entry) => entry.value > 0);
 
   const upcomingRows = useMemo<OverviewRow[]>(() => {
-    return clientBookings
-      .filter((entry) => getBookingEndDate(entry) >= now)
+    return upcomingBookings
+      .slice()
       .sort((left, right) => new Date(left.requestedDate).getTime() - new Date(right.requestedDate).getTime())
-      .slice(0, 4)
       .map((entry) => {
         const linkedEquipment = equipmentById.get(entry.equipmentId);
         const technician = getTechnicianFromBooking(entry);
         const heavyStatus = linkedEquipment?.equipmentType === "Heavy Equipment" ? getHeavyStatus(linkedEquipment) : null;
+        const category = getServiceCategoryFromBooking(entry);
+        const statusLabel = heavyStatus ?? getBookingStatusLabel(entry);
 
         return {
           id: createServiceId("SRV", entry.id),
           equipmentName: getEquipmentLabel(linkedEquipment),
           equipmentMeta: getEquipmentSubLabel(linkedEquipment),
-          category: entry.serviceCategory,
-          typeLabel: entry.serviceCategory === "Heavy Equipment PMS" ? "PMS (1000 hrs)" : entry.serviceCategory,
+          category,
+          typeLabel: category === "Heavy Equipment PMS" ? "PMS (1000 hrs)" : category,
           scheduleLabel:
             linkedEquipment?.equipmentType === "Heavy Equipment" && linkedEquipment.pmsConfiguration?.length
               ? `In ${Math.max(Math.floor(getHeavyRemaining(linkedEquipment)), 0)} hrs`
               : formatDateTimeLabel(entry.requestedDate),
           scheduleMeta: `${formatDateTimeLabel(entry.requestedDate)}${entry.preferredTime ? `, ${formatTimeRange(entry.preferredTime)}` : ""}`,
-          statusLabel: heavyStatus ?? (entry.status === "confirmed" ? "Scheduled" : entry.status === "completed" ? "Completed" : "Requested"),
+          statusLabel,
           technician,
-          icon: entry.serviceCategory === "Calibration PMS" ? FlaskConical : entry.serviceCategory === "Lab Testing Service" ? ClipboardList : HardHat,
+          icon: category === "Calibration PMS" ? FlaskConical : category === "Lab Testing Service" ? ClipboardList : HardHat,
           iconBg: "bg-white",
         };
       });
-  }, [clientBookings, equipmentById, now]);
+  }, [equipmentById, upcomingBookings]);
 
   const calibrationRows = useMemo<OverviewRow[]>(() => {
     return calibrationEquipment
@@ -480,7 +587,7 @@ export default function ClientDashboard() {
       calibrationsCompleted: completedThisMonth.filter((entry) => entry.serviceCategory === "Calibration PMS").length,
       testsCompleted: completedThisMonth.filter((entry) => entry.serviceCategory === "Lab Testing Service").length,
       totalSpent: clientInvoices
-        .filter((entry) => new Date(entry.createdAt) >= monthStart)
+        .filter((entry) => entry.status === "paid" && new Date(entry.createdAt) >= monthStart)
         .reduce((sum, entry) => sum + entry.total, 0),
     };
   }, [clientInvoices, clientServices, monthStart]);
@@ -640,6 +747,44 @@ export default function ClientDashboard() {
           </div>
         </div>
 
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+          <PortalMetricCard
+            label="My Equipment"
+            value={clientEquipment.length}
+            hint="Units in this account"
+            icon={HardHat}
+            onClick={() => navigate("/client/equipment")}
+          />
+          <PortalMetricCard
+            label="Active Packages"
+            value={activePackages.length}
+            hint={`${linkedPackageCount} linked to equipment`}
+            icon={PackageCheck}
+            onClick={() => navigate("/client/packages")}
+          />
+          <PortalMetricCard
+            label="Upcoming Services"
+            value={upcomingRows.length}
+            hint={`${pendingBookings.length} pending request${pendingBookings.length === 1 ? "" : "s"}`}
+            icon={Calendar}
+            onClick={() => navigate("/client/bookings")}
+          />
+          <PortalMetricCard
+            label="Completed Services"
+            value={clientServices.filter((entry) => entry.status === "completed").length}
+            hint="Service records"
+            icon={FileText}
+            onClick={() => navigate("/client/history")}
+          />
+          <PortalMetricCard
+            label="Paid Total"
+            value={formatPeso(paidInvoiceTotal)}
+            hint="Paid invoices"
+            icon={Receipt}
+            onClick={() => navigate("/client/billing")}
+          />
+        </div>
+
         <div className="grid gap-4 xl:grid-cols-[minmax(0,2.3fr)_minmax(320px,1fr)]">
           <div className="space-y-4">
             <section className="data-card overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
@@ -675,54 +820,58 @@ export default function ClientDashboard() {
               <div className="overflow-x-auto px-3 pb-2 pt-3">
                 <table className="w-full min-w-[900px] text-left">
                   <thead>
-                    <tr className="text-[11px] uppercase tracking-[0.14em] text-gray-500">
-                      <th className="px-3 py-2 font-medium">Service ID</th>
-                      <th className="px-3 py-2 font-medium">Equipment / Service</th>
-                      <th className="px-3 py-2 font-medium">Category</th>
-                      <th className="px-3 py-2 font-medium">Type</th>
-                      <th className="px-3 py-2 font-medium">Schedule</th>
-                      <th className="px-3 py-2 font-medium">Status</th>
-                      <th className="px-3 py-2 font-medium">Technician</th>
-                      <th className="px-3 py-2 text-right font-medium">Action</th>
+                    <tr className="border-b border-gray-200 text-[10px] uppercase tracking-[0.16em] text-gray-500">
+                      <th className="w-[132px] px-3 py-2.5 font-semibold">Service ID</th>
+                      <th className="min-w-[230px] px-3 py-2.5 font-semibold">Equipment / Service</th>
+                      <th className="w-[150px] px-3 py-2.5 font-semibold">Category</th>
+                      <th className="w-[130px] px-3 py-2.5 font-semibold">Type</th>
+                      <th className="w-[150px] px-3 py-2.5 font-semibold">Schedule</th>
+                      <th className="w-[110px] px-3 py-2.5 font-semibold">Status</th>
+                      <th className="w-[170px] px-3 py-2.5 font-semibold">Technician</th>
+                      <th className="w-[96px] px-3 py-2.5 text-right font-semibold">Action</th>
                     </tr>
                   </thead>
                   <tbody>
                     {activeRows.map((row) => {
                       const Icon = row.icon;
                       return (
-                        <tr key={row.id} className="border-t border-gray-200 text-sm text-gray-700">
-                          <td className="px-3 py-3 text-[12px] font-semibold text-gray-900">{row.id}</td>
-                          <td className="px-3 py-3">
-                            <div className="flex items-center gap-3">
-                              <div className={`flex h-11 w-11 items-center justify-center rounded-lg border border-gray-200 ${row.iconBg}`}>
-                                <Icon className="h-5 w-5 text-gray-900" />
+                        <tr key={row.id} className="border-b border-gray-100 text-[13px] text-gray-700 transition-colors hover:bg-gray-50/70">
+                          <td className="px-3 py-2.5 align-middle">
+                            <div className="max-w-[118px] truncate font-mono text-[11px] font-semibold text-gray-900" title={row.id}>
+                              {row.id}
+                            </div>
+                          </td>
+                          <td className="px-3 py-2.5 align-middle">
+                            <div className="flex items-center gap-2.5">
+                              <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-gray-200 ${row.iconBg}`}>
+                                <Icon className="h-4 w-4 text-gray-700" />
                               </div>
-                              <div>
-                                <div className="font-medium text-gray-900">{row.equipmentName}</div>
-                                <div className="mt-1 text-[11px] text-gray-500">{row.equipmentMeta}</div>
+                              <div className="min-w-0">
+                                <div className="truncate font-semibold text-gray-900">{row.equipmentName}</div>
+                                <div className="mt-0.5 truncate text-[11px] text-gray-500">{row.equipmentMeta}</div>
                               </div>
                             </div>
                           </td>
-                          <td className="px-3 py-3">
-                            <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-medium ${CATEGORY_BADGE[row.category]}`}>
+                          <td className="px-3 py-2.5 align-middle">
+                            <span className={`inline-flex max-w-[134px] items-center rounded-md px-2 py-1 text-[10px] font-semibold leading-none ${CATEGORY_BADGE[row.category]}`}>
                               {row.category}
                             </span>
                           </td>
-                          <td className="px-3 py-3 text-[13px] text-gray-500">{row.typeLabel}</td>
-                          <td className="px-3 py-3">
-                            <div className={`text-[13px] font-medium ${row.statusLabel === "Overdue" ? "text-[#DC2626]" : row.statusLabel === "Due Soon" || row.statusLabel === "Near Service" ? "text-[#D97706]" : "text-[#059669]"}`}>
+                          <td className="px-3 py-2.5 align-middle text-[12px] text-gray-600">{row.typeLabel}</td>
+                          <td className="px-3 py-2.5 align-middle">
+                            <div className={`text-[12px] font-semibold ${row.statusLabel === "Overdue" ? "text-[#DC2626]" : row.statusLabel === "Due Soon" || row.statusLabel === "Near Service" ? "text-[#D97706]" : "text-[#059669]"}`}>
                               {row.scheduleLabel}
                             </div>
-                            <div className="mt-1 text-[11px] text-gray-500">{row.scheduleMeta}</div>
+                            <div className="mt-0.5 text-[11px] text-gray-500">{row.scheduleMeta}</div>
                           </td>
-                          <td className="px-3 py-3">
-                            <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-medium ${STATUS_BADGE[row.statusLabel] ?? STATUS_BADGE.Scheduled}`}>
+                          <td className="px-3 py-2.5 align-middle">
+                            <span className={`inline-flex items-center rounded-md px-2 py-1 text-[10px] font-semibold leading-none ${STATUS_BADGE[row.statusLabel] ?? STATUS_BADGE.Scheduled}`}>
                               {row.statusLabel}
                             </span>
                           </td>
-                          <td className="px-3 py-3">
+                          <td className="px-3 py-2.5 align-middle">
                             <div className="flex items-center gap-2">
-                              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#66B2B2] text-[11px] font-semibold text-gray-900">
+                              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#66B2B2] text-[10px] font-semibold text-white">
                                 {row.technician
                                   .split(" ")
                                   .map((part) => part[0])
@@ -730,16 +879,22 @@ export default function ClientDashboard() {
                                   .slice(0, 2)
                                   .toUpperCase()}
                               </div>
-                              <span className="text-[13px] text-gray-500">{row.technician}</span>
+                              <span className="truncate text-[12px] text-gray-600">{row.technician}</span>
                             </div>
                           </td>
-                          <td className="px-3 py-3">
+                          <td className="px-3 py-2.5 align-middle">
                             <div className="flex justify-end gap-2">
-                              <button className="flex h-8 w-8 items-center justify-center rounded-md border border-[#66B2B2]/30 bg-blue-50/50 text-[#66B2B2]">
-                                <Eye className="h-4 w-4" />
+                              <button
+                                onClick={() => navigate("/client/history")}
+                                className="flex h-7 w-7 items-center justify-center rounded-md border border-gray-200 bg-white text-[#66B2B2] transition-colors hover:border-[#66B2B2]/40 hover:bg-[#66B2B2]/10"
+                              >
+                                <Eye className="h-3.5 w-3.5" />
                               </button>
-                              <button className="flex h-8 w-8 items-center justify-center rounded-md border border-gray-200 bg-white text-gray-400">
-                                <Calendar className="h-4 w-4" />
+                              <button
+                                onClick={() => navigate("/client/bookings")}
+                                className="flex h-7 w-7 items-center justify-center rounded-md border border-gray-200 bg-white text-gray-500 transition-colors hover:border-[#66B2B2]/40 hover:bg-[#66B2B2]/10 hover:text-[#66B2B2]"
+                              >
+                                <Calendar className="h-3.5 w-3.5" />
                               </button>
                             </div>
                           </td>
@@ -841,6 +996,43 @@ export default function ClientDashboard() {
           <div className="space-y-4">
             <section className="data-card rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
               <div className="mb-4 flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-gray-900">Active Packages</h3>
+                <button className="text-sm font-medium text-[#66B2B2]" onClick={() => navigate("/client/packages")}>Manage</button>
+              </div>
+              <div className="space-y-3">
+                {activePackages.slice(0, 3).map((pkg) => {
+                  const linkedEquipment = equipmentById.get(pkg.linkedEquipmentId ?? "");
+                  return (
+                    <button
+                      key={`${pkg.id}-${pkg.linkedEquipmentId ?? "unlinked"}`}
+                      onClick={() => navigate("/client/packages")}
+                      className="w-full rounded-xl border border-gray-200 bg-white p-3 text-left transition-colors hover:border-[#66B2B2]/40"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-semibold text-gray-900">{pkg.name}</div>
+                          <div className="mt-1 text-[11px] text-gray-500">
+                            {linkedEquipment ? `${linkedEquipment.name} - ${linkedEquipment.serialNumber}` : "No unit linked"}
+                          </div>
+                        </div>
+                        <span className="rounded-full bg-[#10B981]/15 px-2 py-1 text-[10px] font-semibold text-[#059669]">Active</span>
+                      </div>
+                    </button>
+                  );
+                })}
+                {activePackages.length === 0 && (
+                  <button
+                    onClick={() => navigate("/client/packages")}
+                    className="w-full rounded-xl border border-gray-200 bg-white p-4 text-left text-sm text-gray-500 hover:border-[#66B2B2]/40"
+                  >
+                    No active packages yet. Select a package to link equipment.
+                  </button>
+                )}
+              </div>
+            </section>
+
+            <section className="data-card rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+              <div className="mb-4 flex items-center justify-between">
                 <h3 className="text-lg font-semibold text-gray-900">Alerts &amp; Reminders</h3>
                 <button className="text-sm font-medium text-[#66B2B2]">View all</button>
               </div>
@@ -922,12 +1114,45 @@ export default function ClientDashboard() {
               record={showReport}
               equipment={equipment.find(e => e.id === showReport.equipmentId)}
               client={clientObj}
-              photos={servicePhotos.filter(p => p.serviceRecordId === showReport.id)}
+              photos={dashboardPhotos.filter(p => p.serviceRecordId === showReport.id)}
             />
           )}
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+function PortalMetricCard({
+  label,
+  value,
+  hint,
+  icon: Icon,
+  onClick,
+}: {
+  label: string;
+  value: number | string;
+  hint: string;
+  icon: React.ElementType;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="data-card rounded-lg border border-gray-200 bg-white p-4 text-left shadow-sm transition-colors hover:border-[#66B2B2]/50"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="truncate text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-500">{label}</div>
+          <div className="mt-2 truncate text-[22px] font-bold leading-none text-gray-900">{value}</div>
+          <div className="mt-1 text-[11px] text-gray-500">{hint}</div>
+        </div>
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[#66B2B2]/10 text-[#66B2B2]">
+          <Icon className="h-3.5 w-3.5" />
+        </div>
+      </div>
+    </button>
   );
 }
 
@@ -992,19 +1217,21 @@ function OverviewCard({
   footerTitle: string;
   footerSubtitle: string;
 }) {
+  const chartData = data.length > 0 ? data : [{ name: "No data", value: 1, color: "#E5E7EB" }];
+
   return (
-    <section className="data-card rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <h3 className="text-base font-semibold text-gray-900">{title}</h3>
-        <button className="text-sm font-medium text-[#66B2B2]">{linkLabel}</button>
+    <section className="data-card flex min-h-[326px] flex-col rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+      <div className="mb-4 flex min-h-[40px] items-start justify-between gap-3">
+        <h3 className="max-w-[220px] text-base font-semibold leading-5 text-gray-900">{title}</h3>
+        <button className="shrink-0 text-sm font-medium text-[#66B2B2]">{linkLabel}</button>
       </div>
 
-      <div className="grid grid-cols-[140px_minmax(0,1fr)] items-center gap-3">
-        <div className="relative h-[140px] w-[140px]">
+      <div className="grid min-h-[150px] grid-cols-[128px_minmax(0,1fr)] items-center gap-4">
+        <div className="relative h-[128px] w-[128px]">
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
-              <Pie data={data} dataKey="value" cx="50%" cy="50%" innerRadius={42} outerRadius={64} stroke="none" paddingAngle={3}>
-                {data.map((entry) => (
+              <Pie data={chartData} dataKey="value" cx="50%" cy="50%" innerRadius={40} outerRadius={58} stroke="none" paddingAngle={data.length > 0 ? 3 : 0}>
+                {chartData.map((entry) => (
                   <Cell key={entry.name} fill={entry.color} />
                 ))}
               </Pie>
@@ -1014,29 +1241,35 @@ function OverviewCard({
         </div>
 
         <div className="space-y-2">
-          {data.map((entry) => {
-            const percentage = total > 0 ? Math.round((entry.value / total) * 100) : 0;
-            return (
-              <div key={entry.name} className="flex items-center justify-between gap-3 text-xs">
-                <div className="flex items-center gap-2 text-gray-500">
-                  <span className="h-2 w-2 rounded-full" style={{ backgroundColor: entry.color }} />
-                  {entry.name}
+          {data.length > 0 ? (
+            data.map((entry) => {
+              const percentage = total > 0 ? Math.round((entry.value / total) * 100) : 0;
+              return (
+                <div key={entry.name} className="flex items-center justify-between gap-3 text-xs">
+                  <div className="flex min-w-0 items-center gap-2 text-gray-500">
+                    <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: entry.color }} />
+                    <span className="truncate">{entry.name}</span>
+                  </div>
+                  <div className="shrink-0 text-right text-gray-500">
+                    <span className="mr-1.5 text-gray-900">{entry.value}</span>
+                    ({percentage}%)
+                  </div>
                 </div>
-                <div className="text-right text-gray-500">
-                  <span className="mr-1.5 text-gray-900">{entry.value}</span>
-                  ({percentage}%)
-                </div>
-              </div>
-            );
-          })}
+              );
+            })
+          ) : (
+            <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-500">
+              No tracked items
+            </div>
+          )}
         </div>
       </div>
 
-      <div className="mt-4 flex items-start gap-3 rounded-xl border border-gray-200 bg-white p-3">
-        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-amber-50 text-[#D97706]">
+      <div className="mt-auto flex items-start gap-3 rounded-lg border border-gray-200 bg-white p-3">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-[#66B2B2]/10 text-[#D97706]">
           <FooterIcon className="h-4 w-4" />
         </div>
-        <div>
+        <div className="min-w-0">
           <div className="text-sm font-medium text-gray-900">{footerTitle}</div>
           <div className="mt-1 text-xs text-gray-500">{footerSubtitle}</div>
         </div>
@@ -1071,7 +1304,20 @@ function QuickSummaryCard({
   );
 }
 
-function ServiceReportView({ record, equipment, client, photos }: any) {
+function ServiceReportView({
+  record,
+  equipment,
+  client,
+  photos,
+}: {
+  record: ServiceRecord;
+  equipment?: Equipment;
+  client?: Client;
+  photos: ServicePhoto[];
+}) {
+  const beforePhotos = photos.filter((photo) => photo.type === "before");
+  const afterPhotos = photos.filter((photo) => photo.type === "after");
+
   return (
     <div className="p-2 animate-in fade-in zoom-in-95 duration-300">
       <div className="flex items-center justify-between border-b-2 border-gray-900 pb-6 mb-8">
@@ -1169,12 +1415,12 @@ function ServiceReportView({ record, equipment, client, photos }: any) {
                 <span className="text-[8px] font-bold text-[#66B2B2] uppercase">Before Service</span>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              {photos.filter((p: any) => p.type === 'before').map((p: any, i: number) => (
-                <div key={i} className="aspect-video rounded-xl overflow-hidden border-2 border-gray-100 shadow-md">
-                   <img src={p.url} className="w-full h-full object-cover" alt="Before" />
+              {beforePhotos.map((photo, index) => (
+                <div key={photo.id ?? index} className="aspect-video rounded-xl overflow-hidden border-2 border-gray-100 shadow-md">
+                   <img src={photo.url} className="w-full h-full object-cover" alt="Before" />
                 </div>
               ))}
-              {photos.filter((p: any) => p.type === 'before').length === 0 && <div className="col-span-2 py-8 text-center bg-gray-50 rounded-xl border border-dashed text-[10px] text-gray-400 font-bold uppercase tracking-widest">No Before Documentation</div>}
+              {beforePhotos.length === 0 && <div className="col-span-2 py-8 text-center bg-gray-50 rounded-xl border border-dashed text-[10px] text-gray-400 font-bold uppercase tracking-widest">No Before Documentation</div>}
             </div>
           </div>
           <div className="space-y-3">
@@ -1183,12 +1429,12 @@ function ServiceReportView({ record, equipment, client, photos }: any) {
                 <span className="text-[8px] font-bold text-green-500 uppercase">After Service</span>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              {photos.filter((p: any) => p.type === 'after').map((p: any, i: number) => (
-                <div key={i} className="aspect-video rounded-xl overflow-hidden border-2 border-gray-100 shadow-md">
-                   <img src={p.url} className="w-full h-full object-cover" alt="After" />
+              {afterPhotos.map((photo, index) => (
+                <div key={photo.id ?? index} className="aspect-video rounded-xl overflow-hidden border-2 border-gray-100 shadow-md">
+                   <img src={photo.url} className="w-full h-full object-cover" alt="After" />
                 </div>
               ))}
-              {photos.filter((p: any) => p.type === 'after').length === 0 && <div className="col-span-2 py-8 text-center bg-gray-50 rounded-xl border border-dashed text-[10px] text-gray-400 font-bold uppercase tracking-widest">No After Documentation</div>}
+              {afterPhotos.length === 0 && <div className="col-span-2 py-8 text-center bg-gray-50 rounded-xl border border-dashed text-[10px] text-gray-400 font-bold uppercase tracking-widest">No After Documentation</div>}
             </div>
           </div>
         </div>
