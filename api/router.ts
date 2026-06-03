@@ -65,6 +65,7 @@ type SeedServiceRecord = {
   afterNotes?: string;
   techSignature?: string;
   clientSignature?: string;
+  clientRepresentativeName?: string;
   // Timing & financials
   startTime?: string | null;
   endTime?: string | null;
@@ -812,6 +813,7 @@ export const appRouter = createRouter({
           afterNotes: z.string().optional(),
           techSignature: z.string().optional(),
           clientSignature: z.string().optional(),
+          clientRepresentativeName: z.string().optional(),
           // Timing & financials
           startTime: z.string().nullable().optional(),
           endTime: z.string().nullable().optional(),

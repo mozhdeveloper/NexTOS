@@ -2922,6 +2922,7 @@ function ExecutionModal({
         addServicePhoto,
         queuePendingSubmission,
     } = useOperationsStore();
+    const { user: execUser } = useAuthStore();
     const { logPartUsage, items: inventoryItems } = useInventoryStore();
     const { packages } = useBillingStore();
     // const { clients } = useCRMStore();
@@ -3052,7 +3053,7 @@ function ExecutionModal({
 
         updateServiceRecord(task.id, {
             status: "completed",
-            technician: draft.techSignature ? "Technician (Signed)" : "Pending",
+            technician: execUser?.name || "Technician",
             findings: draft.findings,
             workDone: draft.workDone,
             recommendation: draft.recommendations,
@@ -3061,6 +3062,7 @@ function ExecutionModal({
             hoursAtService: (draft.hoursAtService ?? parseFloat(String(storeEq?.hoursTotal))) || 0,
             techSignature: draft.techSignature,
             clientSignature: draft.clientSignature,
+            clientRepresentativeName: draft.clientRepresentativeName ?? "",
             safetyChecklist: draft.safetyChecklist,
             completedDate,
             equipmentId: effectiveEquipId,
@@ -3166,7 +3168,7 @@ function ExecutionModal({
             const submissionPayload = {
                 id: task.id,
                 completedDate,
-                technician: draft.techSignature ? "Technician (Signed)" : "Pending",
+                technician: execUser?.name || "Technician",
                 // Core record fields (for upsert)
                 seedEquipmentId: meta._seedEqId ?? "",
                 pmsConfigIndex: meta._pmsIdx ?? 0,
@@ -3200,6 +3202,7 @@ function ExecutionModal({
                 afterNotes: draft.afterNotes,
                 techSignature: draft.techSignature,
                 clientSignature: draft.clientSignature,
+                clientRepresentativeName: draft.clientRepresentativeName ?? "",
                 startTime: draft.travelStartTime ?? null,
                 endTime: completionTime,
                 duration: null,
@@ -3502,13 +3505,25 @@ function ExecutionModal({
 
                             {currentStep === 6 && (
                                 <div className="space-y-8 animate-in fade-in duration-300">
-                                    <SignaturePad 
+                                    <SignaturePad
                                         label="Technician Verification"
                                         value={draft.techSignature}
                                         onChange={(sig) => updateDraftExecution(task.id, { techSignature: sig })}
                                         caption="I certify that the listed work has been completed to specification."
                                     />
-                                    <SignaturePad 
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-1">
+                                            Client Representative Name
+                                        </label>
+                                        <input
+                                            type="text"
+                                            placeholder="Name of person signing on behalf of client"
+                                            value={draft.clientRepresentativeName ?? ""}
+                                            onChange={(e) => updateDraftExecution(task.id, { clientRepresentativeName: e.target.value })}
+                                            className="w-full h-10 px-3 rounded-xl border border-gray-200 text-sm focus:border-[#66B2B2] focus:ring-2 focus:ring-[#66B2B2]/10 outline-none"
+                                        />
+                                    </div>
+                                    <SignaturePad
                                         label="Client Acceptance"
                                         value={draft.clientSignature}
                                         onChange={(sig) => updateDraftExecution(task.id, { clientSignature: sig })}

@@ -62,6 +62,7 @@ export interface DraftExecution {
   recommendations?: string;
   techSignature?: string;
   clientSignature?: string;
+  clientRepresentativeName?: string;
   // Timestamps
   travelStartTime?: string;
   arrivalTime?: string;

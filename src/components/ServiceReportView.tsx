@@ -85,7 +85,6 @@ export function ServiceReportView({ record, equipment, client, photos }: Service
   const serviceTimeDisplay = formatElapsed(arrivalTime, completionTime);
   const travelStartDisplay = formatTime(travelStartTime);
   const arrivalDisplay = formatTime(arrivalTime);
-  const completionDisplay = formatTime(completionTime);
 
   const hasJourney = !!(travelStartTime || arrivalTime || completionTime || technicianAddress || equipmentSiteAddress || estimatedArrival);
 
@@ -113,9 +112,19 @@ export function ServiceReportView({ record, equipment, client, photos }: Service
   const hasSignatures = hasTechSig || hasClientSig;
   const hasSummary = hasFindings || hasWorkDone || hasRecommendation || hasPartsUsed;
 
-  const completedDateDisplay = record.completedDate
-    ? new Date(record.completedDate).toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" })
-    : null;
+  const formatDateWithPipe = (iso: string | null | undefined): string | null => {
+    if (!iso) return null;
+    try {
+      const d = new Date(iso);
+      if (Number.isNaN(d.getTime())) return null;
+      const date = d.toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" });
+      const time = d.toLocaleTimeString("en-PH", { hour: "numeric", minute: "2-digit", hour12: true });
+      return `${date} | ${time}`;
+    } catch { return null; }
+  };
+
+  const completedDateDisplay = formatDateWithPipe(record.completedDate);
+  const scheduledDateDisplay = formatDateWithPipe(record.scheduledDate);
 
   const serviceIntervalDisplay =
     record.serviceInterval && record.serviceIntervalUnit
@@ -180,6 +189,12 @@ export function ServiceReportView({ record, equipment, client, photos }: Service
                 <span className="text-gray-800 font-bold text-right max-w-[60%]">{clientName}</span>
               </div>
             )}
+            {record.clientRepresentativeName && (
+              <div className="flex justify-between text-xs border-t border-gray-100 pt-1.5">
+                <span className="text-gray-400 font-semibold">Client Representative</span>
+                <span className="text-gray-800 font-bold text-right max-w-[60%]">{record.clientRepresentativeName}</span>
+              </div>
+            )}
             {equipmentStatus && (
               <div className="flex justify-between items-center text-xs border-t border-gray-100 pt-1.5">
                 <span className="text-gray-400 font-semibold">Status at Service</span>
@@ -218,6 +233,12 @@ export function ServiceReportView({ record, equipment, client, photos }: Service
               <div className="flex justify-between text-xs border-t border-gray-100 pt-1.5">
                 <span className="text-gray-400 font-semibold">Technician</span>
                 <span className="text-gray-800 font-bold">{record.technician}</span>
+              </div>
+            )}
+            {scheduledDateDisplay && (
+              <div className="flex justify-between text-xs border-t border-gray-100 pt-1.5">
+                <span className="text-gray-400 font-semibold">Scheduled</span>
+                <span className="text-gray-800 font-bold">{scheduledDateDisplay}</span>
               </div>
             )}
             {completedDateDisplay && (
@@ -317,13 +338,6 @@ export function ServiceReportView({ record, equipment, client, photos }: Service
               )}
             </div>
 
-            {/* Completion time */}
-            {completionDisplay && (
-              <div className="flex justify-between items-center text-xs border-t border-gray-100 pt-2.5">
-                <span className="text-gray-400 font-semibold">Completed At</span>
-                <span className="text-gray-800 font-bold font-mono-tech">{completionDisplay}</span>
-              </div>
-            )}
           </div>
         )}
 
@@ -492,7 +506,7 @@ export function ServiceReportView({ record, equipment, client, photos }: Service
                   <div className="mt-4 text-center">
                     <div className="h-px w-2/3 mx-auto bg-gray-200 mb-1.5" />
                     <span className="text-[9px] text-gray-500 font-bold uppercase tracking-tight">
-                      {clientName || "Authorized Rep"}
+                      {record.clientRepresentativeName || "Authorized Rep"}
                     </span>
                   </div>
                 </div>
