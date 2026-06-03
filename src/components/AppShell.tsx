@@ -216,7 +216,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-auto bg-gray-100 relative">
+      <main className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden bg-gray-100 relative">
         <div className="relative z-10 p-5">{children}</div>
       </main>
     </div>
