@@ -55,6 +55,8 @@ export interface Lead {
   score: number;
   assignedTo: string;
   notes: string;
+  convertedToDealId?: number;
+  convertedAt?: string;
   createdAt: string;
 }
 

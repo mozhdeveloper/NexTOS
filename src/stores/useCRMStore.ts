@@ -21,6 +21,7 @@ interface CRMState {
   updateTask: (id: number, data: Partial<Task>) => void;
   deleteTask: (id: number) => void;
   addLead: (lead: Omit<Lead, "id" | "createdAt">) => void;
+  updateLead: (id: number, data: Partial<Lead>) => void;
   convertLeadToDeal: (leadId: number, dealData: Omit<Deal, "id" | "createdAt" | "clientId">) => void;
   getClientDeals: (clientId: number) => Deal[];
   getClientTasks: (clientId: number) => Task[];
@@ -205,6 +206,12 @@ export const useCRMStore = create<CRMState>()(
         set((state) => ({ leads: [...state.leads, newLead] }));
       },
 
+      updateLead: (id, data) => {
+        set((state) => ({
+          leads: state.leads.map((lead) => (lead.id === id ? { ...lead, ...data } : lead)),
+        }));
+      },
+
       convertLeadToDeal: (leadId, dealData) => {
         const lead = get().leads.find((l) => l.id === leadId);
         if (!lead) return;
@@ -214,20 +221,21 @@ export const useCRMStore = create<CRMState>()(
 
         if (!effectiveClientId) {
           const newClientId = Date.now();
+          const prospectName = lead.company || lead.name || "New Prospect";
           const newClient: Client = {
             id: newClientId,
-            companyName: `New Client (${lead.source})`,
+            companyName: prospectName,
             industry: "Unknown",
-            contactName: "TBD",
-            email: "tbd@example.com",
-            phone: "TBD",
+            contactName: lead.name || "TBD",
+            email: lead.email || "tbd@example.com",
+            phone: lead.phone || "TBD",
             status: "prospect",
             address: "TBD",
             city: "TBD",
             country: "TBD",
             contractValue: 0,
             lastContact: new Date().toISOString(),
-            notes: `Converted from lead. ${lead.notes}`,
+            notes: `Converted from lead. ${lead.notes || lead.message || ""}`,
             createdAt: new Date().toISOString(),
           };
           set((state) => ({ clients: [...state.clients, newClient] }));
@@ -240,11 +248,20 @@ export const useCRMStore = create<CRMState>()(
           clientId: effectiveClientId,
           createdAt: new Date().toISOString(),
         };
+        const convertedAt = new Date().toISOString();
 
         set((state) => ({
           deals: [...state.deals, newDeal],
           leads: state.leads.map((l) =>
-            l.id === leadId ? { ...l, status: "qualified" as const, clientId: effectiveClientId } : l
+            l.id === leadId
+              ? {
+                  ...l,
+                  status: "qualified" as const,
+                  clientId: effectiveClientId,
+                  convertedToDealId: newDeal.id,
+                  convertedAt,
+                }
+              : l
           ),
         }));
       },
