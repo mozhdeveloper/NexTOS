@@ -15,7 +15,7 @@ import {
   Camera,
   Wrench,
   FileText,
-
+  LayoutDashboard,
   Printer,
   X,
   CheckCircle2,
@@ -62,8 +62,9 @@ import {
 
 import { useInventoryStore } from "@/stores/useInventoryStore";
 import { ServiceReportView } from "@/components/ServiceReportView";
+import { DashboardTab } from "@/components/services/DashboardTab";
 
-type TabType = "tasks" | "equipment" | "reports" | "new" | "scheduled-maintenance";
+type TabType = "dashboard" | "tasks" | "equipment" | "reports" | "new" | "scheduled-maintenance";
 
 type ScheduledMaintenanceEntry = {
   id: string;
@@ -178,8 +179,8 @@ export default function Services() {
   useBillingStore();
 
   const [activeTab, setActiveTabRaw] = useState<TabType>(() => {
-    try { return (sessionStorage.getItem("nextos-services-tab") as TabType) ?? "tasks"; }
-    catch { return "tasks"; }
+    try { return (sessionStorage.getItem("nextos-services-tab") as TabType) ?? "dashboard"; }
+    catch { return "dashboard"; }
   });
   const setActiveTab = (tab: TabType) => {
     try { sessionStorage.setItem("nextos-services-tab", tab); } catch {}
@@ -195,11 +196,11 @@ export default function Services() {
 
   const isTech = user?.role === "tech";
   const allowedTabs = isTech
-    ? (["tasks", "equipment", "scheduled-maintenance", "reports", "new"] as TabType[])
-    : (["tasks", "equipment", "scheduled-maintenance", "reports"] as TabType[]);
+    ? (["dashboard", "tasks", "equipment", "scheduled-maintenance", "reports", "new"] as TabType[])
+    : (["dashboard", "tasks", "equipment", "scheduled-maintenance", "reports"] as TabType[]);
   useEffect(() => {
     if (!allowedTabs.includes(activeTab)) {
-      setActiveTab("tasks");
+      setActiveTab("dashboard");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -666,6 +667,17 @@ export default function Services() {
   };
 
   const activeTasks = serviceRecords.filter(r => r.status === "scheduled" || r.status === "in_progress");
+
+  // Merge session store records with database records for comprehensive dashboard statistics
+  const allServiceRecords = useMemo(() => {
+    const seedRecords = seedServiceRecordsData?.records ?? [];
+    const recordMap = new Map();
+    // Start with database records
+    seedRecords.forEach(r => recordMap.set(r.id, r));
+    // Overwrite/add with current session records (higher priority for live status)
+    serviceRecords.forEach(r => recordMap.set(r.id, r));
+    return Array.from(recordMap.values()) as ServiceRecord[];
+  }, [serviceRecords, seedServiceRecordsData]);
 
   const filteredSeedEquipment = liveEquipment.filter((s) =>
     searchQuery === "" ||
@@ -1337,6 +1349,7 @@ export default function Services() {
       {/* Tabs */}
       <div className="flex gap-1 border-b border-gray-200">
         {[
+          { id: "dashboard" as TabType, label: "Dashboard", icon: LayoutDashboard },
           { id: "tasks" as TabType, label: isTech ? "My Tasks" : "Tasks", icon: ClipboardList, count: activeTasks.length },
           { id: "equipment" as TabType, label: "Equipment", icon: Package },
           { id: "scheduled-maintenance" as TabType, label: "Scheduled Maintenance", icon: CalendarClock },
@@ -1365,6 +1378,17 @@ export default function Services() {
 
       {/* Tab Content */}
       <div className="min-h-[400px]">
+        {/* Dashboard Tab */}
+        {activeTab === "dashboard" && (
+          <DashboardTab
+            activeTasks={activeTasks}
+            allScheduledMaintenance={allScheduledMaintenance}
+            serviceRecords={allServiceRecords}
+            onViewReport={(r) => setShowReport(r as any)}
+            onSetActiveTab={setActiveTab}
+          />
+        )}
+
         {/* Tasks Tab */}
         {activeTab === "tasks" && (
           <>
