@@ -49,8 +49,21 @@ import {
 } from "@/components/ui/select";
 
 type TabType = "dashboard" | "clients" | "pipeline" | "tasks" | "leads" | "performance";
+type LeadListView = "active" | "converted" | "lost";
 
 const STATUS_ORDER: Record<string, number> = { overdue: 0, in_progress: 1, pending: 2 };
+const LEAD_SOURCES = ["Website", "Referral", "LinkedIn", "Cold Call", "Email Campaign", "Trade Show", "Partner", "Inbound Call"];
+const LEAD_INQUIRY_TYPES: NonNullable<Lead["inquiryType"]>[] = ["sales", "quote", "pms", "equipment", "general"];
+const CRM_MODAL_VIEWPORT_CLASS = "fixed inset-0 z-50 flex h-dvh w-dvw items-center justify-center overflow-hidden p-5";
+const CRM_MODAL_PANEL_CLASS = "relative z-10 w-full max-w-md max-h-[90vh] overflow-y-auto animate-in fade-in-0 zoom-in-95 duration-200";
+const CRM_MODAL_PANEL_SM_CLASS = "relative z-10 w-full max-w-sm max-h-[90vh] overflow-y-auto animate-in fade-in-0 zoom-in-95 duration-200";
+const CRM_MODAL_BACKDROP_CLASS = "fixed inset-0 h-dvh w-dvw bg-black/50 backdrop-blur-sm animate-in fade-in-0 duration-200";
+const CRM_MODAL_CARD_CLASS = "bg-white border border-gray-200 rounded-2xl p-6 shadow-2xl";
+const CRM_MODAL_LABEL_CLASS = "text-[10px] text-gray-400 font-black uppercase tracking-widest ml-1";
+const CRM_MODAL_INPUT_CLASS = "h-12 bg-white border-gray-200 focus:ring-[#66B2B2]/20 text-gray-900";
+const CRM_MODAL_SELECT_CLASS = "h-12 w-full bg-white border-gray-200 focus:ring-[#66B2B2]/20 text-gray-900";
+const CRM_MODAL_CANCEL_CLASS = "rounded-xl h-12 font-bold border-gray-200";
+const CRM_MODAL_SUBMIT_CLASS = "bg-[#66B2B2] text-white hover:bg-[#5A9E9E] font-bold rounded-xl h-12";
 
 export default function CRM() {
   const { user } = useAuthStore();
@@ -80,6 +93,19 @@ export default function CRM() {
   const [dealValue, setDealValue] = useState("");
   const [dealStage, setDealStage] = useState<DealStage>("inquiry");
   const [dealClientId, setDealClientId] = useState<number | null>(clients[0]?.id ?? null);
+
+  // Lead modal state
+  const [leadModalOpen, setLeadModalOpen] = useState(false);
+  const [leadListView, setLeadListView] = useState<LeadListView>("active");
+  const [leadCompany, setLeadCompany] = useState("");
+  const [leadName, setLeadName] = useState("");
+  const [leadSource, setLeadSource] = useState("Website");
+  const [leadEmail, setLeadEmail] = useState("");
+  const [leadPhone, setLeadPhone] = useState("");
+  const [leadInquiryType, setLeadInquiryType] = useState<NonNullable<Lead["inquiryType"]>>("sales");
+  const [leadPriority, setLeadPriority] = useState<Lead["priority"]>("medium");
+  const [leadAssignedTo, setLeadAssignedTo] = useState(seedStaff.find((s) => ["sales", "admin"].includes(s.role?.toLowerCase()))?.name || seedStaff[0]?.name || "Sales");
+  const [leadNotes, setLeadNotes] = useState("");
 
   // Deal action menu and modals
   const [openMenuDealId, setOpenMenuDealId] = useState<number | null>(null);
@@ -285,6 +311,63 @@ export default function CRM() {
     setSelectedActionDeal(null);
   };
 
+  const resetLeadForm = () => {
+    setLeadCompany("");
+    setLeadName("");
+    setLeadSource("Website");
+    setLeadEmail("");
+    setLeadPhone("");
+    setLeadInquiryType("sales");
+    setLeadPriority("medium");
+    setLeadAssignedTo(seedStaff.find((s) => ["sales", "admin"].includes(s.role?.toLowerCase()))?.name || seedStaff[0]?.name || "Sales");
+    setLeadNotes("");
+  };
+
+  const getLeadDealTitle = (lead: Lead) => {
+    const label = lead.inquiryType ? lead.inquiryType.toUpperCase() === "PMS" ? "PMS" : lead.inquiryType[0].toUpperCase() + lead.inquiryType.slice(1) : "General";
+    return `${label} Inquiry - ${lead.company || lead.name || "New Prospect"}`;
+  };
+
+  const isLeadConverted = (lead: Lead) => {
+    return Boolean(lead.convertedToDealId || lead.convertedAt);
+  };
+
+  const handleAddLead = () => {
+    const score = Math.floor(Math.random() * 81) + 20;
+    useCRMStore.getState().addLead({
+      clientId: null,
+      company: leadCompany.trim(),
+      name: leadName.trim(),
+      source: leadSource,
+      email: leadEmail.trim(),
+      phone: leadPhone.trim(),
+      inquiryType: leadInquiryType,
+      status: score >= 95 ? "qualified" : "new",
+      priority: leadPriority,
+      score,
+      assignedTo: leadAssignedTo,
+      notes: leadNotes.trim() || leadCompany.trim() || leadName.trim() || "New lead",
+    });
+    setLeadModalOpen(false);
+    resetLeadForm();
+  };
+
+  const handleUpdateLeadStatus = (leadId: number, status: Lead["status"]) => {
+    useCRMStore.getState().updateLead(leadId, { status });
+  };
+
+  const handleConvertLead = (lead: Lead) => {
+    if (isLeadConverted(lead)) return;
+    useCRMStore.getState().convertLeadToDeal(lead.id, {
+      title: getLeadDealTitle(lead),
+      value: 0,
+      stage: "inquiry",
+      probability: 20,
+      expectedClose: new Date().toISOString(),
+      assignedTo: lead.assignedTo || user?.name || "Sales",
+    });
+  };
+
   const handleDragStart = (dealId: number) => {
     setDraggingDeal(dealId);
   };
@@ -315,8 +398,36 @@ export default function CRM() {
     );
   });
 
+  const filteredLeads = leads.filter((lead) => {
+    const client = clients.find((c) => c.id === lead.clientId);
+    const haystack = [
+      lead.source,
+      lead.notes,
+      lead.company,
+      lead.name,
+      lead.email,
+      lead.phone,
+      client?.companyName,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    const matchesSearch = searchQuery === "" || haystack.includes(searchQuery.toLowerCase());
+    const converted = isLeadConverted(lead);
+    const matchesView =
+      leadListView === "lost"
+        ? lead.status === "lost" && !converted
+        : leadListView === "converted"
+          ? converted
+          : lead.status !== "lost" && !converted;
+    return matchesSearch && matchesView;
+  });
+  const activeLeadCount = leads.filter((lead) => lead.status !== "lost" && !isLeadConverted(lead)).length;
+  const convertedLeadCount = leads.filter((lead) => isLeadConverted(lead)).length;
+  const lostLeadCount = leads.filter((lead) => lead.status === "lost" && !isLeadConverted(lead)).length;
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 overflow-x-hidden">
       {selectedClientId && selectedClient && clientData ? (
         <CliecntProfile 
           client={selectedClient} 
@@ -337,71 +448,98 @@ export default function CRM() {
             }
           />
 
-          {/* Search Bar */}
-          {/* Search Bar & Filters */}
-          {activeTab !== "dashboard" && activeTab !== "performance" && (
-            <div className="flex items-center gap-3">
-              <div className="relative flex-1 max-w-xs">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-600" />
-                <Input
-                  placeholder={`Search ${activeTab === 'pipeline' ? 'deals' : activeTab}...`}
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-8 h-8 bg-white border-gray-200 text-black text-xs placeholder:text-gray-400"
-                />
-              </div>
-              {activeTab === "clients" && (
-                <Select value={clientFilter} onValueChange={setClientFilter}>
-                  <SelectTrigger className="h-8 w-36 bg-white border-gray-200 text-black text-xs">
-                    <Filter className="w-3 h-3 mr-1" />
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="bg-white border-gray-200">
-                    <SelectItem value="all" className="text-xs text-black">All Status</SelectItem>
-                    <SelectItem value="active" className="text-xs text-black">Active</SelectItem>
-                    <SelectItem value="prospect" className="text-xs text-black">Prospect</SelectItem>
-                    <SelectItem value="inactive" className="text-xs text-black">Inactive</SelectItem>
-                  </SelectContent>
-                </Select>
-              )}
-            </div>
-          )}
-
           {/* Tabs */}
-          <div className="flex gap-1 border-b border-gray-200 pb-0">
-            {(
-              [
-                { id: "dashboard" as TabType, label: "Dashboard", icon: LayoutDashboard },
-                { id: "pipeline" as TabType, label: "Pipeline", icon: TrendingUp },
-                { id: "clients" as TabType, label: "Clients", icon: Building2 },
-                { id: "leads" as TabType, label: "Leads", icon: ArrowRightLeft },
-                { id: "tasks" as TabType, label: "Tasks", icon: Clock },
-              ] as const
-            ).map((tab) => (
+          <div className="flex items-center justify-between gap-3 border-b border-gray-200 pb-0">
+            <div className="flex min-w-0 shrink-0 gap-1">
+              {(
+                [
+                  { id: "dashboard" as TabType, label: "Dashboard", icon: LayoutDashboard },
+                  { id: "pipeline" as TabType, label: "Pipeline", icon: TrendingUp },
+                  { id: "clients" as TabType, label: "Clients", icon: Building2 },
+                  { id: "leads" as TabType, label: "Leads", icon: ArrowRightLeft },
+                  { id: "tasks" as TabType, label: "Tasks", icon: Clock },
+                ] as const
+              ).map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium transition-all border-b-2 ${
+                    activeTab === tab.id
+                      ? "border-[#66B2B2] text-[#66B2B2] bg-[#66B2B2]/5"
+                      : "border-transparent text-gray-600 hover:text-black"
+                  }`}
+                >
+                  <tab.icon className="w-3.5 h-3.5" />
+                  {tab.label}
+                </button>
+              ))}
               <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => setActiveTab("performance")}
                 className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium transition-all border-b-2 ${
-                  activeTab === tab.id
+                  activeTab === "performance"
                     ? "border-[#66B2B2] text-[#66B2B2] bg-[#66B2B2]/5"
                     : "border-transparent text-gray-600 hover:text-black"
                 }`}
               >
-                <tab.icon className="w-3.5 h-3.5" />
-                {tab.label}
+                <TrendingUp className="w-3.5 h-3.5" />
+                Performance
               </button>
-            ))}
-            <button
-              onClick={() => setActiveTab("performance")}
-              className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium transition-all border-b-2 ${
-                activeTab === "performance"
-                  ? "border-[#66B2B2] text-[#66B2B2] bg-[#66B2B2]/5"
-                  : "border-transparent text-gray-600 hover:text-black"
-              }`}
-            >
-              <TrendingUp className="w-3.5 h-3.5" />
-              Performance
-            </button>
+            </div>
+
+            {activeTab !== "dashboard" && activeTab !== "performance" && (
+              <div className="flex min-w-0 flex-1 items-center justify-end gap-2 pb-1.5">
+                {activeTab === "clients" && (
+                  <Select value={clientFilter} onValueChange={setClientFilter}>
+                    <SelectTrigger className="h-8 w-36 rounded-xl bg-white border-gray-200 text-black text-xs">
+                      <Filter className="w-3 h-3 mr-1" />
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="bg-white border-gray-200">
+                      <SelectItem value="all" className="text-xs text-black">All Status</SelectItem>
+                      <SelectItem value="active" className="text-xs text-black">Active</SelectItem>
+                      <SelectItem value="prospect" className="text-xs text-black">Prospect</SelectItem>
+                      <SelectItem value="inactive" className="text-xs text-black">Inactive</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
+                {activeTab === "leads" && (
+                  <div className="flex items-center gap-1 rounded-xl border border-gray-200 bg-white p-0.5">
+                    {(["active", "converted", "lost"] as const).map((view) => {
+                      const selected = leadListView === view;
+                      const count = view === "active" ? activeLeadCount : view === "converted" ? convertedLeadCount : lostLeadCount;
+                      return (
+                        <button
+                          key={view}
+                          type="button"
+                          onClick={() => setLeadListView(view)}
+                          className={`h-7 rounded-lg px-3 text-xs font-medium transition-colors ${
+                            selected
+                              ? view === "lost"
+                                ? "bg-[#EF4444]/10 text-[#EF4444]"
+                                : view === "converted"
+                                  ? "bg-[#10B981]/10 text-[#10B981]"
+                                  : "bg-[#66B2B2]/10 text-[#66B2B2]"
+                              : "text-gray-600 hover:text-black"
+                          }`}
+                        >
+                          {view === "active" ? "Active" : view === "converted" ? "Converted" : "Lost"}
+                          <span className="ml-1 font-mono-tech">{count}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+                <div className="relative w-80 max-w-[36vw] shrink-0">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-600" />
+                  <Input
+                    placeholder={`Search ${activeTab === "pipeline" ? "deals" : activeTab}...`}
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-8 h-8 rounded-xl bg-white border-gray-200 text-black text-xs placeholder:text-gray-400"
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Dashboard Tab */}
@@ -422,7 +560,7 @@ export default function CRM() {
                   <TrendingUp className="w-4 h-4 text-[#66B2B2]" />
                   <h3 className="text-sm font-semibold text-black">Sales Pipeline</h3>
                 </div>
-                <Button onClick={() => setDealModalOpen(true)} className="h-8 bg-[#66B2B2] hover:bg-[#66B2B2]/80 text-white text-xs font-bold">
+                <Button onClick={() => setDealModalOpen(true)} className="h-8 rounded-xl bg-[#66B2B2] hover:bg-[#66B2B2]/80 text-white text-xs font-bold">
                   <Plus className="w-3.5 h-3.5 mr-1.5" />
                   New Deal
                 </Button>
@@ -487,12 +625,12 @@ export default function CRM() {
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-semibold text-black">All Clients</h3>
-                <Button onClick={() => setAddClientOpen(true)} className="h-8 bg-[#66B2B2] hover:bg-[#66B2B2]/80 text-white text-xs font-bold">
+                <Button onClick={() => setAddClientOpen(true)} className="h-8 rounded-xl bg-[#66B2B2] hover:bg-[#66B2B2]/80 text-white text-xs font-bold">
                   <Plus className="w-3.5 h-3.5 mr-1.5" />
                   Add Client
                 </Button>
               </div>
-              <div className="data-card overflow-auto">
+              <div className="data-card overflow-auto rounded-xl">
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="bg-gray-50">
@@ -535,19 +673,48 @@ export default function CRM() {
           {/* Leads Tab */}
           {activeTab === "leads" && (
             <div className="space-y-3">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {leads
-                  .filter(
-                    (l) =>
-                      (searchQuery === "" ||
-                      l.source.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                      l.notes.toLowerCase().includes(searchQuery.toLowerCase())) &&
-                      (l.status !== 'lost' && l.status !== 'qualified')
-                  )
-                  .map((lead) => (
-                    <LeadCard key={lead.id} lead={lead} client={clients.find((c) => c.id === lead.clientId)} />
-                  ))}
+              <div className="flex items-center justify-between px-1">
+                <div className="flex items-center gap-2">
+                  {leadListView === "lost" ? (
+                    <AlertTriangle className="w-4 h-4 text-[#EF4444]" />
+                  ) : leadListView === "converted" ? (
+                    <CheckCircle2 className="w-4 h-4 text-[#10B981]" />
+                  ) : (
+                    <ArrowRightLeft className="w-4 h-4 text-[#66B2B2]" />
+                  )}
+                  <h3 className="text-sm font-semibold text-black">
+                    {leadListView === "active" ? "Active Leads" : leadListView === "converted" ? "Converted Leads" : "Lost Leads"}
+                  </h3>
+                  {leadListView !== "active" && (
+                    <span className={`rounded px-2 py-0.5 text-[10px] font-medium ${
+                      leadListView === "converted" ? "bg-[#10B981]/10 text-[#10B981]" : "bg-[#EF4444]/10 text-[#EF4444]"
+                    }`}>
+                      {leadListView === "converted" ? "Done" : "Archived"}
+                    </span>
+                  )}
+                </div>
+                <Button onClick={() => setLeadModalOpen(true)} className="h-8 rounded-xl bg-[#66B2B2] hover:bg-[#66B2B2]/80 text-white text-xs font-bold">
+                  <Plus className="w-3.5 h-3.5 mr-1.5" />
+                  Add Lead
+                </Button>
               </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {filteredLeads.map((lead) => (
+                  <LeadCard
+                    key={lead.id}
+                    lead={lead}
+                    client={clients.find((c) => c.id === lead.clientId)}
+                    isConverted={isLeadConverted(lead)}
+                    onStatusChange={handleUpdateLeadStatus}
+                    onConvert={handleConvertLead}
+                  />
+                ))}
+              </div>
+              {filteredLeads.length === 0 && (
+                <div className="data-card p-6 text-center text-xs text-gray-600">
+                  No {leadListView === "active" ? "active" : leadListView === "converted" ? "converted" : "lost"} leads found.
+                </div>
+              )}
             </div>
           )}
 
@@ -562,11 +729,11 @@ export default function CRM() {
                       placeholder="Search tasks..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      className="pl-8 h-8 bg-white border-gray-200 text-black text-xs placeholder:text-gray-400"
+                      className="pl-8 h-8 rounded-xl bg-white border-gray-200 text-black text-xs placeholder:text-gray-400"
                     />
                   </div>
                 </div>
-                <Button onClick={() => setTaskModalOpen(true)} className="h-8 bg-[#66B2B2] hover:bg-[#66B2B2]/80 text-white text-xs font-bold">
+                <Button onClick={() => setTaskModalOpen(true)} className="h-8 rounded-xl bg-[#66B2B2] hover:bg-[#66B2B2]/80 text-white text-xs font-bold">
                   <Plus className="w-3 h-3 mr-2" />
                   Add Task
                 </Button>
@@ -581,7 +748,7 @@ export default function CRM() {
                 </div>
               )}
 
-              <div className="data-card overflow-auto">
+              <div className="data-card overflow-auto rounded-xl">
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="bg-gray-50">
@@ -628,27 +795,116 @@ export default function CRM() {
         </>
       )}
 
+      {/* Lead Modal */}
+      {leadModalOpen && (
+        <div className={CRM_MODAL_VIEWPORT_CLASS}>
+          <div className={CRM_MODAL_BACKDROP_CLASS} onClick={() => setLeadModalOpen(false)} />
+          <div className={CRM_MODAL_PANEL_CLASS}>
+            <div className={CRM_MODAL_CARD_CLASS}>
+              <button onClick={() => setLeadModalOpen(false)} className="absolute top-5 right-5 text-gray-500 hover:text-gray-900"><X className="w-4 h-4" /></button>
+              <h3 className="text-lg font-bold text-gray-900 border-b border-gray-50 pb-4 mb-4">Add Lead</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className={CRM_MODAL_LABEL_CLASS}>Company Name</label>
+                  <Input value={leadCompany} onChange={(e) => setLeadCompany(e.target.value)} className={CRM_MODAL_INPUT_CLASS} />
+                </div>
+                <div className="space-y-1">
+                  <label className={CRM_MODAL_LABEL_CLASS}>Person Name</label>
+                  <Input value={leadName} onChange={(e) => setLeadName(e.target.value)} className={CRM_MODAL_INPUT_CLASS} />
+                </div>
+                <div className="space-y-1">
+                  <label className={CRM_MODAL_LABEL_CLASS}>Source</label>
+                  <Select value={leadSource} onValueChange={setLeadSource}>
+                    <SelectTrigger className={CRM_MODAL_SELECT_CLASS}><SelectValue /></SelectTrigger>
+                    <SelectContent className="bg-white border-gray-200">
+                      {LEAD_SOURCES.map((source) => (
+                        <SelectItem key={source} value={source} className="text-xs text-black">{source}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <label className={CRM_MODAL_LABEL_CLASS}>Inquiry Type</label>
+                  <Select value={leadInquiryType} onValueChange={(v) => setLeadInquiryType(v as NonNullable<Lead["inquiryType"]>)}>
+                    <SelectTrigger className={CRM_MODAL_SELECT_CLASS}><SelectValue /></SelectTrigger>
+                    <SelectContent className="bg-white border-gray-200">
+                      {LEAD_INQUIRY_TYPES.map((type) => (
+                        <SelectItem key={type} value={type} className="text-xs text-black">{type.toUpperCase() === "PMS" ? "PMS" : type[0].toUpperCase() + type.slice(1)}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <label className={CRM_MODAL_LABEL_CLASS}>Email</label>
+                  <Input type="email" value={leadEmail} onChange={(e) => setLeadEmail(e.target.value)} className={CRM_MODAL_INPUT_CLASS} />
+                </div>
+                <div className="space-y-1">
+                  <label className={CRM_MODAL_LABEL_CLASS}>Phone</label>
+                  <Input value={leadPhone} onChange={(e) => setLeadPhone(e.target.value)} className={CRM_MODAL_INPUT_CLASS} />
+                </div>
+                <div className="space-y-1">
+                  <label className={CRM_MODAL_LABEL_CLASS}>Priority</label>
+                  <Select value={leadPriority} onValueChange={(v) => setLeadPriority(v as Lead["priority"])}>
+                    <SelectTrigger className={CRM_MODAL_SELECT_CLASS}><SelectValue /></SelectTrigger>
+                    <SelectContent className="bg-white border-gray-200">
+                      <SelectItem value="low" className="text-xs text-black">Low</SelectItem>
+                      <SelectItem value="medium" className="text-xs text-black">Medium</SelectItem>
+                      <SelectItem value="high" className="text-xs text-black">High</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <label className={CRM_MODAL_LABEL_CLASS}>Assigned To</label>
+                  <Select value={leadAssignedTo} onValueChange={setLeadAssignedTo}>
+                    <SelectTrigger className={CRM_MODAL_SELECT_CLASS}><SelectValue /></SelectTrigger>
+                    <SelectContent className="bg-white border-gray-200">
+                      {seedStaff.map((staff) => (
+                        <SelectItem key={staff.id} value={staff.name} className="text-xs text-black">{staff.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1 md:col-span-2">
+                  <label className={CRM_MODAL_LABEL_CLASS}>Notes</label>
+                  <textarea
+                    value={leadNotes}
+                    onChange={(e) => setLeadNotes(e.target.value)}
+                    className="min-h-20 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-xs text-black outline-none focus-visible:border-[#66B2B2]"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3 pt-2 md:col-span-2">
+                  <Button variant="outline" onClick={() => setLeadModalOpen(false)} className={CRM_MODAL_CANCEL_CLASS}>Cancel</Button>
+                  <Button className={CRM_MODAL_SUBMIT_CLASS} onClick={handleAddLead}>
+                    Create Lead
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Deal Modal */}
       {dealModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/60" onClick={() => setDealModalOpen(false)} />
-          <div className="relative z-10 w-full max-w-md mx-4">
-            <div className="bg-white border border-gray-200 rounded p-5">
-              <button onClick={() => setDealModalOpen(false)} className="absolute top-3 right-3 text-gray-500"><X className="w-4 h-4" /></button>
-              <h3 className="text-sm font-semibold text-black mb-3">New Deal</h3>
+        <div className={CRM_MODAL_VIEWPORT_CLASS}>
+          <div className={CRM_MODAL_BACKDROP_CLASS} onClick={() => setDealModalOpen(false)} />
+          <div className={CRM_MODAL_PANEL_CLASS}>
+            <div className={CRM_MODAL_CARD_CLASS}>
+              <button onClick={() => setDealModalOpen(false)} className="absolute top-5 right-5 text-gray-500 hover:text-gray-900"><X className="w-4 h-4" /></button>
+              <h3 className="text-lg font-bold text-gray-900 border-b border-gray-50 pb-4 mb-4">New Deal</h3>
               <div className="space-y-3">
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-gray-600">Deal Title</label>
-                  <Input placeholder="Deal title" value={dealTitle} onChange={(e) => setDealTitle(e.target.value)} className="bg-white border-gray-200 text-black" />
+                  <label className={CRM_MODAL_LABEL_CLASS}>Deal Title</label>
+                  <Input placeholder="Deal title" value={dealTitle} onChange={(e) => setDealTitle(e.target.value)} className={CRM_MODAL_INPUT_CLASS} />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-gray-600">Value (₱)</label>
-                  <Input placeholder="Value" value={dealValue} onChange={(e) => setDealValue(e.target.value)} className="bg-white border-gray-200 text-black" />
+                  <label className={CRM_MODAL_LABEL_CLASS}>Value (₱)</label>
+                  <Input placeholder="Value" value={dealValue} onChange={(e) => setDealValue(e.target.value)} className={CRM_MODAL_INPUT_CLASS} />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-gray-600">Stage</label>
+                  <label className={CRM_MODAL_LABEL_CLASS}>Stage</label>
                   <Select value={dealStage} onValueChange={(v) => setDealStage(v as DealStage)}>
-                    <SelectTrigger className="h-8 bg-white border-gray-200 text-black text-xs">
+                    <SelectTrigger className={CRM_MODAL_SELECT_CLASS}>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent className="bg-white border-gray-200">
@@ -659,9 +915,9 @@ export default function CRM() {
                   </Select>
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-gray-600">Client</label>
+                  <label className={CRM_MODAL_LABEL_CLASS}>Client</label>
                   <Select value={String(dealClientId ?? "")} onValueChange={(v) => setDealClientId(Number(v))}>
-                    <SelectTrigger className="h-8 bg-white border-gray-200 text-black text-xs">
+                    <SelectTrigger className={CRM_MODAL_SELECT_CLASS}>
                       <SelectValue placeholder="Select client" />
                     </SelectTrigger>
                     <SelectContent className="bg-white border-gray-200">
@@ -671,10 +927,10 @@ export default function CRM() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="flex gap-2">
-                  <Button variant="outline" onClick={() => setDealModalOpen(false)} className="flex-1">Cancel</Button>
+                <div className="grid grid-cols-2 gap-3 pt-2">
+                  <Button variant="outline" onClick={() => setDealModalOpen(false)} className={CRM_MODAL_CANCEL_CLASS}>Cancel</Button>
                   <Button
-                    className="flex-1 bg-[#66B2B2] text-white"
+                    className={CRM_MODAL_SUBMIT_CLASS}
                     onClick={() => {
                       const probMap: Record<DealStage, number> = { inquiry: 20, proposal: 45, negotiation: 70, closed_won: 100, closed_lost: 0 };
                       const value = Number(dealValue) || 0;
@@ -715,25 +971,25 @@ export default function CRM() {
 
       {/* Task Modal */}
       {taskModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/60" onClick={() => setTaskModalOpen(false)} />
-          <div className="relative z-10 w-full max-w-md mx-4">
-            <div className="bg-white border border-gray-200 rounded p-5">
-              <button onClick={() => setTaskModalOpen(false)} className="absolute top-3 right-3 text-gray-500"><X className="w-4 h-4" /></button>
-              <h3 className="text-sm font-semibold text-black mb-3">Add Task</h3>
+        <div className={CRM_MODAL_VIEWPORT_CLASS}>
+          <div className={CRM_MODAL_BACKDROP_CLASS} onClick={() => setTaskModalOpen(false)} />
+          <div className={CRM_MODAL_PANEL_CLASS}>
+            <div className={CRM_MODAL_CARD_CLASS}>
+              <button onClick={() => setTaskModalOpen(false)} className="absolute top-5 right-5 text-gray-500 hover:text-gray-900"><X className="w-4 h-4" /></button>
+              <h3 className="text-lg font-bold text-gray-900 border-b border-gray-50 pb-4 mb-4">Add Task</h3>
               <div className="space-y-3">
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-gray-600">Task Title</label>
-                  <Input placeholder="Task title" value={taskTitle} onChange={(e) => setTaskTitle(e.target.value)} className="bg-white border-gray-200 text-black" />
+                  <label className={CRM_MODAL_LABEL_CLASS}>Task Title</label>
+                  <Input placeholder="Task title" value={taskTitle} onChange={(e) => setTaskTitle(e.target.value)} className={CRM_MODAL_INPUT_CLASS} />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-gray-600">Due Date</label>
-                  <Input type="date" value={taskDueDate} onChange={(e) => setTaskDueDate(e.target.value)} className="bg-white border-gray-200 text-black" />
+                  <label className={CRM_MODAL_LABEL_CLASS}>Due Date</label>
+                  <Input type="date" value={taskDueDate} onChange={(e) => setTaskDueDate(e.target.value)} className={CRM_MODAL_INPUT_CLASS} />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-gray-600">Priority</label>
+                  <label className={CRM_MODAL_LABEL_CLASS}>Priority</label>
                   <Select value={taskPriority} onValueChange={(v) => setTaskPriority(v as any)}>
-                    <SelectTrigger className="h-8 bg-white border-gray-200 text-black text-xs">
+                    <SelectTrigger className={CRM_MODAL_SELECT_CLASS}>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent className="bg-white border-gray-200">
@@ -744,7 +1000,7 @@ export default function CRM() {
                   </Select>
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-gray-600">Department</label>
+                  <label className={CRM_MODAL_LABEL_CLASS}>Department</label>
                   <Select
                     value={taskDepartment}
                     onValueChange={(v) => {
@@ -752,7 +1008,7 @@ export default function CRM() {
                       setTaskAssignedTo("");
                     }}
                   >
-                    <SelectTrigger className="h-8 bg-white border-gray-200 text-black text-xs">
+                    <SelectTrigger className={CRM_MODAL_SELECT_CLASS}>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent className="bg-white border-gray-200">
@@ -762,9 +1018,9 @@ export default function CRM() {
                   </Select>
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-gray-600">Assigned To</label>
+                  <label className={CRM_MODAL_LABEL_CLASS}>Assigned To</label>
                   <Select value={taskAssignedTo} onValueChange={setTaskAssignedTo}>
-                    <SelectTrigger className="h-8 bg-white border-gray-200 text-black text-xs">
+                    <SelectTrigger className={CRM_MODAL_SELECT_CLASS}>
                       <SelectValue placeholder="Select person" />
                     </SelectTrigger>
                     <SelectContent className="bg-white border-gray-200">
@@ -780,9 +1036,9 @@ export default function CRM() {
                 </div>
                 {taskDepartment === "technician" && (
                   <div className="space-y-1">
-                    <label className="text-xs font-medium text-gray-600">Service Type</label>
+                    <label className={CRM_MODAL_LABEL_CLASS}>Service Type</label>
                     <Select value={taskServiceType} onValueChange={setTaskServiceType}>
-                      <SelectTrigger className="h-8 bg-white border-gray-200 text-black text-xs">
+                      <SelectTrigger className={CRM_MODAL_SELECT_CLASS}>
                         <SelectValue placeholder="Select service type" />
                       </SelectTrigger>
                       <SelectContent className="bg-white border-gray-200">
@@ -796,9 +1052,9 @@ export default function CRM() {
                   </div>
                 )}
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-gray-600">Client</label>
+                  <label className={CRM_MODAL_LABEL_CLASS}>Client</label>
                   <Select value={taskClientId === null ? "none" : String(taskClientId)} onValueChange={(v) => setTaskClientId(v === "none" ? null : Number(v))}>
-                    <SelectTrigger className="h-8 bg-white border-gray-200 text-black text-xs">
+                    <SelectTrigger className={CRM_MODAL_SELECT_CLASS}>
                       <SelectValue placeholder="Assign to client (optional)" />
                     </SelectTrigger>
                     <SelectContent className="bg-white border-gray-200">
@@ -809,10 +1065,10 @@ export default function CRM() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="flex gap-2">
-                  <Button variant="outline" onClick={() => setTaskModalOpen(false)} className="flex-1">Cancel</Button>
+                <div className="grid grid-cols-2 gap-3 pt-2">
+                  <Button variant="outline" onClick={() => setTaskModalOpen(false)} className={CRM_MODAL_CANCEL_CLASS}>Cancel</Button>
                   <Button
-                    className="flex-1 bg-[#66B2B2] text-white"
+                    className={CRM_MODAL_SUBMIT_CLASS}
                     onClick={() => {
                       useCRMStore.getState().addTask({
                         title: taskTitle,
@@ -846,29 +1102,29 @@ export default function CRM() {
 
       {/* Edit Task Modal */}
       {editTaskOpen && editingTask && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/60" onClick={() => setEditTaskOpen(false)} />
-          <div className="relative z-10 w-full max-w-md mx-4">
-            <div className="bg-white border border-gray-200 rounded p-5">
-              <button onClick={() => setEditTaskOpen(false)} className="absolute top-3 right-3 text-gray-500"><X className="w-4 h-4" /></button>
-              <h3 className="text-sm font-semibold text-black mb-3">Edit Task</h3>
+        <div className={CRM_MODAL_VIEWPORT_CLASS}>
+          <div className={CRM_MODAL_BACKDROP_CLASS} onClick={() => setEditTaskOpen(false)} />
+          <div className={CRM_MODAL_PANEL_CLASS}>
+            <div className={CRM_MODAL_CARD_CLASS}>
+              <button onClick={() => setEditTaskOpen(false)} className="absolute top-5 right-5 text-gray-500 hover:text-gray-900"><X className="w-4 h-4" /></button>
+              <h3 className="text-lg font-bold text-gray-900 border-b border-gray-50 pb-4 mb-4">Edit Task</h3>
               <div className="space-y-3">
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-gray-600">Task Title</label>
-                  <Input value={editTaskTitle} onChange={(e) => setEditTaskTitle(e.target.value)} className="bg-white border-gray-200 text-black" />
+                  <label className={CRM_MODAL_LABEL_CLASS}>Task Title</label>
+                  <Input value={editTaskTitle} onChange={(e) => setEditTaskTitle(e.target.value)} className={CRM_MODAL_INPUT_CLASS} />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-gray-600">Description</label>
-                  <Input value={editTaskDescription} onChange={(e) => setEditTaskDescription(e.target.value)} className="bg-white border-gray-200 text-black" />
+                  <label className={CRM_MODAL_LABEL_CLASS}>Description</label>
+                  <Input value={editTaskDescription} onChange={(e) => setEditTaskDescription(e.target.value)} className={CRM_MODAL_INPUT_CLASS} />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-gray-600">Due Date</label>
-                  <Input type="date" value={editTaskDueDate} onChange={(e) => setEditTaskDueDate(e.target.value)} className="bg-white border-gray-200 text-black" />
+                  <label className={CRM_MODAL_LABEL_CLASS}>Due Date</label>
+                  <Input type="date" value={editTaskDueDate} onChange={(e) => setEditTaskDueDate(e.target.value)} className={CRM_MODAL_INPUT_CLASS} />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-gray-600">Priority</label>
+                  <label className={CRM_MODAL_LABEL_CLASS}>Priority</label>
                   <Select value={editTaskPriority} onValueChange={(v) => setEditTaskPriority(v as "low" | "medium" | "high")}>
-                    <SelectTrigger className="h-8 bg-white border-gray-200 text-black text-xs"><SelectValue /></SelectTrigger>
+                    <SelectTrigger className={CRM_MODAL_SELECT_CLASS}><SelectValue /></SelectTrigger>
                     <SelectContent className="bg-white border-gray-200">
                       <SelectItem value="low" className="text-xs text-black">Low</SelectItem>
                       <SelectItem value="medium" className="text-xs text-black">Medium</SelectItem>
@@ -877,9 +1133,9 @@ export default function CRM() {
                   </Select>
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-gray-600">Status</label>
+                  <label className={CRM_MODAL_LABEL_CLASS}>Status</label>
                   <Select value={editTaskStatus} onValueChange={(v) => setEditTaskStatus(v as Task["status"])}>
-                    <SelectTrigger className="h-8 bg-white border-gray-200 text-black text-xs"><SelectValue /></SelectTrigger>
+                    <SelectTrigger className={CRM_MODAL_SELECT_CLASS}><SelectValue /></SelectTrigger>
                     <SelectContent className="bg-white border-gray-200">
                       <SelectItem value="pending" className="text-xs text-black">Pending</SelectItem>
                       <SelectItem value="in_progress" className="text-xs text-black">In Progress</SelectItem>
@@ -888,13 +1144,13 @@ export default function CRM() {
                   </Select>
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-gray-600">Assigned To</label>
-                  <Input value={editTaskAssignedTo} onChange={(e) => setEditTaskAssignedTo(e.target.value)} className="bg-white border-gray-200 text-black" />
+                  <label className={CRM_MODAL_LABEL_CLASS}>Assigned To</label>
+                  <Input value={editTaskAssignedTo} onChange={(e) => setEditTaskAssignedTo(e.target.value)} className={CRM_MODAL_INPUT_CLASS} />
                 </div>
-                <div className="flex gap-2 pt-1">
-                  <Button variant="outline" onClick={() => setEditTaskOpen(false)} className="flex-1">Cancel</Button>
+                <div className="grid grid-cols-2 gap-3 pt-2">
+                  <Button variant="outline" onClick={() => setEditTaskOpen(false)} className={CRM_MODAL_CANCEL_CLASS}>Cancel</Button>
                   <Button
-                    className="flex-1 bg-[#66B2B2] hover:bg-[#66B2B2]/80 text-white"
+                    className={CRM_MODAL_SUBMIT_CLASS}
                     onClick={() => {
                       if (!editingTask) return;
                       const taskPatch = {
@@ -924,26 +1180,26 @@ export default function CRM() {
 
       {/* Equipment Modal */}
       {equipmentModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/60" onClick={() => setEquipmentModalOpen(false)} />
-          <div className="relative z-10 w-full max-w-md mx-4">
-            <div className="bg-white border border-gray-200 rounded p-5">
-              <button onClick={() => setEquipmentModalOpen(false)} className="absolute top-3 right-3 text-gray-500"><X className="w-4 h-4" /></button>
-              <h3 className="text-sm font-semibold text-black mb-3">Add Equipment</h3>
+        <div className={CRM_MODAL_VIEWPORT_CLASS}>
+          <div className={CRM_MODAL_BACKDROP_CLASS} onClick={() => setEquipmentModalOpen(false)} />
+          <div className={CRM_MODAL_PANEL_CLASS}>
+            <div className={CRM_MODAL_CARD_CLASS}>
+              <button onClick={() => setEquipmentModalOpen(false)} className="absolute top-5 right-5 text-gray-500 hover:text-gray-900"><X className="w-4 h-4" /></button>
+              <h3 className="text-lg font-bold text-gray-900 border-b border-gray-50 pb-4 mb-4">Add Equipment</h3>
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-3">
-                  <Input placeholder="Unit ID (e.g. GPS-001)" value={eqUnitId} onChange={(e) => setEqUnitId(e.target.value)} className="bg-white border-gray-200 text-black" />
-                  <Input placeholder="Type (e.g. GPS Tracker)" value={eqType} onChange={(e) => setEqType(e.target.value)} className="bg-white border-gray-200 text-black" />
+                  <Input placeholder="Unit ID (e.g. GPS-001)" value={eqUnitId} onChange={(e) => setEqUnitId(e.target.value)} className={CRM_MODAL_INPUT_CLASS} />
+                  <Input placeholder="Type (e.g. GPS Tracker)" value={eqType} onChange={(e) => setEqType(e.target.value)} className={CRM_MODAL_INPUT_CLASS} />
                 </div>
-                <Input placeholder="Serial Number" value={eqSerial} onChange={(e) => setEqSerial(e.target.value)} className="bg-white border-gray-200 text-black" />
-                <Input placeholder="Model" value={eqModel} onChange={(e) => setEqModel(e.target.value)} className="bg-white border-gray-200 text-black" />
-                <Input placeholder="Location" value={eqLocation} onChange={(e) => setEqLocation(e.target.value)} className="bg-white border-gray-200 text-black" />
-                <Input placeholder="Current Hours" type="number" value={eqHours} onChange={(e) => setEqHours(e.target.value)} className="bg-white border-gray-200 text-black" />
+                <Input placeholder="Serial Number" value={eqSerial} onChange={(e) => setEqSerial(e.target.value)} className={CRM_MODAL_INPUT_CLASS} />
+                <Input placeholder="Model" value={eqModel} onChange={(e) => setEqModel(e.target.value)} className={CRM_MODAL_INPUT_CLASS} />
+                <Input placeholder="Location" value={eqLocation} onChange={(e) => setEqLocation(e.target.value)} className={CRM_MODAL_INPUT_CLASS} />
+                <Input placeholder="Current Hours" type="number" value={eqHours} onChange={(e) => setEqHours(e.target.value)} className={CRM_MODAL_INPUT_CLASS} />
                 
-                <div className="flex gap-2">
-                  <Button variant="outline" onClick={() => setEquipmentModalOpen(false)} className="flex-1">Cancel</Button>
+                <div className="grid grid-cols-2 gap-3 pt-2">
+                  <Button variant="outline" onClick={() => setEquipmentModalOpen(false)} className={CRM_MODAL_CANCEL_CLASS}>Cancel</Button>
                   <Button
-                    className="flex-1 bg-[#66B2B2] text-white"
+                    className={CRM_MODAL_SUBMIT_CLASS}
                     onClick={() => {
                       useOperationsStore.getState().addEquipment({
                         clientId: selectedClientId!,
@@ -983,17 +1239,17 @@ export default function CRM() {
 
       {/* Edit Deal Modal */}
       {editDealOpen && selectedActionDeal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/60" onClick={() => setEditDealOpen(false)} />
-          <div className="relative z-10 w-full max-w-md mx-4">
-            <div className="bg-white border border-gray-200 rounded p-5">
-              <button onClick={() => setEditDealOpen(false)} className="absolute top-3 right-3 text-gray-500"><X className="w-4 h-4" /></button>
-              <h3 className="text-sm font-semibold text-black mb-3">Edit Deal</h3>
+        <div className={CRM_MODAL_VIEWPORT_CLASS}>
+          <div className={CRM_MODAL_BACKDROP_CLASS} onClick={() => setEditDealOpen(false)} />
+          <div className={CRM_MODAL_PANEL_CLASS}>
+            <div className={CRM_MODAL_CARD_CLASS}>
+              <button onClick={() => setEditDealOpen(false)} className="absolute top-5 right-5 text-gray-500 hover:text-gray-900"><X className="w-4 h-4" /></button>
+              <h3 className="text-lg font-bold text-gray-900 border-b border-gray-50 pb-4 mb-4">Edit Deal</h3>
               <div className="space-y-3">
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-gray-600">Client</label>
+                  <label className={CRM_MODAL_LABEL_CLASS}>Client</label>
                   <Select value={String(editDealClientId ?? "")} onValueChange={(v) => setEditDealClientId(Number(v))}>
-                    <SelectTrigger className="h-8 bg-white border-gray-200 text-black text-xs">
+                    <SelectTrigger className={CRM_MODAL_SELECT_CLASS}>
                       <SelectValue placeholder="Select client" />
                     </SelectTrigger>
                     <SelectContent className="bg-white border-gray-200">
@@ -1006,34 +1262,34 @@ export default function CRM() {
                   </Select>
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-gray-600">Deal Title</label>
+                  <label className={CRM_MODAL_LABEL_CLASS}>Deal Title</label>
                   <Input
                     placeholder="Deal title"
                     value={editDealTitle}
                     onChange={(e) => setEditDealTitle(e.target.value)}
-                    className="bg-white border-gray-200 text-black"
+                    className={CRM_MODAL_INPUT_CLASS}
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-gray-600">Revenue (₱)</label>
+                  <label className={CRM_MODAL_LABEL_CLASS}>Revenue (₱)</label>
                   <Input
                     placeholder="Revenue"
                     value={editDealValue}
                     onChange={(e) => setEditDealValue(e.target.value)}
-                    className="bg-white border-gray-200 text-black"
+                    className={CRM_MODAL_INPUT_CLASS}
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-gray-600">Probability (%)</label>
+                  <label className={CRM_MODAL_LABEL_CLASS}>Probability (%)</label>
                   <Input
                     placeholder="Probability (%)"
                     value={editDealProbability}
                     onChange={(e) => setEditDealProbability(e.target.value)}
-                    className="bg-white border-gray-200 text-black"
+                    className={CRM_MODAL_INPUT_CLASS}
                   />
                 </div>
-                <div className="flex gap-2">
-                  <Button variant="outline" onClick={() => setEditDealOpen(false)} className="flex-1">Cancel</Button>
+                <div className="grid grid-cols-2 gap-3 pt-2">
+                  <Button variant="outline" onClick={() => setEditDealOpen(false)} className={CRM_MODAL_CANCEL_CLASS}>Cancel</Button>
                   <Button onClick={handleSaveDealChanges} className="flex-1 bg-[#10B981] hover:bg-[#10B981]/80">
                     Save Changes
                   </Button>
@@ -1046,17 +1302,17 @@ export default function CRM() {
 
       {/* Delete Deal Confirmation Modal */}
       {deleteDealOpen && selectedActionDeal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/60" onClick={() => setDeleteDealOpen(false)} />
-          <div className="relative z-10 w-full max-w-md mx-4">
-            <div className="bg-white border border-gray-200 rounded p-5">
-              <button onClick={() => setDeleteDealOpen(false)} className="absolute top-3 right-3 text-gray-500"><X className="w-4 h-4" /></button>
-              <h3 className="text-sm font-semibold text-black mb-3">Delete Deal</h3>
+        <div className={CRM_MODAL_VIEWPORT_CLASS}>
+          <div className={CRM_MODAL_BACKDROP_CLASS} onClick={() => setDeleteDealOpen(false)} />
+          <div className={CRM_MODAL_PANEL_SM_CLASS}>
+            <div className={CRM_MODAL_CARD_CLASS}>
+              <button onClick={() => setDeleteDealOpen(false)} className="absolute top-5 right-5 text-gray-500 hover:text-gray-900"><X className="w-4 h-4" /></button>
+              <h3 className="text-lg font-bold text-gray-900 border-b border-gray-50 pb-4 mb-4">Delete Deal</h3>
               <p className="text-sm text-gray-700 mb-4">
                 Are you sure you want to delete <span className="font-semibold">{selectedActionDeal.title}</span>? This action cannot be undone.
               </p>
-              <div className="flex gap-2">
-                <Button variant="outline" onClick={() => setDeleteDealOpen(false)} className="flex-1">Cancel</Button>
+              <div className="grid grid-cols-2 gap-3 pt-2">
+                <Button variant="outline" onClick={() => setDeleteDealOpen(false)} className={CRM_MODAL_CANCEL_CLASS}>Cancel</Button>
                 <Button onClick={handleConfirmDeleteDeal} className="flex-1 bg-[#EF4444] hover:bg-[#EF4444]/80">
                   Delete
                 </Button>
@@ -1068,37 +1324,37 @@ export default function CRM() {
 
       {/* Add Client Modal */}
       {addClientOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/60" onClick={() => setAddClientOpen(false)} />
-          <div className="relative z-10 w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
-            <div className="bg-white border border-gray-200 rounded p-5">
-              <button onClick={() => setAddClientOpen(false)} className="absolute top-3 right-3 text-gray-500"><X className="w-4 h-4" /></button>
-              <h3 className="text-sm font-semibold text-black mb-4">Add Client</h3>
+        <div className={CRM_MODAL_VIEWPORT_CLASS}>
+          <div className={CRM_MODAL_BACKDROP_CLASS} onClick={() => setAddClientOpen(false)} />
+          <div className={CRM_MODAL_PANEL_CLASS}>
+            <div className={CRM_MODAL_CARD_CLASS}>
+              <button onClick={() => setAddClientOpen(false)} className="absolute top-5 right-5 text-gray-500 hover:text-gray-900"><X className="w-4 h-4" /></button>
+              <h3 className="text-lg font-bold text-gray-900 border-b border-gray-50 pb-4 mb-4">Add Client</h3>
               <div className="space-y-3">
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-gray-600">Company Name</label>
-                  <Input value={acCompanyName} onChange={(e) => setAcCompanyName(e.target.value)} className="bg-white border-gray-200 text-black" />
+                  <label className={CRM_MODAL_LABEL_CLASS}>Company Name</label>
+                  <Input value={acCompanyName} onChange={(e) => setAcCompanyName(e.target.value)} className={CRM_MODAL_INPUT_CLASS} />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-gray-600">Industry</label>
-                  <Input value={acIndustry} onChange={(e) => setAcIndustry(e.target.value)} className="bg-white border-gray-200 text-black" />
+                  <label className={CRM_MODAL_LABEL_CLASS}>Industry</label>
+                  <Input value={acIndustry} onChange={(e) => setAcIndustry(e.target.value)} className={CRM_MODAL_INPUT_CLASS} />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-gray-600">Contact Name</label>
-                  <Input value={acContactName} onChange={(e) => setAcContactName(e.target.value)} className="bg-white border-gray-200 text-black" />
+                  <label className={CRM_MODAL_LABEL_CLASS}>Contact Name</label>
+                  <Input value={acContactName} onChange={(e) => setAcContactName(e.target.value)} className={CRM_MODAL_INPUT_CLASS} />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-gray-600">Email</label>
-                  <Input type="email" value={acEmail} onChange={(e) => setAcEmail(e.target.value)} className="bg-white border-gray-200 text-black" />
+                  <label className={CRM_MODAL_LABEL_CLASS}>Email</label>
+                  <Input type="email" value={acEmail} onChange={(e) => setAcEmail(e.target.value)} className={CRM_MODAL_INPUT_CLASS} />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-gray-600">Phone</label>
-                  <Input value={acPhone} onChange={(e) => setAcPhone(e.target.value)} className="bg-white border-gray-200 text-black" />
+                  <label className={CRM_MODAL_LABEL_CLASS}>Phone</label>
+                  <Input value={acPhone} onChange={(e) => setAcPhone(e.target.value)} className={CRM_MODAL_INPUT_CLASS} />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-gray-600">Status</label>
+                  <label className={CRM_MODAL_LABEL_CLASS}>Status</label>
                   <Select value={acStatus} onValueChange={(v) => setAcStatus(v as "active" | "inactive" | "prospect")}>
-                    <SelectTrigger className="h-8 bg-white border-gray-200 text-black text-xs">
+                    <SelectTrigger className={CRM_MODAL_SELECT_CLASS}>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent className="bg-white border-gray-200">
@@ -1109,21 +1365,21 @@ export default function CRM() {
                   </Select>
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-gray-600">Address</label>
-                  <Input value={acAddress} onChange={(e) => setAcAddress(e.target.value)} className="bg-white border-gray-200 text-black" />
+                  <label className={CRM_MODAL_LABEL_CLASS}>Address</label>
+                  <Input value={acAddress} onChange={(e) => setAcAddress(e.target.value)} className={CRM_MODAL_INPUT_CLASS} />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-gray-600">Contract Value (₱)</label>
-                  <Input type="number" min={0} value={acContractValue} onChange={(e) => setAcContractValue(e.target.value)} className="bg-white border-gray-200 text-black" />
+                  <label className={CRM_MODAL_LABEL_CLASS}>Contract Value (₱)</label>
+                  <Input type="number" min={0} value={acContractValue} onChange={(e) => setAcContractValue(e.target.value)} className={CRM_MODAL_INPUT_CLASS} />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-gray-600">Last Contact</label>
-                  <Input type="date" value={acLastContact} onChange={(e) => setAcLastContact(e.target.value)} className="bg-white border-gray-200 text-black" />
+                  <label className={CRM_MODAL_LABEL_CLASS}>Last Contact</label>
+                  <Input type="date" value={acLastContact} onChange={(e) => setAcLastContact(e.target.value)} className={CRM_MODAL_INPUT_CLASS} />
                 </div>
-                <div className="flex gap-2 pt-1">
-                  <Button variant="outline" onClick={() => setAddClientOpen(false)} className="flex-1">Cancel</Button>
+                <div className="grid grid-cols-2 gap-3 pt-2">
+                  <Button variant="outline" onClick={() => setAddClientOpen(false)} className={CRM_MODAL_CANCEL_CLASS}>Cancel</Button>
                   <Button
-                    className="flex-1 bg-[#66B2B2] hover:bg-[#66B2B2]/80 text-white"
+                    className={CRM_MODAL_SUBMIT_CLASS}
                     onClick={() => {
                       useCRMStore.getState().addClient({
                         companyName: acCompanyName,
@@ -1156,37 +1412,37 @@ export default function CRM() {
 
       {/* Edit Client Modal */}
       {editClientOpen && editingClient && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/60" onClick={() => setEditClientOpen(false)} />
-          <div className="relative z-10 w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
-            <div className="bg-white border border-gray-200 rounded p-5">
-              <button onClick={() => setEditClientOpen(false)} className="absolute top-3 right-3 text-gray-500"><X className="w-4 h-4" /></button>
-              <h3 className="text-sm font-semibold text-black mb-4">Edit Client</h3>
+        <div className={CRM_MODAL_VIEWPORT_CLASS}>
+          <div className={CRM_MODAL_BACKDROP_CLASS} onClick={() => setEditClientOpen(false)} />
+          <div className={CRM_MODAL_PANEL_CLASS}>
+            <div className={CRM_MODAL_CARD_CLASS}>
+              <button onClick={() => setEditClientOpen(false)} className="absolute top-5 right-5 text-gray-500 hover:text-gray-900"><X className="w-4 h-4" /></button>
+              <h3 className="text-lg font-bold text-gray-900 border-b border-gray-50 pb-4 mb-4">Edit Client</h3>
               <div className="space-y-3">
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-gray-600">Company Name</label>
-                  <Input value={editClientCompany} onChange={(e) => setEditClientCompany(e.target.value)} className="bg-white border-gray-200 text-black" />
+                  <label className={CRM_MODAL_LABEL_CLASS}>Company Name</label>
+                  <Input value={editClientCompany} onChange={(e) => setEditClientCompany(e.target.value)} className={CRM_MODAL_INPUT_CLASS} />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-gray-600">Industry</label>
-                  <Input value={editClientIndustry} onChange={(e) => setEditClientIndustry(e.target.value)} className="bg-white border-gray-200 text-black" />
+                  <label className={CRM_MODAL_LABEL_CLASS}>Industry</label>
+                  <Input value={editClientIndustry} onChange={(e) => setEditClientIndustry(e.target.value)} className={CRM_MODAL_INPUT_CLASS} />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-gray-600">Contact Name</label>
-                  <Input value={editClientContactName} onChange={(e) => setEditClientContactName(e.target.value)} className="bg-white border-gray-200 text-black" />
+                  <label className={CRM_MODAL_LABEL_CLASS}>Contact Name</label>
+                  <Input value={editClientContactName} onChange={(e) => setEditClientContactName(e.target.value)} className={CRM_MODAL_INPUT_CLASS} />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-gray-600">Email</label>
-                  <Input type="email" value={editClientEmail} onChange={(e) => setEditClientEmail(e.target.value)} className="bg-white border-gray-200 text-black" />
+                  <label className={CRM_MODAL_LABEL_CLASS}>Email</label>
+                  <Input type="email" value={editClientEmail} onChange={(e) => setEditClientEmail(e.target.value)} className={CRM_MODAL_INPUT_CLASS} />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-gray-600">Phone</label>
-                  <Input value={editClientPhone} onChange={(e) => setEditClientPhone(e.target.value)} className="bg-white border-gray-200 text-black" />
+                  <label className={CRM_MODAL_LABEL_CLASS}>Phone</label>
+                  <Input value={editClientPhone} onChange={(e) => setEditClientPhone(e.target.value)} className={CRM_MODAL_INPUT_CLASS} />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-gray-600">Status</label>
+                  <label className={CRM_MODAL_LABEL_CLASS}>Status</label>
                   <Select value={editClientStatus} onValueChange={(v) => setEditClientStatus(v as "active" | "inactive" | "prospect")}>
-                    <SelectTrigger className="h-8 bg-white border-gray-200 text-black text-xs">
+                    <SelectTrigger className={CRM_MODAL_SELECT_CLASS}>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent className="bg-white border-gray-200">
@@ -1197,21 +1453,21 @@ export default function CRM() {
                   </Select>
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-gray-600">Address</label>
-                  <Input value={editClientAddress} onChange={(e) => setEditClientAddress(e.target.value)} className="bg-white border-gray-200 text-black" />
+                  <label className={CRM_MODAL_LABEL_CLASS}>Address</label>
+                  <Input value={editClientAddress} onChange={(e) => setEditClientAddress(e.target.value)} className={CRM_MODAL_INPUT_CLASS} />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-gray-600">Contract Value (₱)</label>
-                  <Input type="number" min={0} value={editClientContractValue} onChange={(e) => setEditClientContractValue(e.target.value)} className="bg-white border-gray-200 text-black" />
+                  <label className={CRM_MODAL_LABEL_CLASS}>Contract Value (₱)</label>
+                  <Input type="number" min={0} value={editClientContractValue} onChange={(e) => setEditClientContractValue(e.target.value)} className={CRM_MODAL_INPUT_CLASS} />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-gray-600">Last Contact</label>
-                  <Input type="date" value={editClientLastContact} onChange={(e) => setEditClientLastContact(e.target.value)} className="bg-white border-gray-200 text-black" />
+                  <label className={CRM_MODAL_LABEL_CLASS}>Last Contact</label>
+                  <Input type="date" value={editClientLastContact} onChange={(e) => setEditClientLastContact(e.target.value)} className={CRM_MODAL_INPUT_CLASS} />
                 </div>
-                <div className="flex gap-2 pt-1">
-                  <Button variant="outline" onClick={() => setEditClientOpen(false)} className="flex-1">Cancel</Button>
+                <div className="grid grid-cols-2 gap-3 pt-2">
+                  <Button variant="outline" onClick={() => setEditClientOpen(false)} className={CRM_MODAL_CANCEL_CLASS}>Cancel</Button>
                   <Button
-                    className="flex-1 bg-[#66B2B2] hover:bg-[#66B2B2]/80 text-white"
+                    className={CRM_MODAL_SUBMIT_CLASS}
                     onClick={() => {
                       if (!editingClient) return;
                       useCRMStore.getState().updateClient(editingClient.id, {
@@ -1285,7 +1541,7 @@ function ClientProfile({
             </div>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="grid grid-cols-2 gap-3 pt-2">
           <Button variant="outline" className="h-8 text-xs border-gray-200 text-gray-600">
             Edit Profile
           </Button>
@@ -1435,7 +1691,7 @@ function ClientProfile({
                 Add Equipment
               </Button>
             </div>
-            <div className="data-card overflow-auto">
+            <div className="data-card overflow-auto rounded-xl">
               <table className="w-full text-xs">
                 <thead>
                   <tr className="bg-gray-50">
@@ -1495,7 +1751,7 @@ function ClientProfile({
               ))}
             </div>
 
-            <div className="data-card overflow-auto">
+            <div className="data-card overflow-auto rounded-xl">
               <h3 className="p-4 text-sm font-bold text-black">Recent Invoices</h3>
               <table className="w-full text-xs">
                 <thead>
@@ -1527,7 +1783,7 @@ function ClientProfile({
 
         {profileTab === "history" && (
           <div className="col-span-12">
-            <div className="data-card overflow-auto">
+            <div className="data-card overflow-auto rounded-xl">
               <table className="w-full text-xs">
                 <thead>
                   <tr className="bg-gray-50">
@@ -1684,7 +1940,7 @@ function DealCard({
     <div
       draggable={draggable}
       onDragStart={onDragStart}
-      className="relative data-card p-3 cursor-grab active:cursor-grabbing hover:border-[#66B2B2]/30 transition-all"
+      className="relative data-card p-3 rounded-xl cursor-grab active:cursor-grabbing hover:border-[#66B2B2]/30 transition-all"
     >
       <div className="flex items-start justify-between mb-1.5 gap-2">
         <span className="text-[10px] text-gray-600 font-mono-tech">{client?.companyName || "Unknown"}</span>
@@ -1822,7 +2078,19 @@ function ClientRow({ client, onClick, onEdit }: { client: Client; onClick: () =>
   );
 }
 
-function LeadCard({ lead, client }: { lead: Lead; client?: Client }) {
+function LeadCard({
+  lead,
+  client,
+  isConverted,
+  onStatusChange,
+  onConvert,
+}: {
+  lead: Lead;
+  client?: Client;
+  isConverted: boolean;
+  onStatusChange: (leadId: number, status: Lead["status"]) => void;
+  onConvert: (lead: Lead) => void;
+}) {
   const priorityColors = {
     low: "bg-[#66B2B2]/20 text-[#66B2B2]",
     medium: "bg-[#66B2B2]/20 text-[#66B2B2]",
@@ -1836,8 +2104,17 @@ function LeadCard({ lead, client }: { lead: Lead; client?: Client }) {
     lost: "#EF4444",
   };
 
+  const displayName = lead.company || client?.companyName || lead.name || lead.notes;
+  const inquiryLabel = lead.inquiryType
+    ? lead.inquiryType.toUpperCase() === "PMS" ? "PMS" : lead.inquiryType[0].toUpperCase() + lead.inquiryType.slice(1)
+    : "General";
+  const isLost = lead.status === "lost";
+  const isDone = isConverted && !isLost;
+
   return (
-    <div className="data-card p-3">
+    <div className={`data-card p-3 rounded-xl ${
+      isLost ? "border-[#EF4444]/20 bg-[#EF4444]/[0.03]" : isDone ? "border-[#10B981]/20 bg-[#10B981]/[0.03]" : ""
+    }`}>
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
           <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${priorityColors[lead.priority]}`}>
@@ -1847,13 +2124,77 @@ function LeadCard({ lead, client }: { lead: Lead; client?: Client }) {
         </div>
         <div className="flex items-center gap-1">
           <div className="w-1.5 h-1.5 rounded-full" style={{ background: statusColors[lead.status] }} />
-          <span className="text-[10px] text-gray-600 capitalize">{lead.status}</span>
+          <span className={`text-[10px] capitalize ${
+            isLost ? "font-medium text-[#EF4444]" : isDone ? "font-medium text-[#10B981]" : "text-gray-600"
+          }`}>
+            {isLost ? "Lost lead" : isDone ? "Converted" : lead.status}
+          </span>
         </div>
       </div>
-      <div className="text-xs text-black font-medium mb-1">{lead.notes}</div>
-      <div className="flex items-center justify-between">
-        <span className="text-[10px] text-gray-600">{client?.companyName || "No client"}</span>
+      <div className="text-xs text-black font-semibold mb-1">{displayName}</div>
+      <div className="text-[10px] text-gray-600 mb-2">{lead.notes}</div>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-gray-600 mb-3">
+        <span>{inquiryLabel}</span>
+        <span>Assigned: {lead.assignedTo}</span>
+        {lead.email && (
+          <span className="inline-flex items-center gap-1">
+            <Mail className="w-3 h-3" />
+            {lead.email}
+          </span>
+        )}
+        {lead.phone && (
+          <span className="inline-flex items-center gap-1">
+            <Phone className="w-3 h-3" />
+            {lead.phone}
+          </span>
+        )}
+      </div>
+      <div className="flex items-center justify-between gap-3">
         <span className="text-[10px] text-[#8B5CF6] font-mono-tech font-bold">Score: {lead.score}</span>
+        <div className="flex items-center gap-1.5">
+          {isLost && (
+            <>
+              <span className="hidden text-[10px] text-gray-500 sm:inline">Removed from active funnel</span>
+              <Button onClick={() => onStatusChange(lead.id, "contacted")} variant="outline" className="h-7 px-2.5 border-[#66B2B2]/30 text-[#66B2B2] hover:bg-[#66B2B2]/10 text-[10px] font-bold">
+                Restore
+              </Button>
+            </>
+          )}
+          {lead.status === "new" && (
+            <>
+              <Button onClick={() => onStatusChange(lead.id, "contacted")} className="h-7 px-2.5 bg-[#66B2B2] hover:bg-[#66B2B2]/80 text-white text-[10px] font-bold">
+                Mark Contacted
+              </Button>
+              <Button onClick={() => onStatusChange(lead.id, "lost")} variant="outline" className="h-7 px-2.5 border-[#EF4444]/30 text-[#EF4444] hover:bg-[#EF4444]/10 text-[10px] font-bold">
+                Lost
+              </Button>
+            </>
+          )}
+          {lead.status === "contacted" && (
+            <>
+              <Button onClick={() => onStatusChange(lead.id, "qualified")} className="h-7 px-2.5 bg-[#66B2B2] hover:bg-[#66B2B2]/80 text-white text-[10px] font-bold">
+                Qualify
+              </Button>
+              <Button onClick={() => onStatusChange(lead.id, "lost")} variant="outline" className="h-7 px-2.5 border-[#EF4444]/30 text-[#EF4444] hover:bg-[#EF4444]/10 text-[10px] font-bold">
+                Lost
+              </Button>
+            </>
+          )}
+          {isDone && (
+            <span className="inline-flex h-7 items-center rounded-lg bg-[#10B981]/10 px-2.5 text-[10px] font-bold text-[#10B981]">
+              Deal Created
+            </span>
+          )}
+          {lead.status === "qualified" && !isDone && (
+            <Button
+              onClick={() => onConvert(lead)}
+              disabled={isConverted}
+              className="h-7 min-w-28 bg-[#10B981] hover:bg-[#10B981]/80 text-white text-[10px] font-bold disabled:opacity-60"
+            >
+              {isConverted ? "Converted" : "Convert to Deal"}
+            </Button>
+          )}
+        </div>
       </div>
     </div>
   );

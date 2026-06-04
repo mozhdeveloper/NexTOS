@@ -225,7 +225,7 @@ export default function ClientPortalShell({ children }: { children: React.ReactN
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-auto bg-gray-50">
+      <main className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden bg-gray-50">
         {children}
       </main>
     </div>
