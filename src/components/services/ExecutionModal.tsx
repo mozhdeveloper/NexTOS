@@ -18,6 +18,8 @@ import { useInventoryStore } from "@/stores/useInventoryStore";
 import { useBillingStore } from "@/stores/useBillingStore";
 import { useCRMStore } from "@/stores/useCRMStore";
 import { trpc } from "@/providers/trpc";
+import seedData from "@/data/seed-data.json";
+import { computePmsStatus } from "@/lib/pms-status";
 import type { ServiceRecord } from "@/types";
 import { getPmsMetricValue } from "./utils";
 import { SafetyProtocol } from "./SafetyProtocol";
@@ -114,7 +116,7 @@ export function ExecutionModal({
         const currentEq = equipment.find(e => e.id === (draft?.equipmentId || task?.equipmentId));
         let _scanMeta: any = {};
         try { _scanMeta = JSON.parse(task?.description ?? "{}"); } catch {}
-        const _scanSeedEq = _scanMeta._src === "pms"
+        const _scanSeedEq = _scanMeta._seedEqId
           ? seedEquipment.find((s: any) => s.id === _scanMeta._seedEqId) ?? null
           : null;
         const expectedSerial = _scanSeedEq?.serialNumber ?? currentEq?.serialNumber ?? "";
@@ -205,7 +207,7 @@ export function ExecutionModal({
         try {
             let meta: any = {};
             try { meta = JSON.parse(task.description ?? "{}"); } catch {}
-            const seedEq = meta._src === "pms"
+            const seedEq = meta._seedEqId
                 ? seedEquipment.find((s: any) => s.id === meta._seedEqId) ?? null
                 : null;
             const pmsCfg = seedEq?.pmsConfiguration?.[meta._pmsIdx] ?? null;
@@ -231,9 +233,11 @@ export function ExecutionModal({
             const isEq001Task = meta._seedEqId === "EQ-001";
             const pmsUnit = (snapshotIntervalUnit ?? "").toLowerCase();
             const isHoursOrKmTask = pmsUnit === "hours" || pmsUnit === "km" || pmsUnit === "weeks" || pmsUnit === "months" || pmsUnit === "years";
-            const hasPmsConfig = !!pmsCfg || (snapshotInterval !== undefined && snapshotIntervalUnit !== undefined);
+            const hasPmsConfig = !!pmsCfg
+              || (snapshotInterval !== undefined && snapshotIntervalUnit !== undefined)
+              || (meta._resetOnComplete === true && snapshotIntervalUnit !== undefined);
             const shouldResetMetrics =
-                meta._src === "pms" &&
+                (meta._src === "pms" || meta._resetOnComplete === true) &&
                 !!meta._seedEqId &&
                 hasPmsConfig &&
                 isHoursOrKmTask &&
@@ -269,7 +273,7 @@ export function ExecutionModal({
                 }
                 if (_usage !== null && Number.isFinite(_usage) && _usage >= 0) {
                     const _pct = (_usage / snapshotInterval) * 100;
-                    computedEquipmentStatus = _pct >= 100 ? "Overdue" : _pct >= 80 ? "Near Service" : "OK";
+                    computedEquipmentStatus = computePmsStatus(_pct, seedData.pmsStatuses) ?? "OK";
                 }
             }
 
@@ -364,9 +368,11 @@ export function ExecutionModal({
     let _pmsMeta: any = {};
     try { _pmsMeta = JSON.parse(task?.description ?? "{}"); } catch {}
     const _isPmsTask = _pmsMeta._src === "pms";
-    const _pmsSeedEq = _isPmsTask
+    const _pmsSeedEq = _pmsMeta._seedEqId
       ? seedEquipment.find((s: any) => s.id === _pmsMeta._seedEqId) ?? null
-      : null;
+      : (currentEq?.serialNumber
+          ? seedEquipment.find((s: any) => s.serialNumber === currentEq.serialNumber) ?? null
+          : null);
 
     const displaySerial = _pmsSeedEq?.serialNumber ?? currentEq?.serialNumber ?? "";
     const displayName = _pmsSeedEq?.name ?? currentEq?.name ?? currentEq?.id ?? `SIM-UNIT-${task?.id}`;
@@ -375,6 +381,9 @@ export function ExecutionModal({
       ? (seedClients.find((c: any) => c.id === _pmsSeedEq.clientId)?.companyName ?? null)
       : null;
     const _pmsCfg = _pmsSeedEq?.pmsConfiguration?.[_pmsMeta._pmsIdx] ?? null;
+    const _taskPriority: string | null = _pmsMeta._priority ?? null;
+    const _taskMetricUnit: string | null = _pmsMeta._serviceIntervalUnit ?? null;
+    const _taskServiceType: string | null = _pmsMeta._serviceType ?? null;
     const displayOperatingTime = (() => {
       if (_pmsSeedEq?.id === "EQ-001") {
         try {
@@ -580,6 +589,9 @@ export function ExecutionModal({
                                     seedClients={seedClients}
                                     pmsConfig={_pmsCfg}
                                     taskId={task.id}
+                                    taskPriority={_taskPriority}
+                                    taskMetricUnit={_taskMetricUnit}
+                                    taskServiceType={_taskServiceType}
                                     onSave={(data) => handleNext(data)}
                                     onBack={handleBack}
                                 />

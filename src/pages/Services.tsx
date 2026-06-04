@@ -5,6 +5,7 @@ import { seedStaff } from "@/stores/useCRMStore";
 import { useAuthStore } from "@/stores/useAuthStore";
 import { useBillingStore } from "@/stores/useBillingStore";
 import seedData from "@/data/seed-data.json";
+import { computePmsStatus } from "@/lib/pms-status";
 import type { Equipment, ServiceRecord, Client } from "@/types";
 import { trpc } from "@/providers/trpc";
 import { QRCodeSVG } from "qrcode.react";
@@ -77,7 +78,7 @@ type ScheduledMaintenanceEntry = {
   serviceInterval: number;
   serviceIntervalUnit: string;
   estimatedCost: number;
-  status: "OK" | "Near Service" | "Overdue" | "—";
+  status: string;
 };
 
 const SCHEDULED_MAINTENANCE_KEY = "nextos-user-scheduled-maintenance";
@@ -229,12 +230,14 @@ export default function Services() {
   const [executionTask, setExecutionTask] = useState<ServiceRecord | null>(null);
   const [confirmTask, setConfirmTask] = useState<ServiceRecord | null>(null);
   const [svcTaskModalOpen, setSvcTaskModalOpen] = useState(false);
-  const [svcTaskTitle, setSvcTaskTitle] = useState("");
+  const [svcTaskEquipmentId, setSvcTaskEquipmentId] = useState<string>("");
   const [svcTaskDueDate, setSvcTaskDueDate] = useState("");
   const [svcTaskPriority, setSvcTaskPriority] = useState<"low" | "medium" | "high">("medium");
   const [svcTaskServiceType, setSvcTaskServiceType] = useState("");
   const [svcTaskClientId, setSvcTaskClientId] = useState<string>("");
   const [svcTaskAssignedTo, setSvcTaskAssignedTo] = useState("");
+  const [svcTaskTargetsPms, setSvcTaskTargetsPms] = useState(false);
+  const [svcTaskMetricUnit, setSvcTaskMetricUnit] = useState<string>("");
   const [autoAssignTask, setAutoAssignTask] = useState<boolean>(() => {
     try { return window.localStorage.getItem("nextos-auto-assign-task") !== "false"; }
     catch { return true; }
@@ -728,9 +731,7 @@ export default function Services() {
 
     if (usage === null || !Number.isFinite(usage) || usage < 0) return "—";
     const progress = (usage / interval) * 100;
-    if (progress >= 100) return "Overdue";
-    if (progress >= 80) return "Near Service";
-    return "OK";
+    return computePmsStatus(progress, seedData.pmsStatuses) ?? "OK";
   };
 
   const computeNextService = (
@@ -794,15 +795,19 @@ export default function Services() {
   };
 
   // Returns the worst status across ALL pmsConfiguration entries for a seed equipment object.
-  const computeEquipmentWorstStatus = (seedEq: any, completedRecords?: { equipmentId: number | string; completedDate: string | null }[]): "OK" | "Near Service" | "Overdue" | null => {
+  const computeEquipmentWorstStatus = (seedEq: any, completedRecords?: { equipmentId: number | string; completedDate: string | null }[]): string | null => {
     if (!seedEq) return null;
     const configs: any[] = Array.isArray(seedEq.pmsConfiguration) ? seedEq.pmsConfiguration : [];
     if (configs.length === 0) return null;
-    const statuses = configs.map((pms) => computeEntryStatus(pms, seedEq, completedRecords));
-    if (statuses.includes("Overdue")) return "Overdue";
-    if (statuses.includes("Near Service")) return "Near Service";
-    if (statuses.includes("OK")) return "OK";
-    return null;
+    const valid = configs
+      .map((pms) => computeEntryStatus(pms, seedEq, completedRecords))
+      .filter((s) => s !== "—" && s !== null);
+    if (valid.length === 0) return null;
+    return valid.reduce((worst, current) => {
+      const curPct = seedData.pmsStatuses.find(s => s.value === current)?.minProgressPercent ?? 0;
+      const wrstPct = seedData.pmsStatuses.find(s => s.value === worst)?.minProgressPercent ?? 0;
+      return curPct > wrstPct ? current : worst;
+    });
   };
 
   // Format EQ-001 GPS hours for display, applying the service-reset offset so "0h 0m" is shown
@@ -903,7 +908,11 @@ export default function Services() {
         if (isPms) return seedIds.has(r.id);
         // Completed non-PMS records: keep only if they're tracked in seed-data.json
         if (r.status === "completed") return seedIds.has(r.id);
-        return true; // Keep scheduled / in-progress non-PMS records (manual tasks, bookings)
+        // Scheduled/in-progress manual-origin records not in seed are orphans (ID mismatch from
+        // a pre-fix creation path where addServiceRecord generated a different ID than the upsert).
+        const isManualOrigin = (() => { try { return JSON.parse(r.description ?? "{}")._origin === "manual"; } catch { return false; } })();
+        if (isManualOrigin && !seedIds.has(r.id)) return false;
+        return true; // Keep all other scheduled / in-progress records (bookings, etc.)
       }),
     } as Partial<any>));
 
@@ -969,9 +978,16 @@ export default function Services() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seedServiceRecordsData]);
 
-  // Tracks which PMS task IDs have already triggered a toast this session.
-  // Prevents repeat notifications when allScheduledMaintenance re-references due to GPS cache ticks.
+  // Tracks which PMS task IDs have already triggered a toast — persisted across sessions.
+  const TOASTED_PMS_KEY = "nextos-toasted-pms-tasks";
   const toastedPmsTasksRef = useRef(new Set<number>());
+  useEffect(() => {
+    try {
+      const stored: number[] = JSON.parse(window.localStorage.getItem(TOASTED_PMS_KEY) ?? "[]");
+      toastedPmsTasksRef.current = new Set(stored);
+    } catch {}
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Auto-create a scheduled task for every Overdue PMS entry.
   // Deps: allScheduledMaintenance + seedServiceRecordsData.
@@ -984,7 +1000,12 @@ export default function Services() {
     // Wait for seed records to load before acting — without this guard the upsert fires
     // before alreadyCompletedInSeed can be evaluated and would overwrite a completed record.
     if (!seedServiceRecordsData) return;
-    const overdueEntries = allScheduledMaintenance.filter((e) => e.status === "Overdue");
+    const taskTriggerStatuses = new Set(
+      seedData.pmsStatuses
+        .filter(s => s.minProgressPercent >= 100)
+        .map(s => s.value)
+    );
+    const overdueEntries = allScheduledMaintenance.filter((e) => taskTriggerStatuses.has(e.status ?? ""));
 
     for (const entry of overdueEntries) {
       const pmsIdx = entry.scheduleIndex ?? 0;
@@ -1019,8 +1040,12 @@ export default function Services() {
       const clientId = Number(String(seedEq.clientId).replace(/\D/g, "")) || 1;
       const serviceCategory = mapPmsServiceCategory(entry.serviceType, seedEq.equipmentType);
 
+      const entryPriority = entry.status === "Overdue" ? "high" : "medium";
+
       const description = JSON.stringify({
         _src: "pms",
+        _origin: "auto",
+        _priority: entryPriority,
         _seedEqId: seedEqId,
         _pmsIdx: pmsIdx,
         label: `${entry.serviceType} for ${entry.equipmentName}`,
@@ -1076,12 +1101,17 @@ export default function Services() {
           partsUsed: "Pending Inspection",
           cost: entry.estimatedCost || 0,
           hoursAtService: parseFloat(String(storeEq.hoursTotal)) || 0,
+          priority: entryPriority,
+          taskOrigin: "auto",
         });
       }
 
-      // Only notify once per task ID per page session.
+      // Only notify once per task ID, persisted across sessions.
       if (!toastedPmsTasksRef.current.has(taskId)) {
         toastedPmsTasksRef.current.add(taskId);
+        try {
+          window.localStorage.setItem(TOASTED_PMS_KEY, JSON.stringify([...toastedPmsTasksRef.current]));
+        } catch {}
         toast.info("PMS Task Auto-Created", {
           description: `${entry.equipmentName} — ${entry.serviceType} is overdue.`,
         });
@@ -1390,7 +1420,7 @@ export default function Services() {
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-gray-100">
-                    {["Status", "ID", "Equipment", "Client", "Service", "Metric at Service", "Service Interval",
+                    {["Status", "ID", "Equipment", "Client", "Service", "Priority", "Metric at Service", "Service Interval", "Origin",
                       ...(isTech ? ["Action"] : [])
                     ].map((col) => (
                       <th key={col} className="px-3 py-2.5 text-left text-[9px] font-bold uppercase tracking-wider text-gray-400 whitespace-nowrap">
@@ -1408,7 +1438,8 @@ export default function Services() {
                     let pmsMeta: any = {};
                     try { pmsMeta = JSON.parse(task.description ?? "{}"); } catch {}
                     const isPmsTask = pmsMeta._src === "pms";
-                    const pmsSeedEq = isPmsTask
+                    // Resolve seed equipment for any task that has _seedEqId (PMS or manual)
+                    const pmsSeedEq = pmsMeta._seedEqId
                       ? liveEquipment.find((s) => s.id === pmsMeta._seedEqId) ?? null
                       : null;
                     const pmsCfg = pmsSeedEq && pmsMeta._pmsIdx !== undefined
@@ -1418,20 +1449,21 @@ export default function Services() {
                       ? liveClients.find((c) => c.id === pmsSeedEq.clientId) ?? null
                       : null;
 
-                    const displayName = isPmsTask
-                      ? (pmsSeedEq?.name ?? eq?.name ?? "Unknown Equipment")
-                      : (eq?.name ?? "No unit selected");
-                    const displaySub = isPmsTask ? null : (eq ? eq.equipmentType : null);
-                    const displayClient = isPmsTask
-                      ? (pmsSeedClient?.companyName ?? client?.companyName ?? "Unknown Client")
-                      : (client?.companyName ?? "Unknown Client");
+                    const displayName = pmsSeedEq?.name ?? eq?.name ?? (isPmsTask ? "Unknown Equipment" : "No unit selected");
+                    const displayClient = pmsSeedClient?.companyName ?? client?.companyName ?? "Unknown Client";
                     const metricUnit = pmsCfg?.serviceIntervalUnit ?? "Hours";
+                    const manualMetricUnit: string | null = !isPmsTask ? (pmsMeta._serviceIntervalUnit ?? null) : null;
                     const metricValue = isPmsTask
                       ? getPmsMetricValue(pmsSeedEq, metricUnit, gps001CacheMs, gps001HoursOffsetMs)
-                      : (eq?.hoursTotal ?? "—");
-                    const serviceIntervalDisplay = (isPmsTask && pmsCfg)
+                      : (manualMetricUnit && pmsSeedEq
+                          ? getPmsMetricValue(pmsSeedEq, manualMetricUnit, gps001CacheMs, gps001HoursOffsetMs)
+                          : "—");
+                    const serviceIntervalDisplay = isPmsTask && pmsCfg
                       ? formatServiceInterval(pmsCfg.serviceInterval, pmsCfg.serviceIntervalUnit)
-                      : null;
+                      : (manualMetricUnit ?? null);
+
+                    const taskPriority: string = pmsMeta._priority ?? (isPmsTask ? "medium" : "");
+                    const taskOrigin: "auto" | "manual" = pmsMeta._origin === "manual" ? "manual" : "auto";
 
                     const handleRowClick = () => draftExecutions[task.id]?.travelStartTime ? setExecutionTask(task) : setConfirmTask(task);
 
@@ -1445,9 +1477,9 @@ export default function Services() {
                       >
                         <td className="px-3 py-3 whitespace-nowrap">
                           {task.status === "scheduled" && !isDraft ? (
-                            <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase bg-gray-100 text-gray-500">Not Started</span>
+                            <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase bg-gray-100 text-gray-500">Scheduled</span>
                           ) : (
-                            <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase bg-amber-100 text-amber-700">Repairing / Pending</span>
+                            <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase bg-amber-100 text-amber-700">Pending</span>
                           )}
                         </td>
                         <td className="px-3 py-3 whitespace-nowrap">
@@ -1455,15 +1487,32 @@ export default function Services() {
                         </td>
                         <td className="px-3 py-3">
                           <div className="text-xs font-bold text-gray-900">{displayName}</div>
-                          {displaySub && <div className="text-[10px] text-gray-400">{displaySub}</div>}
                         </td>
                         <td className="px-3 py-3 text-xs text-gray-700 whitespace-nowrap">{displayClient}</td>
                         <td className="px-3 py-3 text-xs text-gray-700 whitespace-nowrap">{task.serviceCategory}</td>
+                        <td className="px-3 py-3 whitespace-nowrap">
+                          {taskPriority === "high" ? (
+                            <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase bg-red-100 text-red-700">High</span>
+                          ) : taskPriority === "medium" ? (
+                            <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase bg-amber-100 text-amber-700">Medium</span>
+                          ) : taskPriority === "low" ? (
+                            <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase bg-gray-100 text-gray-500">Low</span>
+                          ) : (
+                            <span className="text-gray-400 text-xs">—</span>
+                          )}
+                        </td>
                         <td className="px-3 py-3 whitespace-nowrap">
                           <span className="font-mono-tech text-xs text-gray-700">{metricValue}</span>
                         </td>
                         <td className="px-3 py-3 whitespace-nowrap">
                           <span className="font-mono-tech text-xs text-gray-700">{serviceIntervalDisplay ?? "—"}</span>
+                        </td>
+                        <td className="px-3 py-3 whitespace-nowrap">
+                          {taskOrigin === "manual" ? (
+                            <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase bg-[#66B2B2]/10 text-[#0F766E]">Manual</span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase bg-gray-100 text-gray-500">Auto</span>
+                          )}
                         </td>
                         {isTech && (
                           <td className="px-3 py-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
@@ -1567,6 +1616,7 @@ export default function Services() {
                     const yearsDisplay = validDays ? `${(daysNum! / 365.25).toFixed(1)}` : "—";
 
                     const worstStatus = computeEquipmentWorstStatus(seedEq);
+                    const worstStatusDef = seedData.pmsStatuses.find(s => s.value === worstStatus);
                     const isSelected = selectedSeedId === seedEq.id;
                     const isHighlighted = storeId !== null && highlightedEquipment === storeId;
 
@@ -1617,12 +1667,13 @@ export default function Services() {
                           <td className="py-3 px-3 font-mono-tech text-gray-800">{monthsDisplay}</td>
                           <td className="py-3 px-3 font-mono-tech text-gray-800">{yearsDisplay}</td>
                           <td className="py-3 px-3">
-                            {worstStatus === "Overdue" ? (
-                              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#EF4444]/20 text-[#EF4444] uppercase">Overdue</span>
-                            ) : worstStatus === "Near Service" ? (
-                              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#F2A900]/20 text-[#F2A900] uppercase">Near Service</span>
-                            ) : worstStatus === "OK" ? (
-                              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#10B981]/20 text-[#10B981] uppercase">OK</span>
+                            {worstStatusDef ? (
+                              <span
+                                className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase"
+                                style={{ backgroundColor: `${worstStatusDef.color}33`, color: worstStatusDef.color }}
+                              >
+                                {worstStatusDef.label}
+                              </span>
                             ) : (
                               <span className="text-gray-400">—</span>
                             )}
@@ -1665,14 +1716,13 @@ export default function Services() {
                                     <p className="text-[11px] text-gray-500 font-medium mt-0.5">{seedEq.equipmentType ?? "—"}</p>
                                   </div>
                                   <div className="flex flex-col items-end gap-1.5">
-                                    {worstStatus === "Overdue" && (
-                                      <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wide bg-red-100 text-red-700 border border-red-200">Overdue</span>
-                                    )}
-                                    {worstStatus === "Near Service" && (
-                                      <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wide bg-amber-100 text-amber-700 border border-amber-200">Near Service</span>
-                                    )}
-                                    {worstStatus === "OK" && (
-                                      <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wide bg-green-100 text-green-700 border border-green-200">OK</span>
+                                    {worstStatusDef && (
+                                      <span
+                                        className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wide"
+                                        style={{ backgroundColor: `${worstStatusDef.color}20`, color: worstStatusDef.color, border: `1px solid ${worstStatusDef.color}40` }}
+                                      >
+                                        {worstStatusDef.label}
+                                      </span>
                                     )}
                                     {seedEq.id && (
                                       <span className="text-[9px] text-gray-400 font-mono-tech font-bold">{seedEq.id}</span>
@@ -1842,11 +1892,14 @@ export default function Services() {
                   </tr>
                 </thead>
                 <tbody>
-                  {allScheduledMaintenance.map((entry) => {
+                  {(() => {
+                    const completedRecs = (seedServiceRecordsData?.records ?? []).filter(r => r.status === "completed");
+                    return allScheduledMaintenance.map((entry) => {
                     const _seedEq = liveEquipment.find((e) => e.id === entry.equipmentId);
-                    const nextService = _seedEq
-                      ? computeNextService({ serviceInterval: entry.serviceInterval, serviceIntervalUnit: entry.serviceIntervalUnit }, _seedEq, (seedServiceRecordsData?.records ?? []).filter(r => r.status === "completed"))
-                      : "—";
+                    const pmsCfgArg = { serviceInterval: entry.serviceInterval, serviceIntervalUnit: entry.serviceIntervalUnit };
+                    const nextService = _seedEq ? computeNextService(pmsCfgArg, _seedEq, completedRecs) : "—";
+                    const liveStatus = _seedEq ? computeEntryStatus(pmsCfgArg, _seedEq, completedRecs) : "—";
+                    const statusDef = seedData.pmsStatuses.find(s => s.value === liveStatus);
                     return (
                     <tr key={entry.id} className="border-b border-gray-200 hover:bg-gray-50">
                       <td className="py-2.5 px-3 text-black font-medium">{entry.equipmentName}</td>
@@ -1861,12 +1914,13 @@ export default function Services() {
                           : "—"}
                       </td>
                       <td className="py-2.5 px-3">
-                        {entry.status === "Overdue" ? (
-                          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#EF4444]/20 text-[#EF4444] uppercase">Overdue</span>
-                        ) : entry.status === "Near Service" ? (
-                          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#F2A900]/20 text-[#F2A900] uppercase">Near Service</span>
-                        ) : entry.status === "OK" ? (
-                          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#10B981]/20 text-[#10B981] uppercase">OK</span>
+                        {statusDef ? (
+                          <span
+                            className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase"
+                            style={{ backgroundColor: `${statusDef.color}33`, color: statusDef.color }}
+                          >
+                            {statusDef.label}
+                          </span>
                         ) : (
                           <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-gray-100 text-gray-500 uppercase">—</span>
                         )}
@@ -1919,7 +1973,8 @@ export default function Services() {
                       </td>
                     </tr>
                   );
-                  })}
+                  });
+                  })()}
                   {allScheduledMaintenance.length === 0 && (
                     <tr>
                       <td colSpan={10} className="py-10 text-center text-gray-400">
@@ -2086,7 +2141,9 @@ export default function Services() {
           // only exist on persisted records. Failed submissions are queued in Zustand and
           // retried automatically via the pendingSubmissions effect above — they never
           // appear here as sparse phantom rows.
-          const allCompleted = (seedServiceRecordsData?.records ?? []).filter((r) => r.status === "completed");
+          const allCompleted = (seedServiceRecordsData?.records ?? [])
+            .filter((r) => r.status === "completed")
+            .sort((a, b) => new Date(a.completedDate ?? 0).getTime() - new Date(b.completedDate ?? 0).getTime());
 
           return (
           <div className="space-y-3 animate-in fade-in duration-300">
@@ -2520,9 +2577,75 @@ export default function Services() {
               </button>
               <h3 className="text-sm font-semibold text-black mb-3">Add Task</h3>
               <div className="space-y-3">
+                {/* Client — first */}
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-gray-600">Task Title</label>
-                  <Input placeholder="Task title" value={svcTaskTitle} onChange={(e) => setSvcTaskTitle(e.target.value)} className="bg-white border-gray-200 text-black" />
+                  <label className="text-xs font-medium text-gray-600">Client</label>
+                  <Select value={svcTaskClientId} onValueChange={(v) => { setSvcTaskClientId(v); setSvcTaskEquipmentId(""); }}>
+                    <SelectTrigger className="h-8 bg-white border-gray-200 text-black text-xs"><SelectValue placeholder="Select client" /></SelectTrigger>
+                    <SelectContent className="bg-white border-gray-200">
+                      {liveClients.map((c: any) => (
+                        <SelectItem key={c.id} value={String(c.id)} className="text-xs text-black">{c.companyName}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {/* Equipment — locked until client is selected */}
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-gray-600">Equipment</label>
+                  <Select
+                    value={svcTaskEquipmentId}
+                    onValueChange={setSvcTaskEquipmentId}
+                    disabled={!svcTaskClientId}
+                  >
+                    <SelectTrigger className="h-8 bg-white border-gray-200 text-black text-xs disabled:opacity-50">
+                      <SelectValue placeholder={svcTaskClientId ? "Select equipment" : "Select a client first"} />
+                    </SelectTrigger>
+                    <SelectContent className="bg-white border-gray-200">
+                      {liveEquipment
+                        .filter((eq: any) => String(eq.clientId) === String(svcTaskClientId))
+                        .map((eq: any) => (
+                          <SelectItem key={eq.id} value={eq.id} className="text-xs text-black">{eq.name}</SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {/* Optional metric tracking */}
+                {svcTaskEquipmentId && (
+                  <div className="space-y-2 p-3 rounded-lg bg-gray-50 border border-gray-100">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-medium text-gray-700">Track a service metric?</label>
+                      <button
+                        type="button"
+                        onClick={() => { setSvcTaskTargetsPms(v => !v); setSvcTaskMetricUnit(""); }}
+                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${svcTaskTargetsPms ? "bg-[#66B2B2]" : "bg-gray-300"}`}
+                      >
+                        <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${svcTaskTargetsPms ? "translate-x-4" : "translate-x-0.5"}`} />
+                      </button>
+                    </div>
+                    {svcTaskTargetsPms && (
+                      <Select value={svcTaskMetricUnit} onValueChange={setSvcTaskMetricUnit}>
+                        <SelectTrigger className="h-8 bg-white border-gray-200 text-black text-xs">
+                          <SelectValue placeholder="Select unit…" />
+                        </SelectTrigger>
+                        <SelectContent className="bg-white border-gray-200">
+                          {((seedData as any).serviceIntervalUnits as string[]).map((unit: string) => (
+                            <SelectItem key={unit} value={unit} className="text-xs text-black">{unit}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  </div>
+                )}
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-gray-600">Service Type</label>
+                  <Select value={svcTaskServiceType} onValueChange={setSvcTaskServiceType}>
+                    <SelectTrigger className="h-8 bg-white border-gray-200 text-black text-xs"><SelectValue placeholder="Select service type" /></SelectTrigger>
+                    <SelectContent className="bg-white border-gray-200">
+                      {(seedData as any).serviceTypes.map((opt: { value: string; label: string }) => (
+                        <SelectItem key={opt.value} value={opt.value} className="text-xs text-black">{opt.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-medium text-gray-600">Due Date</label>
@@ -2552,40 +2675,108 @@ export default function Services() {
                     </Select>
                   </div>
                 )}
-                <div className="space-y-1">
-                  <label className="text-xs font-medium text-gray-600">Service Type</label>
-                  <Select value={svcTaskServiceType} onValueChange={setSvcTaskServiceType}>
-                    <SelectTrigger className="h-8 bg-white border-gray-200 text-black text-xs"><SelectValue placeholder="Select service type" /></SelectTrigger>
-                    <SelectContent className="bg-white border-gray-200">
-                      {serviceTypeOptions.map((opt) => (
-                        <SelectItem key={opt.value} value={opt.value} className="text-xs text-black">{opt.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-medium text-gray-600">Client</label>
-                  <Select value={svcTaskClientId} onValueChange={setSvcTaskClientId}>
-                    <SelectTrigger className="h-8 bg-white border-gray-200 text-black text-xs"><SelectValue placeholder="Select client" /></SelectTrigger>
-                    <SelectContent className="bg-white border-gray-200">
-                      {liveClients.map((c: any) => (
-                        <SelectItem key={c.id} value={String(c.id)} className="text-xs text-black">{c.companyName}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
                 <div className="flex gap-2">
                   <Button variant="outline" onClick={() => setSvcTaskModalOpen(false)} className="flex-1">Cancel</Button>
                   <Button
                     className="flex-1 bg-[#66B2B2] text-white"
                     onClick={() => {
+                      if (!svcTaskEquipmentId || !svcTaskClientId || !svcTaskServiceType) return;
+
+                      // Duplicate check for metric-tracking tasks
+                      if (svcTaskTargetsPms && svcTaskMetricUnit) {
+                        const liveRecs = useOperationsStore.getState().serviceRecords;
+                        const hasDuplicate = liveRecs.some(r => {
+                          if (r.status === "completed") return false;
+                          try {
+                            const m = JSON.parse(r.description ?? "{}");
+                            return m._seedEqId === svcTaskEquipmentId &&
+                                   m._serviceIntervalUnit?.toLowerCase() === svcTaskMetricUnit.toLowerCase() &&
+                                   m._resetOnComplete === true;
+                          } catch { return false; }
+                        });
+                        if (hasDuplicate) {
+                          toast.error(`A task already tracks ${svcTaskMetricUnit} for this equipment.`);
+                          return;
+                        }
+                      }
+
+                      const selectedSeedEq = liveEquipment.find((e: any) => e.id === svcTaskEquipmentId);
+                      const clientNum = Number(String(svcTaskClientId).replace(/\D/g, "")) || 0;
+                      const storeEq = equipment.find((e) => e.serialNumber === selectedSeedEq?.serialNumber) ?? equipment[0];
+                      if (!storeEq) return;
+
+                      const newTaskId = Date.now();
+                      const taskDescription = JSON.stringify({
+                        _src: "manual",
+                        _origin: "manual",
+                        _priority: svcTaskPriority,
+                        _seedEqId: svcTaskEquipmentId,
+                        label: `${svcTaskServiceType} for ${selectedSeedEq?.name ?? ""}`,
+                        _serviceType: svcTaskServiceType,
+                        ...(svcTaskTargetsPms && svcTaskMetricUnit ? {
+                          _serviceIntervalUnit: svcTaskMetricUnit,
+                          _resetOnComplete: true,
+                        } : {}),
+                      });
+
+                      // Use setState directly so the store record shares the exact same ID
+                      // as the seed upsert — prevents the injection effect from adding a duplicate
+                      // when seedServiceRecordsData is re-fetched after the upsert.
+                      useOperationsStore.setState((state) => ({
+                        serviceRecords: [
+                          ...state.serviceRecords,
+                          {
+                            id: newTaskId,
+                            equipmentId: storeEq.id,
+                            clientId: clientNum,
+                            technician: autoAssignTask ? "Pending Assignment" : (svcTaskAssignedTo || "Pending Assignment"),
+                            serviceCategory: svcTaskServiceType as any,
+                            description: taskDescription,
+                            partsUsed: "Pending",
+                            status: "scheduled" as const,
+                            scheduledDate: new Date().toISOString(),
+                            completedDate: null,
+                            cost: 0,
+                            findings: "",
+                            workDone: "",
+                            recommendation: "",
+                            hoursAtService: 0,
+                            invoiceId: null,
+                            createdAt: new Date().toISOString(),
+                          },
+                        ],
+                      }));
+
+                      upsertSeedServiceRecord.mutate({
+                        id: newTaskId,
+                        seedEquipmentId: svcTaskEquipmentId,
+                        pmsConfigIndex: 0,
+                        equipmentId: storeEq.id,
+                        clientId: clientNum,
+                        serviceCategory: svcTaskServiceType,
+                        status: "scheduled",
+                        scheduledDate: svcTaskDueDate || new Date().toISOString(),
+                        technician: autoAssignTask ? "Pending Assignment" : (svcTaskAssignedTo || "Pending Assignment"),
+                        description: taskDescription,
+                        findings: "",
+                        workDone: "",
+                        recommendation: "",
+                        partsUsed: "Pending",
+                        cost: 0,
+                        hoursAtService: 0,
+                        priority: svcTaskPriority,
+                        taskOrigin: "manual",
+                      });
+
                       setSvcTaskModalOpen(false);
-                      setSvcTaskTitle("");
+                      setSvcTaskEquipmentId("");
                       setSvcTaskDueDate("");
                       setSvcTaskPriority("medium");
                       setSvcTaskServiceType("");
                       setSvcTaskClientId("");
                       setSvcTaskAssignedTo("");
+                      setSvcTaskTargetsPms(false);
+                      setSvcTaskMetricUnit("");
                     }}
                   >
                     Create
@@ -2984,7 +3175,7 @@ function ExecutionModal({
         // Use the seed serial for PMS tasks; fall back to store serial for sim/manual tasks
         let _scanMeta: any = {};
         try { _scanMeta = JSON.parse(task?.description ?? "{}"); } catch {}
-        const _scanSeedEq = _scanMeta._src === "pms"
+        const _scanSeedEq = _scanMeta._seedEqId
           ? seedEquipment.find((s: any) => s.id === _scanMeta._seedEqId) ?? null
           : null;
         const expectedSerial = _scanSeedEq?.serialNumber ?? currentEq?.serialNumber ?? "";
@@ -3079,7 +3270,7 @@ function ExecutionModal({
         try {
             let meta: any = {};
             try { meta = JSON.parse(task.description ?? "{}"); } catch {}
-            const seedEq = meta._src === "pms"
+            const seedEq = meta._seedEqId
                 ? seedEquipment.find((s: any) => s.id === meta._seedEqId) ?? null
                 : null;
             const pmsCfg = seedEq?.pmsConfiguration?.[meta._pmsIdx] ?? null;
@@ -3116,9 +3307,11 @@ function ExecutionModal({
             // Use snapshotted unit so a config change doesn't affect the reset decision either.
             const pmsUnit = (snapshotIntervalUnit ?? "").toLowerCase();
             const isHoursOrKmTask = pmsUnit === "hours" || pmsUnit === "km" || pmsUnit === "weeks" || pmsUnit === "months" || pmsUnit === "years";
-            const hasPmsConfig = !!pmsCfg || (snapshotInterval !== undefined && snapshotIntervalUnit !== undefined);
+            const hasPmsConfig = !!pmsCfg
+                || (snapshotInterval !== undefined && snapshotIntervalUnit !== undefined)
+                || (meta._resetOnComplete === true && snapshotIntervalUnit !== undefined);
             const shouldResetMetrics =
-                meta._src === "pms" &&
+                (meta._src === "pms" || meta._resetOnComplete === true) &&
                 !!meta._seedEqId &&
                 hasPmsConfig &&
                 isHoursOrKmTask &&
@@ -3159,7 +3352,7 @@ function ExecutionModal({
                 }
                 if (_usage !== null && Number.isFinite(_usage) && _usage >= 0) {
                     const _pct = (_usage / snapshotInterval) * 100;
-                    computedEquipmentStatus = _pct >= 100 ? "Overdue" : _pct >= 80 ? "Near Service" : "OK";
+                    computedEquipmentStatus = computePmsStatus(_pct, seedData.pmsStatuses) ?? "OK";
                 }
             }
 
@@ -3220,17 +3413,15 @@ function ExecutionModal({
 
             completeSeedServiceRecordMutation.mutate(submissionPayload, {
                 onSuccess: () => {
-                    // Refresh both queries so service reports and equipment status update immediately.
                     trpcUtils.seedServiceRecords.list.invalidate();
-                    trpcUtils.seedEquipment.list.invalidate();
-                    // Apply the in-memory client-side override so the Scheduled Maintenance
-                    // table reflects 0 / OK immediately, before the refetch resolves.
+                    setTimeout(() => {
+                        trpcUtils.seedEquipment.list.invalidate();
+                    }, 400);
                     if (shouldResetMetrics) {
-                        onMetricsReset?.(meta._seedEqId as string, pmsCfg.serviceIntervalUnit ?? "Hours");
+                        onMetricsReset?.(meta._seedEqId as string, snapshotIntervalUnit ?? "Hours");
                     }
                 },
                 onError: () => {
-                    // Persist the full payload so the auto-retry effect can replay it on next load.
                     queuePendingSubmission({
                         id: task.id,
                         queuedAt: new Date().toISOString(),
@@ -3243,7 +3434,7 @@ function ExecutionModal({
 
         clearDraftExecution(task.id);
         toast.success("Final report sealed and submitted!");
-        onFinish();
+        setTimeout(() => onFinish(), 80);
     };
 
     // Cleanup scanner on unmount or close
@@ -3258,13 +3449,15 @@ function ExecutionModal({
 
     const currentEq = equipment.find(e => e.id === (draft?.equipmentId || task?.equipmentId));
 
-    // For PMS auto-tasks, resolve display values from seed data so they match the real equipment.
+    // Resolve display values from seed data for any task with a _seedEqId (PMS or manual).
     let _pmsMeta: any = {};
     try { _pmsMeta = JSON.parse(task?.description ?? "{}"); } catch {}
     const _isPmsTask = _pmsMeta._src === "pms";
-    const _pmsSeedEq = _isPmsTask
+    const _pmsSeedEq = _pmsMeta._seedEqId
       ? seedEquipment.find((s: any) => s.id === _pmsMeta._seedEqId) ?? null
-      : null;
+      : (currentEq?.serialNumber
+          ? seedEquipment.find((s: any) => s.serialNumber === currentEq.serialNumber) ?? null
+          : null);
 
     // Serial number used for QR verification and display
     const displaySerial = _pmsSeedEq?.serialNumber ?? currentEq?.serialNumber ?? "";
@@ -3275,6 +3468,10 @@ function ExecutionModal({
       ? (seedClients.find((c: any) => c.id === _pmsSeedEq.clientId)?.companyName ?? null)
       : null;
     const _pmsCfg = _pmsSeedEq?.pmsConfiguration?.[_pmsMeta._pmsIdx] ?? null;
+    const _taskPriority: string | null = _pmsMeta._priority ?? null;
+    const _taskMetricUnit: string | null = _pmsMeta._serviceIntervalUnit ?? null;
+    const _taskServiceType: string | null = _pmsMeta._serviceType ?? null;
+    const _eqPmsStatus: string | null = _pmsSeedEq?.status ?? null;
     // Operating time: GPS cache for EQ-001, seed hoursTotal otherwise
     const displayOperatingTime = (() => {
       if (_pmsSeedEq?.id === "EQ-001") {
@@ -3479,6 +3676,10 @@ function ExecutionModal({
                                     seedEquipment={_pmsSeedEq}
                                     seedClients={seedClients}
                                     pmsConfig={_pmsCfg}
+                                    taskPriority={_taskPriority}
+                                    taskMetricUnit={_taskMetricUnit}
+                                    taskServiceType={_taskServiceType}
+                                    eqPmsStatus={_isPmsTask ? _eqPmsStatus : null}
                                     onSave={(data) => handleNext(data)}
                                     onBack={handleBack}
                                 />
@@ -3672,7 +3873,7 @@ function VisualEvidence({ label, photo, notes, onSave, onBack }: { label: string
     );
 }
 
-function TechnicalWorkForm({ draft, equipment, client, packages, seedEquipment, seedClients, pmsConfig, onSave, onBack }: { draft: DraftExecution, equipment?: Equipment, client?: Client, packages: any[], seedEquipment?: any, seedClients?: any[], pmsConfig?: any, onSave: (d: Partial<DraftExecution>) => void, onBack: () => void }) {
+function TechnicalWorkForm({ draft, equipment, client, packages, seedEquipment, seedClients, pmsConfig, taskPriority, taskMetricUnit, taskServiceType, eqPmsStatus, onSave, onBack }: { draft: DraftExecution, equipment?: Equipment, client?: Client, packages: any[], seedEquipment?: any, seedClients?: any[], pmsConfig?: any, taskPriority?: string | null, taskMetricUnit?: string | null, taskServiceType?: string | null, eqPmsStatus?: string | null, onSave: (d: Partial<DraftExecution>) => void, onBack: () => void }) {
   void packages;
     const { items: inventoryItems } = useInventoryStore();
     const [fields, setFields] = useState({
@@ -3692,21 +3893,24 @@ function TechnicalWorkForm({ draft, equipment, client, packages, seedEquipment, 
 
     // Current metric value for the service context card
     const currentMetric = useMemo(() => {
-        if (!pmsConfig) return null;
-        const unit: string = pmsConfig.serviceIntervalUnit ?? "Hours";
+        if (!seedEquipment) return null;
+        const unit: string | null = pmsConfig?.serviceIntervalUnit ?? taskMetricUnit ?? null;
+        if (!unit) return null;
         let gps001CacheMs = 0;
         try { gps001CacheMs = Number(window.localStorage.getItem("nextos-gps001-total-hours-ms") ?? "0") || 0; } catch {}
         return getPmsMetricValue(seedEquipment, unit, gps001CacheMs);
-    }, [seedEquipment, pmsConfig]);
+    }, [seedEquipment, pmsConfig, taskMetricUnit]);
 
-    // PMS interval display e.g. "200h" or "2w"
+    // PMS interval display; for manual metric-tracking tasks just show the unit name
     const intervalDisplay = useMemo(() => {
-        if (!pmsConfig) return null;
-        const n = pmsConfig.serviceInterval;
-        const u: string = (pmsConfig.serviceIntervalUnit ?? "").toLowerCase();
-        const suffix = u === "hours" ? "h" : u === "km" ? "km" : u === "weeks" ? "w" : u === "days" ? "d" : u;
-        return `${n}${suffix}`;
-    }, [pmsConfig]);
+        if (pmsConfig) {
+            const n = pmsConfig.serviceInterval;
+            const u: string = (pmsConfig.serviceIntervalUnit ?? "").toLowerCase();
+            const suffix = u === "hours" ? "h" : u === "km" ? "km" : u === "weeks" ? "w" : u === "days" ? "d" : u === "months" ? "mo" : u;
+            return `${n}${suffix}`;
+        }
+        return taskMetricUnit ?? null;
+    }, [pmsConfig, taskMetricUnit]);
 
     // Client name: prefer seed client lookup, fall back to CRM client
     const clientName = useMemo(() => {
@@ -3715,10 +3919,11 @@ function TechnicalWorkForm({ draft, equipment, client, packages, seedEquipment, 
             if (sc?.companyName) return sc.companyName;
         }
         return client?.companyName ?? "—";
-    }, [seedEquipment, client]);
+    }, [seedEquipment, seedClients, client]);
 
     const eqName = seedEquipment?.name ?? equipment?.name ?? "—";
-    const eqType = seedEquipment?.equipmentType ?? (equipment ? `${equipment.equipmentType} - ${equipment.serialNumber}` : "—");
+    const rawEqType = seedEquipment?.equipmentType ?? equipment?.equipmentType ?? "—";
+    const eqType = String(rawEqType).split(" - ")[0].trim();
 
     return (
         <div className="space-y-6 animate-in fade-in duration-300">
@@ -3728,18 +3933,48 @@ function TechnicalWorkForm({ draft, equipment, client, packages, seedEquipment, 
                     <div className="text-xs text-gray-500 mt-1"><span className="font-semibold text-gray-600">Equipment Name:</span> {eqName}</div>
                     <div className="text-xs text-gray-500 mt-1"><span className="font-semibold text-gray-600">Equipment Type:</span> {eqType}</div>
                     <div className="text-xs text-gray-500 mt-0.5"><span className="font-semibold text-gray-600">Client:</span> {clientName}</div>
+                    <div className="text-xs text-gray-500 mt-0.5">
+                        <span className="font-semibold text-gray-600">Status:</span>{" "}
+                        {eqPmsStatus ? (
+                            <span className={`font-bold ${
+                                eqPmsStatus === "Overdue"   ? "text-red-500"
+                                : eqPmsStatus === "Due"    ? "text-amber-500"
+                                : eqPmsStatus === "Due Soon" ? "text-[#66B2B2]"
+                                : "text-green-600"
+                            }`}>{eqPmsStatus}</span>
+                        ) : (
+                            <span className="text-gray-400">—</span>
+                        )}
+                    </div>
                 </div>
                 <div className="p-4 rounded-xl bg-gray-50 border border-gray-100">
                     <div className="text-[10px] text-gray-500 uppercase font-bold tracking-widest mb-2">Service Context</div>
-                    {pmsConfig ? (
-                        <div className="space-y-1">
-                            <div className="text-xs text-gray-500"><span className="font-semibold text-gray-600">Service Type:</span> {pmsConfig.serviceType}</div>
-                            {intervalDisplay && <div className="text-xs text-gray-500"><span className="font-semibold text-gray-600">Scheduled Maintenance:</span> {intervalDisplay}</div>}
-                            {currentMetric && <div className="text-xs text-gray-500"><span className="font-semibold text-gray-600">{getPmsMetricLabel(pmsConfig.serviceIntervalUnit ?? "Hours")}:</span> {currentMetric}</div>}
+                    <div className="space-y-1">
+                        {(pmsConfig?.serviceType || taskServiceType) && (
+                            <div className="text-xs text-gray-500">
+                                <span className="font-semibold text-gray-600">Service Type:</span>{" "}
+                                {pmsConfig?.serviceType ?? taskServiceType ?? "—"}
+                            </div>
+                        )}
+                        <div className="text-xs text-gray-500">
+                            <span className="font-semibold text-gray-600">Scheduled Maintenance:</span>{" "}
+                            {intervalDisplay ?? "—"}
                         </div>
-                    ) : (
-                        <div className="text-sm font-bold text-gray-900 truncate">{client?.companyName ?? "—"}</div>
-                    )}
+                        <div className="text-xs text-gray-500">
+                            <span className="font-semibold text-gray-600">Metric at Service:</span>{" "}
+                            {currentMetric ?? "—"}
+                        </div>
+                        {taskPriority && (
+                            <div className="text-xs text-gray-500 flex items-center gap-1.5">
+                                <span className="font-semibold text-gray-600">Priority:</span>
+                                <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase ${
+                                    taskPriority === "high" ? "bg-red-100 text-red-700"
+                                    : taskPriority === "medium" ? "bg-amber-100 text-amber-700"
+                                    : "bg-gray-100 text-gray-500"
+                                }`}>{taskPriority}</span>
+                            </div>
+                        )}
+                    </div>
                 </div>
             </div>
 

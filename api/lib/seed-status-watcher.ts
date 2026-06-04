@@ -2,6 +2,8 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { watch } from "node:fs";
 import { writeSeedData } from "./seed-writer";
+import { computePmsStatus } from "@/lib/pms-status";
+import seedData from "@/data/seed-data.json";
 
 interface PmsConfigEntry {
   serviceInterval: number;
@@ -20,7 +22,7 @@ interface SeedEquipmentEntry {
   kmToday?: number | string;
   kmTotal?: number | string;
   days?: number | string;
-  status?: "OK" | "Near Service" | "Overdue";
+  status?: string;
   pmsConfiguration?: PmsConfigEntry[]; // array — each entry is an independent schedule
 }
 
@@ -68,7 +70,7 @@ function convertDaysToPeriods(days: number): { weeks: number; months: number; ye
 function calculateSingleConfigStatus(
   pms: PmsConfigEntry,
   entry: SeedEquipmentEntry
-): "OK" | "Near Service" | "Overdue" | null {
+): string | null {
   const interval = Number(pms.serviceInterval ?? 0);
   if (!Number.isFinite(interval) || interval <= 0) return null;
 
@@ -91,23 +93,27 @@ function calculateSingleConfigStatus(
 
   if (usage === null || !Number.isFinite(usage) || usage < 0) return null;
   const progress = (usage / interval) * 100;
-  if (progress >= 100) return "Overdue";
-  if (progress >= 80) return "Near Service";
-  return "OK";
+  return computePmsStatus(progress, seedData.pmsStatuses);
 }
 
-// Returns the worst status across all pmsConfiguration entries (Overdue > Near Service > OK).
-function calculateServiceStatus(entry: SeedEquipmentEntry): "OK" | "Near Service" | "Overdue" | null {
+// Returns the worst status across all pmsConfiguration entries — driven by pmsStatuses.
+function calculateServiceStatus(entry: SeedEquipmentEntry): string | null {
   if (entry.id === "EQ-001") return null;
 
   const configs = Array.isArray(entry.pmsConfiguration) ? entry.pmsConfiguration : [];
   if (configs.length === 0) return null;
 
-  const statuses = configs.map((pms) => calculateSingleConfigStatus(pms, entry));
-  if (statuses.includes("Overdue")) return "Overdue";
-  if (statuses.includes("Near Service")) return "Near Service";
-  if (statuses.includes("OK")) return "OK";
-  return null;
+  const valid = configs
+    .map((pms) => calculateSingleConfigStatus(pms, entry))
+    .filter((s): s is string => s !== null);
+  if (valid.length === 0) return null;
+
+  // Worst = highest minProgressPercent across all config results
+  return valid.reduce((worst, current) => {
+    const curPct = seedData.pmsStatuses.find(s => s.value === current)?.minProgressPercent ?? 0;
+    const wrstPct = seedData.pmsStatuses.find(s => s.value === worst)?.minProgressPercent ?? 0;
+    return curPct > wrstPct ? current : worst;
+  });
 }
 
 async function recalculateAndPersistStatuses(): Promise<void> {

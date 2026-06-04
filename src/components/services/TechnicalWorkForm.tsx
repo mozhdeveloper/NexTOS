@@ -11,7 +11,7 @@ import {
 import type { DraftExecution } from "@/stores/useOperationsStore";
 import { useInventoryStore } from "@/stores/useInventoryStore";
 import type { Equipment, Client } from "@/types";
-import { getPmsMetricValue, getPmsMetricLabel } from "./utils";
+import { getPmsMetricValue } from "./utils";
 
 interface TechnicalWorkFormProps {
   draft: DraftExecution;
@@ -22,11 +22,14 @@ interface TechnicalWorkFormProps {
   seedClients?: any[];
   pmsConfig?: any;
   taskId: number;
+  taskPriority?: string | null;
+  taskMetricUnit?: string | null;
+  taskServiceType?: string | null;
   onSave: (d: Partial<DraftExecution>) => void;
   onBack: () => void;
 }
 
-export function TechnicalWorkForm({ draft, equipment, client, packages, seedEquipment, seedClients, pmsConfig, taskId, onSave, onBack }: TechnicalWorkFormProps) {
+export function TechnicalWorkForm({ draft, equipment, client, packages, seedEquipment, seedClients, pmsConfig, taskId, taskPriority, taskMetricUnit, taskServiceType, onSave, onBack }: TechnicalWorkFormProps) {
     const { items: inventoryItems, logPartUsage, updateItem } = useInventoryStore();
     const [selectedPartId, setSelectedPartId] = useState<number | "">("");
     const [partQty, setPartQty] = useState<string>("1");
@@ -47,21 +50,23 @@ export function TechnicalWorkForm({ draft, equipment, client, packages, seedEqui
 
     // Current metric value for the service context card
     const currentMetric = useMemo(() => {
-        if (!pmsConfig) return null;
-        const unit: string = pmsConfig.serviceIntervalUnit ?? "Hours";
+        if (!seedEquipment) return null;
+        const unit: string = pmsConfig?.serviceIntervalUnit ?? taskMetricUnit ?? "Hours";
         let gps001CacheMs = 0;
         try { gps001CacheMs = Number(window.localStorage.getItem("nextos-gps001-total-hours-ms") ?? "0") || 0; } catch {}
         return getPmsMetricValue(seedEquipment, unit, gps001CacheMs);
-    }, [seedEquipment, pmsConfig]);
+    }, [seedEquipment, pmsConfig, taskMetricUnit]);
 
-    // PMS interval display e.g. "200h" or "2w"
+    // PMS interval display e.g. "200h" or "2w"; for manual metric-tracking tasks just show the unit name
     const intervalDisplay = useMemo(() => {
-        if (!pmsConfig) return null;
-        const n = pmsConfig.serviceInterval;
-        const u: string = (pmsConfig.serviceIntervalUnit ?? "").toLowerCase();
-        const suffix = u === "hours" ? "h" : u === "km" ? "km" : u === "weeks" ? "w" : u === "days" ? "d" : u === "months" ? "mo" : u;
-        return `${n}${suffix}`;
-    }, [pmsConfig]);
+        if (pmsConfig) {
+            const n = pmsConfig.serviceInterval;
+            const u: string = (pmsConfig.serviceIntervalUnit ?? "").toLowerCase();
+            const suffix = u === "hours" ? "h" : u === "km" ? "km" : u === "weeks" ? "w" : u === "days" ? "d" : u === "months" ? "mo" : u;
+            return `${n}${suffix}`;
+        }
+        return taskMetricUnit ?? null;
+    }, [pmsConfig, taskMetricUnit]);
 
     // Client name: prefer seed client lookup, fall back to CRM client
     const clientName = useMemo(() => {
@@ -73,28 +78,46 @@ export function TechnicalWorkForm({ draft, equipment, client, packages, seedEqui
     }, [seedEquipment, client]);
 
     const eqName = seedEquipment?.name ?? equipment?.name ?? equipment?.id ?? "—";
-    const eqType = seedEquipment?.equipmentType ?? equipment?.equipmentType ?? "—";
+    const rawEqType = seedEquipment?.equipmentType ?? equipment?.equipmentType ?? "—";
+    const eqType = String(rawEqType).split(" - ")[0].trim();
 
     return (
         <div className="space-y-6 animate-in fade-in duration-300">
             <div className="grid grid-cols-1 gap-4">
                 <div className="p-4 rounded-xl bg-gray-50 border border-gray-100">
                     <div className="text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-2">Equipment Unit</div>
-                    <div className="text-xs text-white mt-1"><span className="font-semibold text-gray-600">Equipment Name:</span> {eqName}</div>
-                    <div className="text-xs text-white mt-1"><span className="font-semibold text-gray-600">Equipment Type:</span> {eqType}</div>
-                    <div className="text-xs text-white mt-0.5"><span className="font-semibold text-gray-600">Client:</span> {clientName}</div>
+                    <div className="text-xs text-gray-700 mt-1"><span className="font-semibold text-gray-600">Equipment Name:</span> {eqName}</div>
+                    <div className="text-xs text-gray-700 mt-1"><span className="font-semibold text-gray-600">Equipment Type:</span> {eqType}</div>
+                    <div className="text-xs text-gray-700 mt-0.5"><span className="font-semibold text-gray-600">Client:</span> {clientName}</div>
                 </div>
                 <div className="p-4 rounded-xl bg-gray-50 border border-gray-100">
-                    <div className="text-[10px] text-white uppercase font-bold tracking-wider mb-2">Service Context</div>
-                    {pmsConfig ? (
-                        <div className="space-y-1">
-                            <div className="text-xs text-gray-500"><span className="font-semibold text-gray-600">Service Type:</span> {pmsConfig.serviceType}</div>
-                            {intervalDisplay && <div className="text-xs text-white"><span className="font-semibold text-gray-600">Scheduled Maintenance:</span> {intervalDisplay}</div>}
-                            {currentMetric && <div className="text-xs text-white"><span className="font-semibold text-gray-600">{getPmsMetricLabel(pmsConfig.serviceIntervalUnit ?? "Hours")}:</span> {currentMetric}</div>}
+                    <div className="text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-2">Service Context</div>
+                    <div className="space-y-1">
+                        {(pmsConfig?.serviceType || taskServiceType) && (
+                            <div className="text-xs text-gray-500">
+                                <span className="font-semibold text-gray-600">Service Type:</span>{" "}
+                                {pmsConfig?.serviceType ?? taskServiceType ?? "—"}
+                            </div>
+                        )}
+                        <div className="text-xs text-gray-500">
+                            <span className="font-semibold text-gray-600">Scheduled Maintenance:</span>{" "}
+                            {intervalDisplay ?? "—"}
                         </div>
-                    ) : (
-                        <div className="text-sm font-bold text-white truncate">{client?.companyName ?? "—"}</div>
-                    )}
+                        <div className="text-xs text-gray-500">
+                            <span className="font-semibold text-gray-600">Metric at Service:</span>{" "}
+                            {currentMetric ?? "—"}
+                        </div>
+                        {taskPriority && (
+                            <div className="text-xs text-gray-500 flex items-center gap-1.5">
+                                <span className="font-semibold text-gray-600">Priority:</span>
+                                <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase ${
+                                    taskPriority === "high" ? "bg-red-100 text-red-700"
+                                    : taskPriority === "medium" ? "bg-amber-100 text-amber-700"
+                                    : "bg-gray-100 text-gray-500"
+                                }`}>{taskPriority}</span>
+                            </div>
+                        )}
+                    </div>
                 </div>
             </div>
 

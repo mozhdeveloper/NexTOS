@@ -3,6 +3,7 @@ import { persist } from "zustand/middleware";
 import type { Equipment, ServiceRecord, ServicePhoto, Booking, ServiceCategory, Package } from "@/types";
 import { toast } from "sonner";
 import seedData from "@/data/seed-data.json";
+import { computePmsStatusFromRemaining } from "@/lib/pms-status";
 
 type SeedEquipmentRecord = Partial<Equipment> & {
   id: string | number;
@@ -163,7 +164,7 @@ interface OperationsState {
   // Logic Helpers
   getHoursRemaining: (equipmentId: string) => number | null;
   getDaysUntilCalibration: (equipmentId: string) => number | null;
-  getEquipmentStatus: (equipmentId: string) => "OK" | "Near Service" | "Service Due" | "Overdue" | "Due Soon" | "Due";
+  getEquipmentStatus: (equipmentId: string) => string;
 
   // Selectors
   getEquipmentByClient: (clientId: string) => Equipment[];
@@ -468,12 +469,15 @@ export const useOperationsStore = create<OperationsState>()(
       getDaysUntilCalibration: () => null,
 
       getEquipmentStatus: (equipmentId) => {
-        const remaining = get().getHoursRemaining(equipmentId);
-        if (remaining === null) return "OK";
-        if (remaining <= 0) return "Overdue";
-        if (remaining <= 50) return "Service Due";
-        if (remaining <= 100) return "Near Service";
-        return "OK";
+        const eq = get().equipment.find(e => e.id === equipmentId);
+        if (!eq || eq.equipmentType !== "Heavy Equipment") return "OK";
+        const config = eq.pmsConfiguration?.find(c => c.serviceIntervalUnit?.toLowerCase() === "hours");
+        if (!config || config.serviceInterval <= 0) return "OK";
+        const currentH = parseHoursText(eq.hoursTotal ?? "0h 0m");
+        const interval = config.serviceInterval;
+        const nextMilestone = (Math.floor(currentH / interval) + 1) * interval;
+        const remaining = nextMilestone - currentH;
+        return computePmsStatusFromRemaining(remaining, interval, seedData.pmsStatuses) ?? "OK";
       },
 
       getEquipmentByClient: (clientId) =>

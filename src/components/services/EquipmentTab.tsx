@@ -24,7 +24,7 @@ interface EquipmentTabProps {
   setShowQR: (v: boolean) => void;
   onShowReport: (record: any) => void;
   formatGps001Hours: () => string;
-  computeEquipmentWorstStatus: (seedEq: any) => "OK" | "Near Service" | "Overdue" | null;
+  computeEquipmentWorstStatus: (seedEq: any) => string | null;
 }
 
 export function EquipmentTab({
@@ -219,14 +219,13 @@ export function EquipmentTab({
                               <p className="text-[11px] text-gray-500 font-medium mt-0.5">{seedEq.equipmentType ?? "—"}</p>
                             </div>
                             <div className="flex flex-col items-end gap-1.5">
-                              {worstStatus === "Overdue" && (
-                                <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wide bg-red-100 text-red-700 border border-red-200">Overdue</span>
-                              )}
-                              {worstStatus === "Near Service" && (
-                                <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wide bg-amber-100 text-amber-700 border border-amber-200">Near Service</span>
-                              )}
-                              {worstStatus === "OK" && (
-                                <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wide bg-green-100 text-green-700 border border-green-200">OK</span>
+                              {statusDef && (
+                                <span
+                                  className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wide"
+                                  style={{ backgroundColor: `${statusDef.color}20`, color: statusDef.color, border: `1px solid ${statusDef.color}40` }}
+                                >
+                                  {statusDef.label}
+                                </span>
                               )}
                               {seedEq.id && (
                                 <span className="text-[9px] text-gray-400 font-mono-tech font-bold">{seedEq.id}</span>

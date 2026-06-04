@@ -8,6 +8,7 @@ import { useCRMStore } from "@/stores/useCRMStore";
 import { useAuthStore } from "@/stores/useAuthStore";
 import { trpc } from "@/providers/trpc";
 import seedData from "@/data/seed-data.json";
+import { computePmsStatus } from "@/lib/pms-status";
 import {
   fetchAllTimeWorkingDays,
   fetchAllTimeWorkingMs,
@@ -99,7 +100,7 @@ type SeedEquipmentDisplay = {
   clientName: string | null;
 };
 
-type ServiceStatus = "OK" | "Near Service" | "Overdue";
+type ServiceStatus = "OK" | "Near Service" | "Due Soon" | "Due" | "Overdue";
 
 interface HistoryRow {
   id: string;
@@ -457,10 +458,12 @@ function getPmsConfigs(entry: any): any[] {
 
 function worstServiceStatus(statuses: (ServiceStatus | null)[]): ServiceStatus | null {
   const valid = statuses.filter((s): s is ServiceStatus => s !== null);
-  if (valid.includes("Overdue")) return "Overdue";
-  if (valid.includes("Near Service")) return "Near Service";
-  if (valid.includes("OK")) return "OK";
-  return null;
+  if (valid.length === 0) return null;
+  return valid.reduce((worst, current) => {
+    const curPct = seedData.pmsStatuses.find(s => s.value === current)?.minProgressPercent ?? 0;
+    const wrstPct = seedData.pmsStatuses.find(s => s.value === worst)?.minProgressPercent ?? 0;
+    return curPct > wrstPct ? current : worst;
+  });
 }
 
 function parseMetricForPmsConfig(
@@ -506,9 +509,7 @@ function computeServiceStatusFromSeedEntry(entry: any, hoursMetricOverride?: num
     const metric = parseMetricForPmsConfig(pmsConfig, entry, hoursMetricOverride);
     if (metric === null || !Number.isFinite(metric) || metric < 0) return null;
     const progress = (metric / interval) * 100;
-    if (progress >= 100) return "Overdue" as ServiceStatus;
-    if (progress >= 80) return "Near Service" as ServiceStatus;
-    return "OK" as ServiceStatus;
+    return computePmsStatus(progress, seedData.pmsStatuses) as ServiceStatus | null;
   });
 
   return worstServiceStatus(statuses);
@@ -533,9 +534,7 @@ function computeServiceStatusFromAddedEntry(entry: ModalEquipment, seedEntry?: a
     const metric = parseMetricForPmsConfig(pmsConfig, sourceEntry, undefined);
     if (metric === null || !Number.isFinite(metric) || metric < 0) return null;
     const progress = (metric / interval) * 100;
-    if (progress >= 100) return "Overdue" as ServiceStatus;
-    if (progress >= 80) return "Near Service" as ServiceStatus;
-    return "OK" as ServiceStatus;
+    return computePmsStatus(progress, seedData.pmsStatuses) as ServiceStatus | null;
   });
 
   return worstServiceStatus(statuses);
@@ -543,13 +542,13 @@ function computeServiceStatusFromAddedEntry(entry: ModalEquipment, seedEntry?: a
 
 function serviceStatusTextClass(status: ServiceStatus): string {
   if (status === "Overdue") return "text-[#EF4444]";
-  if (status === "Near Service") return "text-[#F2A900]";
+  if (status === "Due" || status === "Due Soon" || status === "Near Service") return "text-[#F2A900]";
   return "text-[#10B981]";
 }
 
 function serviceStatusDotClass(status: ServiceStatus): string {
   if (status === "Overdue") return "bg-[#EF4444]";
-  if (status === "Near Service") return "bg-[#F2A900]";
+  if (status === "Due" || status === "Due Soon" || status === "Near Service") return "bg-[#F2A900]";
   return "bg-[#10B981]";
 }
 
@@ -857,6 +856,11 @@ export default function Fleet() {
   const addSeedEquipmentMutation = trpc.seedEquipment.add.useMutation();
   const updateSeedEquipmentMutation = trpc.seedEquipment.update.useMutation();
   const deleteSeedEquipmentMutation = trpc.seedEquipment.delete.useMutation();
+  const { data: liveEquipmentData } = trpc.seedEquipment.list.useQuery(undefined, {
+    staleTime: 10_000,
+    refetchInterval: 15_000,
+  });
+  const liveSeedEquipment: any[] = liveEquipmentData?.equipment ?? (seedData.equipment as any[]);
 
   const [mounted, setMounted] = useState(false);
 
@@ -2472,7 +2476,7 @@ export default function Fleet() {
                 const displayEquipmentName = seedDisplay?.equipmentName;
                 const displayEquipmentType = seedDisplay?.equipmentType;
                 const seedEntry = displayEquipmentName
-                  ? seedData.equipment.find((s) => s.name === displayEquipmentName)
+                  ? liveSeedEquipment.find((s: any) => s.name === displayEquipmentName)
                   : null;
                 const serviceStatus = computeServiceStatusFromSeedEntry(
                   seedEntry,

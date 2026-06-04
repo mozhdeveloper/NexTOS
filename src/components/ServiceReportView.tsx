@@ -60,14 +60,25 @@ export function ServiceReportView({ record, equipment, client, photos }: Service
   const serialNumber: string = record.serialNumber || equipment?.serialNumber || "";
   const equipmentType: string = record.equipmentType || "";
   const serviceType: string = record.serviceType || record.serviceCategory || "";
-  const metricAtService: string = record.metricAtService || (record.hoursAtService ? `${record.hoursAtService}h` : "");
   const finalCost: number | null = record.finalCost ?? (record.cost > 0 ? record.cost : null);
   const equipmentStatus: string | null = record.equipmentStatusAtService ?? null;
+
+  let _descMeta: any = {};
+  try { _descMeta = JSON.parse(record.description ?? "{}"); } catch {}
+  const taskOrigin: "auto" | "manual" =
+    record.taskOrigin === "manual" || _descMeta._origin === "manual" ? "manual" : "auto";
+  const taskPriority: string | null = record.priority ?? _descMeta._priority ?? null;
+
+  const metricAtService: string = taskOrigin === "manual"
+    ? (record.metricAtService || "")
+    : (record.metricAtService || (record.hoursAtService ? `${record.hoursAtService}h` : ""));
 
   const statusBadgeClass =
     equipmentStatus === "Overdue"
       ? "bg-red-100 text-red-700 border-red-200"
-      : equipmentStatus === "Near Service"
+      : equipmentStatus === "Due"
+      ? "bg-orange-100 text-orange-700 border-orange-200"
+      : equipmentStatus === "Due Soon" || equipmentStatus === "Near Service"
       ? "bg-amber-100 text-amber-700 border-amber-200"
       : equipmentStatus === "OK"
       ? "bg-green-100 text-green-700 border-green-200"
@@ -129,6 +140,8 @@ export function ServiceReportView({ record, equipment, client, photos }: Service
   const serviceIntervalDisplay =
     record.serviceInterval && record.serviceIntervalUnit
       ? formatServiceInterval(Number(record.serviceInterval), record.serviceIntervalUnit)
+      : record.serviceIntervalUnit
+      ? String(record.serviceIntervalUnit)
       : null;
 
   return (
@@ -138,7 +151,7 @@ export function ServiceReportView({ record, equipment, client, photos }: Service
         <div>
           <div className="inline-flex items-center gap-2 px-3 py-1 bg-gray-900 text-white rounded-full text-[9px] font-black uppercase tracking-[0.15em] mb-3">
             <div className="w-1.5 h-1.5 rounded-full bg-[#66B2B2] animate-pulse" />
-            Official Document
+            {taskOrigin === "manual" ? "Manually Created" : "Auto-Generated"}
           </div>
           <h2 className="text-2xl font-black text-gray-900 tracking-tight">Service Report</h2>
           <p className="text-[11px] text-gray-400 font-bold tracking-wider mt-1 font-mono-tech">
@@ -195,14 +208,16 @@ export function ServiceReportView({ record, equipment, client, photos }: Service
                 <span className="text-gray-800 font-bold text-right max-w-[60%]">{record.clientRepresentativeName}</span>
               </div>
             )}
-            {equipmentStatus && (
-              <div className="flex justify-between items-center text-xs border-t border-gray-100 pt-1.5">
-                <span className="text-gray-400 font-semibold">Status at Service</span>
+            <div className="flex justify-between items-center text-xs border-t border-gray-100 pt-1.5">
+              <span className="text-gray-400 font-semibold">Status at Service</span>
+              {equipmentStatus && taskOrigin !== "manual" ? (
                 <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wide border ${statusBadgeClass}`}>
                   {equipmentStatus}
                 </span>
-              </div>
-            )}
+              ) : (
+                <span className="text-gray-400 font-bold">—</span>
+              )}
+            </div>
           </div>
 
           {/* Service Details */}
@@ -217,22 +232,34 @@ export function ServiceReportView({ record, equipment, client, photos }: Service
                 <span className="text-gray-800 font-bold">{serviceType}</span>
               </div>
             )}
-            {serviceIntervalDisplay && (
-              <div className="flex justify-between text-xs border-t border-gray-100 pt-1.5">
-                <span className="text-gray-400 font-semibold">Service Interval</span>
-                <span className="text-gray-800 font-bold">{serviceIntervalDisplay}</span>
-              </div>
-            )}
-            {metricAtService && (
-              <div className="flex justify-between text-xs border-t border-gray-100 pt-1.5">
-                <span className="text-gray-400 font-semibold">Metric at Service</span>
-                <span className="text-[#66B2B2] font-black font-mono-tech">{metricAtService}</span>
-              </div>
-            )}
+            <div className="flex justify-between text-xs border-t border-gray-100 pt-1.5">
+              <span className="text-gray-400 font-semibold">Service Interval</span>
+              <span className={`font-bold ${serviceIntervalDisplay ? "text-gray-800" : "text-gray-400"}`}>
+                {serviceIntervalDisplay || "—"}
+              </span>
+            </div>
+            <div className="flex justify-between text-xs border-t border-gray-100 pt-1.5">
+              <span className="text-gray-400 font-semibold">Metric at Service</span>
+              <span className={`font-black font-mono-tech ${metricAtService ? "text-[#66B2B2]" : "text-gray-400"}`}>
+                {metricAtService || "—"}
+              </span>
+            </div>
             {record.technician && (
               <div className="flex justify-between text-xs border-t border-gray-100 pt-1.5">
                 <span className="text-gray-400 font-semibold">Technician</span>
                 <span className="text-gray-800 font-bold">{record.technician}</span>
+              </div>
+            )}
+            {taskPriority && (
+              <div className="flex justify-between items-center text-xs border-t border-gray-100 pt-1.5">
+                <span className="text-gray-400 font-semibold">Priority</span>
+                <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase ${
+                  taskPriority === "high"
+                    ? "bg-red-100 text-red-700"
+                    : taskPriority === "medium"
+                    ? "bg-amber-100 text-amber-700"
+                    : "bg-gray-100 text-gray-500"
+                }`}>{taskPriority}</span>
               </div>
             )}
             {scheduledDateDisplay && (

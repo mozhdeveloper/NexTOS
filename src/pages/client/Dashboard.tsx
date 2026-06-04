@@ -10,6 +10,7 @@ import {
   mapServiceRecordsToDashboardRecords,
 } from "@/lib/client-service-history";
 import seedData from "@/data/seed-data.json";
+import { computePmsStatusFromRemaining } from "@/lib/pms-status";
 import type { Booking, Client, Equipment, Package as ClientPackage, ServiceCategory, ServicePhoto, ServiceRecord } from "@/types";
 import { ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 import {
@@ -38,7 +39,7 @@ import { Button } from "@/components/ui/button";
 
 type DashboardServiceTab = "upcoming" | "calibration" | "testing";
 
-type HeavyStatus = "OK" | "Near Service" | "Due Soon" | "Overdue";
+type HeavyStatus = "OK" | "Due Soon" | "Due" | "Overdue";
 type CalibrationStatus = "OK" | "Due Soon" | "Due" | "Overdue";
 
 type OverviewRow = {
@@ -79,8 +80,8 @@ type DonutDatum = {
 
 const HEAVY_COLORS: Record<HeavyStatus, string> = {
   OK: "#10B981",
-  "Near Service": "#66B2B2",
-  "Due Soon": "#3B82F6",
+  "Due Soon": "#F2A900",
+  Due: "#F97316",
   Overdue: "#EF4444",
 };
 
@@ -194,11 +195,14 @@ function getHeavyRemaining(equipment: Equipment): number {
 }
 
 function getHeavyStatus(equipment: Equipment): HeavyStatus {
-  const remaining = getHeavyRemaining(equipment);
-  if (remaining <= 0) return "Overdue";
-  if (remaining <= 50) return "Due Soon";
-  if (remaining <= 100) return "Near Service";
-  return "OK";
+  const config = equipment.pmsConfiguration?.find(c => c.serviceIntervalUnit?.toLowerCase() === "hours");
+  if (!config || config.serviceInterval <= 0) return "OK";
+  const current = parseHoursNum(equipment.hoursTotal);
+  const interval = config.serviceInterval;
+  const next = (Math.floor(current / interval) + 1) * interval;
+  const remaining = next - current;
+  const status = computePmsStatusFromRemaining(remaining, interval, seedData.pmsStatuses) ?? "OK";
+  return status as HeavyStatus;
 }
 
 function getCalibrationStatus(nextCalibrationDate: string | null | undefined, now: Date): CalibrationStatus {
@@ -379,8 +383,8 @@ export default function ClientDashboard() {
   const heavyCounts = useMemo(() => {
     const counts: Record<HeavyStatus, number> = {
       OK: 0,
-      "Near Service": 0,
       "Due Soon": 0,
+      Due: 0,
       Overdue: 0,
     };
 
@@ -435,9 +439,9 @@ export default function ClientDashboard() {
 
   const heavyDonutData: DonutDatum[] = [
     { name: "OK", value: heavyCounts.OK, color: HEAVY_COLORS.OK },
-    { name: "Near Service", value: heavyCounts["Near Service"], color: HEAVY_COLORS["Near Service"] },
-    { name: "Overdue", value: heavyCounts.Overdue, color: HEAVY_COLORS.Overdue },
     { name: "Due Soon", value: heavyCounts["Due Soon"], color: HEAVY_COLORS["Due Soon"] },
+    { name: "Due", value: heavyCounts.Due, color: HEAVY_COLORS.Due },
+    { name: "Overdue", value: heavyCounts.Overdue, color: HEAVY_COLORS.Overdue },
   ].filter((entry) => entry.value > 0);
 
   const calibrationDonutData: DonutDatum[] = [

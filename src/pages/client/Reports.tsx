@@ -4,6 +4,7 @@ import { useOperationsStore } from "@/stores/useOperationsStore";
 import { useBillingStore } from "@/stores/useBillingStore";
 import { useClientPortalStore } from "@/stores/useClientPortalStore";
 import seedData from "@/data/seed-data.json";
+import { computePmsStatusFromRemaining } from "@/lib/pms-status";
 import {
   ResponsiveContainer,
   BarChart,
@@ -132,12 +133,15 @@ export default function ClientReports() {
         const cur = parseH(e.hoursTotal);
         const next = cfg ? (Math.floor(cur / cfg.serviceInterval) + 1) * cfg.serviceInterval : 0;
         const remaining = next - cur;
+        const interval = cfg?.serviceInterval ?? 0;
         return {
             unit: e.name ?? e.id,
             current: e.hoursTotal ?? "—",
             next: cfg ? `${next}h` : "—",
             remaining: Math.floor(remaining),
-            status: remaining <= 0 ? "Overdue" : remaining <= 50 ? "Near Service" : "OK"
+            status: (interval > 0
+              ? computePmsStatusFromRemaining(remaining, interval, seedData.pmsStatuses)
+              : null) ?? "OK",
         };
     });
   }, [clientEquipment]);
@@ -272,9 +276,17 @@ export default function ClientReports() {
                     {row.remaining <= 0 ? `OVERDUE (${Math.abs(row.remaining)}h)` : `${row.remaining}h left`}
                   </td>
                   <td className="py-2.5 px-3">
-                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${row.status === "OK" ? "bg-[#10B981]/20 text-[#10B981]" : row.status === "Near Service" ? "bg-[#66B2B2]/20 text-[#66B2B2]" : "bg-[#EF4444]/20 text-[#EF4444]"}`}>
-                        {row.status}
-                    </span>
+                    {(() => {
+                      const c = seedData.pmsStatuses.find(s => s.value === row.status)?.color ?? "#9CA3AF";
+                      return (
+                        <span
+                          className="px-1.5 py-0.5 rounded text-[10px] font-medium"
+                          style={{ backgroundColor: `${c}33`, color: c }}
+                        >
+                          {row.status}
+                        </span>
+                      );
+                    })()}
                   </td>
                 </tr>
             ))}

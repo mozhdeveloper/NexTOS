@@ -3,6 +3,7 @@ import { useAuthStore } from "@/stores/useAuthStore";
 import { useOperationsStore } from "@/stores/useOperationsStore";
 import { useClientPortalStore } from "@/stores/useClientPortalStore";
 import seedData from "@/data/seed-data.json";
+import { computePmsStatus } from "@/lib/pms-status";
 import { useCRMStore } from "@/stores/useCRMStore";
 import { useBillingStore } from "@/stores/useBillingStore";
 import type { ServiceType, ServiceRecord } from "@/types";
@@ -539,6 +540,46 @@ export default function ClientPortal() {
                     const monthsDisplay = validDays ? `${(daysNum! / 30.44).toFixed(1)}` : "—";
                     const yearsDisplay = validDays ? `${(daysNum! / 365.25).toFixed(1)}` : "—";
 
+                    // Read pmsConfiguration directly from seed map to avoid spread-override issue
+                    const _seedEqEntry = seedEquipmentById.get(String((eq as any).id));
+                    const pmsConfigs: any[] = Array.isArray(_seedEqEntry?.pmsConfiguration) ? _seedEqEntry!.pmsConfiguration : [];
+                    const validStatuses: string[] = [];
+                    for (const cfg of pmsConfigs) {
+                      const interval = Number(cfg?.serviceInterval ?? 0);
+                      if (!Number.isFinite(interval) || interval <= 0) continue;
+                      const unit = String(cfg?.serviceIntervalUnit ?? "Hours").toLowerCase();
+                      let usage: number | null = null;
+                      if (unit === "hours") {
+                        if (isExcavator && gps001CacheMs > 0) {
+                          usage = gps001CacheMs / (1000 * 60 * 60);
+                        } else {
+                          const m = String((eq as any).hoursTotal ?? "").match(/(\d+)\s*h\s*(\d+)\s*m/i);
+                          if (m) usage = Number(m[1]) + Number(m[2]) / 60;
+                        }
+                      } else if (unit === "km") {
+                        const raw = isExcavator ? gps001KmTotal : (eq as any).kmTotal;
+                        const parsed = typeof raw === "number" ? raw : parseFloat(String(raw ?? "").replace(/[^\d.]/g, ""));
+                        if (Number.isFinite(parsed) && parsed >= 0) usage = parsed;
+                      } else {
+                        const rawD = isExcavator ? gps001WorkingDays : ((eq as any).days ?? null);
+                        const d = typeof rawD === "number" && Number.isFinite(rawD) ? rawD : null;
+                        if (d !== null) {
+                          if (unit === "weeks") usage = d / 7;
+                          else if (unit === "months") usage = d / 30.44;
+                          else if (unit === "years") usage = d / 365.25;
+                        }
+                      }
+                      if (usage === null || !Number.isFinite(usage) || usage < 0) continue;
+                      const pct = (usage / interval) * 100;
+                      const s = computePmsStatus(pct, seedData.pmsStatuses);
+                      if (s) validStatuses.push(s);
+                    }
+                    const computedStatusDef = validStatuses.length > 0
+                      ? seedData.pmsStatuses
+                          .filter(s => validStatuses.includes(s.value))
+                          .sort((a, b) => b.minProgressPercent - a.minProgressPercent)[0] ?? null
+                      : null;
+
                     return (
                       <tr key={eq.id} className="border-b border-gray-100 hover:bg-[#66B2B2]/5 transition-all">
                         <td className="py-3 px-3">
@@ -560,9 +601,12 @@ export default function ClientPortal() {
                         <td className="py-3 px-3 font-mono-tech text-gray-800">{monthsDisplay}</td>
                         <td className="py-3 px-3 font-mono-tech text-gray-800">{yearsDisplay}</td>
                         <td className="py-3 px-3">
-                          {eq.status ? (
-                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#66B2B2]/10 text-[#0F766E] uppercase">
-                              {eq.status}
+                          {computedStatusDef ? (
+                            <span
+                              className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase"
+                              style={{ backgroundColor: `${computedStatusDef.color}33`, color: computedStatusDef.color }}
+                            >
+                              {computedStatusDef.label}
                             </span>
                           ) : (
                             <span className="text-gray-400">—</span>

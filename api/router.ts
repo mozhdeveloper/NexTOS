@@ -2,6 +2,8 @@ import { authRouter } from "./auth-router";
 import { createRouter, publicQuery } from "./middleware";
 import { z } from "zod";
 import { writeSeedData, readSeedData, updateSeedData } from "./lib/seed-writer";
+import { computePmsStatus } from "@/lib/pms-status";
+import seedData from "@/data/seed-data.json";
 
 type PmsConfigEntry = {
   serviceInterval: number;
@@ -25,7 +27,7 @@ type SeedEquipmentEntry = {
   kmToday?: number | string;
   kmTotal?: number | string;
   days?: number | string;
-  status?: "OK" | "Near Service" | "Overdue";
+  status?: string;
   pmsConfiguration?: PmsConfigEntry[]; // array â€” each entry is an independent schedule
 };
 
@@ -81,6 +83,8 @@ type SeedServiceRecord = {
   estimatedArrival?: string | null;
   // Equipment status snapshotted at the moment the task was submitted
   equipmentStatusAtService?: string | null;
+  priority?: string;
+  taskOrigin?: string;
 };
 
 type SeedPartEntry = {
@@ -166,7 +170,7 @@ function convertDaysToPeriods(days: number): { weeks: number; months: number; ye
 function calculateSinglePmsStatus(
   pms: PmsConfigEntry,
   entry: SeedEquipmentEntry
-): "OK" | "Near Service" | "Overdue" | null {
+): string | null {
   const interval = Number(pms.serviceInterval ?? 0);
   if (!Number.isFinite(interval) || interval <= 0) return null;
 
@@ -189,23 +193,27 @@ function calculateSinglePmsStatus(
 
   if (usage === null || !Number.isFinite(usage) || usage < 0) return null;
   const progress = (usage / interval) * 100;
-  if (progress >= 100) return "Overdue";
-  if (progress >= 80) return "Near Service";
-  return "OK";
+  return computePmsStatus(progress, seedData.pmsStatuses);
 }
 
-// Returns the worst status across all pmsConfiguration entries (Overdue > Near Service > OK).
-function calculateServiceStatus(entry: SeedEquipmentEntry): "OK" | "Near Service" | "Overdue" | null {
+// Returns the worst status across all pmsConfiguration entries — driven by pmsStatuses.
+function calculateServiceStatus(entry: SeedEquipmentEntry): string | null {
   if (entry.id === "EQ-001") return null;
 
   const configs = Array.isArray(entry.pmsConfiguration) ? entry.pmsConfiguration : [];
   if (configs.length === 0) return null;
 
-  const statuses = configs.map((pms) => calculateSinglePmsStatus(pms, entry));
-  if (statuses.includes("Overdue")) return "Overdue";
-  if (statuses.includes("Near Service")) return "Near Service";
-  if (statuses.includes("OK")) return "OK";
-  return null;
+  const valid = configs
+    .map((pms) => calculateSinglePmsStatus(pms, entry))
+    .filter((s): s is string => s !== null);
+  if (valid.length === 0) return null;
+
+  // Worst = highest minProgressPercent across all config results
+  return valid.reduce((worst, current) => {
+    const curPct = seedData.pmsStatuses.find(s => s.value === current)?.minProgressPercent ?? 0;
+    const wrstPct = seedData.pmsStatuses.find(s => s.value === worst)?.minProgressPercent ?? 0;
+    return curPct > wrstPct ? current : worst;
+  });
 }
 
 function applyComputedServiceStatuses(parsed: SeedDataShape): void {
@@ -738,6 +746,8 @@ export const appRouter = createRouter({
           })).optional(),
           cost: z.number().optional(),
           hoursAtService: z.number().optional(),
+          priority: z.string().optional(),
+          taskOrigin: z.string().optional(),
         })
       )
       .mutation(async ({ input }) => {
