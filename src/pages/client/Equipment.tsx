@@ -1,37 +1,239 @@
-import React, { useState } from "react";
-import { useAuthStore } from "@/stores/useAuthStore";
-import { useOperationsStore } from "@/stores/useOperationsStore";
-import { useClientPortalStore } from "@/stores/useClientPortalStore";
-import seedData from "@/data/seed-data.json";
-import { 
-  Package, 
-  ChevronDown, 
-  ChevronUp, 
-  Wrench, 
-  FileText, 
-  Search, 
-  CheckCircle2,
+import { Fragment, useMemo, useState } from "react";
+import type { ElementType } from "react";
+import {
   Activity,
-  Wallet,
+  Check,
+  CheckCircle2,
+  ChevronDown,
+  FileText,
+  History,
+  MapPin,
+  Package,
+  Printer,
   QrCode,
-  Printer
-  } from "lucide-react";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
+  Search,
+  Wallet,
+  Wrench,
+} from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
+import seedData from "@/data/seed-data.json";
+import { useClientPortalStore } from "@/stores/useClientPortalStore";
+import { useOperationsStore } from "@/stores/useOperationsStore";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import type { Equipment, ServiceRecord } from "@/types";
 
-function QRModal({ equipment, isOpen, onClose }: { equipment: any; isOpen: boolean; onClose: () => void }) {
+type PmsStatus = "Overdue" | "Due" | "Due Soon" | "OK";
+
+type PmsProgress = {
+  serviceType: string;
+  serviceInterval: number;
+  serviceIntervalUnit: string;
+  estimatedCost?: number;
+  currentUsage: number;
+  progressPercent: number;
+  progressBarWidth: number;
+  status: PmsStatus;
+};
+
+const statusRank: Record<PmsStatus, number> = {
+  Overdue: 4,
+  Due: 3,
+  "Due Soon": 2,
+  OK: 1,
+};
+
+function parseNumber(value: unknown): number {
+  if (value === undefined || value === null || value === "") return 0;
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+
+  const parsed = Number(String(value).replace(/[^\d.-]/g, ""));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function parseHours(value: unknown): number {
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+  if (typeof value !== "string") return 0;
+
+  const hoursMatch = value.match(/(\d+(?:\.\d+)?)\s*h/i);
+  const minutesMatch = value.match(/(\d+(?:\.\d+)?)\s*m/i);
+  const hours = hoursMatch ? Number(hoursMatch[1]) : 0;
+  const minutes = minutesMatch ? Number(minutesMatch[1]) : 0;
+
+  return hours + minutes / 60;
+}
+
+function formatCurrency(amount: number): string {
+  return new Intl.NumberFormat("en-PH", {
+    style: "currency",
+    currency: "PHP",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(amount);
+}
+
+function formatKm(value: unknown): string {
+  const km = parseNumber(value);
+  return km > 0 ? `${km.toFixed(2)} km` : "0.00 km";
+}
+
+function formatHours(value: unknown): string {
+  if (typeof value === "string" && value.trim()) return value;
+  const hours = parseHours(value);
+  const wholeHours = Math.floor(hours);
+  const minutes = Math.round((hours - wholeHours) * 60);
+  return `${wholeHours}h ${minutes}m`;
+}
+
+function formatDate(value: unknown): string {
+  if (!value) return "—";
+  const date = new Date(String(value));
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleDateString("en-PH", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function getDaysBreakdown(value: unknown) {
+  const days = parseNumber(value);
+  const valid = days >= 0;
+
+  return {
+    daysDisplay: valid ? `${Math.floor(days)}` : "—",
+    weeksDisplay: valid ? `${(days / 7).toFixed(1)}` : "—",
+    monthsDisplay: valid ? `${(days / 30.44).toFixed(1)}` : "—",
+    yearsDisplay: valid ? `${(days / 365.25).toFixed(1)}` : "—",
+  };
+}
+
+function computePmsStatus(progressPercent: number): PmsStatus {
+  if (progressPercent > 100) return "Overdue";
+  if (progressPercent >= 100) return "Due";
+  if (progressPercent >= 80) return "Due Soon";
+  return "OK";
+}
+
+function getCurrentUsage(equipment: Equipment, unit: string): number {
+  const normalizedUnit = unit.toLowerCase();
+
+  if (normalizedUnit.includes("hour")) return parseHours(equipment.hoursTotal);
+  if (normalizedUnit === "km" || normalizedUnit.includes("kilometer")) return parseNumber(equipment.kmTotal);
+  if (normalizedUnit.includes("week")) return parseNumber(equipment.days) / 7;
+  if (normalizedUnit.includes("month")) return parseNumber(equipment.days) / 30.44;
+  if (normalizedUnit.includes("year")) return parseNumber(equipment.days) / 365.25;
+  return parseNumber(equipment.days);
+}
+
+function getPmsProgress(equipment: Equipment): PmsProgress[] {
+  if (!Array.isArray(equipment.pmsConfiguration)) return [];
+
+  return equipment.pmsConfiguration
+    .map((config) => {
+      const serviceInterval = parseNumber(config.serviceInterval);
+      const serviceIntervalUnit = config.serviceIntervalUnit ?? "";
+      const currentUsage = getCurrentUsage(equipment, serviceIntervalUnit);
+      const progressPercent = serviceInterval > 0 ? (currentUsage / serviceInterval) * 100 : 0;
+
+      return {
+        serviceType: config.serviceType || "PMS Schedule",
+        serviceInterval,
+        serviceIntervalUnit,
+        estimatedCost: config.estimatedCost,
+        currentUsage,
+        progressPercent,
+        progressBarWidth: Math.min(Math.max(progressPercent, 0), 100),
+        status: computePmsStatus(progressPercent),
+      };
+    })
+    .filter((entry) => entry.serviceInterval > 0);
+}
+
+function getWorstPmsProgress(equipment: Equipment): PmsProgress | null {
+  const progress = getPmsProgress(equipment);
+  if (!progress.length) return null;
+
+  return progress.reduce((worst, current) => {
+    if (statusRank[current.status] > statusRank[worst.status]) return current;
+    if (statusRank[current.status] === statusRank[worst.status] && current.progressPercent > worst.progressPercent) {
+      return current;
+    }
+    return worst;
+  });
+}
+
+function getQrPayload(equipment: Equipment): string {
+  const source = equipment as Equipment & { qrCode?: string; qr?: string };
+  return source.qrCode ?? source.qr ?? `equipment:${equipment.id}|serial:${equipment.serialNumber ?? "N/A"}`;
+}
+
+function normalizeStatus(status: unknown): string {
+  return String(status ?? "").toLowerCase();
+}
+
+function serviceMatchesEquipment(
+  record: Partial<ServiceRecord> & Record<string, any>,
+  equipment: Equipment,
+  selectedClientName: string,
+  allowClientNameFallback = true
+): boolean {
+  if (record.seedEquipmentId && String(record.seedEquipmentId) === String(equipment.id)) return true;
+  if (record.equipmentId && String(record.equipmentId) === String(equipment.id)) return true;
+  if (record.serialNumber && equipment.serialNumber && String(record.serialNumber) === String(equipment.serialNumber)) return true;
+  if (record.equipmentName && equipment.name && String(record.equipmentName) === String(equipment.name)) return true;
+  if (allowClientNameFallback && record.clientName && String(record.clientName) === selectedClientName) return true;
+  return false;
+}
+
+function getStatusBadgeClasses(status: string): string {
+  switch (status) {
+    case "Overdue":
+      return "bg-[#EF4444]/15 text-[#EF4444] border-[#EF4444]/25";
+    case "Due":
+      return "bg-[#F2A900]/15 text-[#B77900] border-[#F2A900]/30";
+    case "Due Soon":
+      return "bg-[#66B2B2]/15 text-[#4F9C9C] border-[#66B2B2]/30";
+    case "OK":
+    case "active":
+      return "bg-[#10B981]/15 text-[#059669] border-[#10B981]/25";
+    case "maintenance":
+    case "service_due":
+      return "bg-[#66B2B2]/15 text-[#4F9C9C] border-[#66B2B2]/30";
+    case "inactive":
+    case "retired":
+      return "bg-gray-100 text-gray-500 border-gray-200";
+    default:
+      return "bg-gray-100 text-gray-500 border-gray-200";
+  }
+}
+
+function getDisplayStatus(equipment: Equipment): string {
+  return getWorstPmsProgress(equipment)?.status ?? equipment.status ?? "OK";
+}
+
+function QRModal({
+  equipment,
+  isOpen,
+  onClose,
+}: {
+  equipment: Equipment;
+  isOpen: boolean;
+  onClose: () => void;
+}) {
+  const qrPayload = getQrPayload(equipment);
+
   const handlePrint = () => {
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
 
-    const qrSvg = document.getElementById(`qr-gen-${equipment.id}`)?.outerHTML;
+    const qrSvg = document.getElementById(`client-qr-${equipment.id}`)?.outerHTML ?? "";
 
     printWindow.document.write(`
       <html>
@@ -39,37 +241,34 @@ function QRModal({ equipment, isOpen, onClose }: { equipment: any; isOpen: boole
           <title>Print QR Tag - ${equipment.name ?? equipment.serialNumber}</title>
           <style>
             @page { size: auto; margin: 0; }
-            body { 
-              font-family: 'Inter', sans-serif; 
-              display: flex; 
-              flex-direction: column; 
-              align-items: center; 
-              justify-content: center; 
-              height: 100vh; 
-              margin: 0; 
-              padding: 20px;
+            body {
+              font-family: Inter, Arial, sans-serif;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              height: 100vh;
+              margin: 0;
               text-align: center;
             }
             .tag-container {
-              border: 2px solid #000;
-              padding: 30px;
-              border-radius: 20px;
               width: 300px;
+              border: 2px solid #111827;
+              border-radius: 20px;
+              padding: 28px;
             }
-            .brand { font-weight: 900; font-size: 24px; margin-bottom: 5px; color: #66B2B2; }
-            .unit-id { font-weight: 800; font-size: 32px; margin-bottom: 20px; letter-spacing: -0.05em; }
-            .qr-wrapper { margin-bottom: 20px; }
-            .meta { font-size: 12px; color: #666; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; }
+            .brand { color: #66B2B2; font-size: 24px; font-weight: 900; }
+            .unit { color: #111827; font-size: 18px; font-weight: 800; margin: 8px 0 18px; }
+            .meta { color: #4B5563; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
             svg { width: 200px; height: 200px; }
           </style>
         </head>
         <body>
           <div class="tag-container">
             <div class="brand">NexTOS</div>
-            <div class="unit-id">${equipment.name ?? equipment.id}</div>
-            <div class="qr-wrapper">${qrSvg}</div>
-            <div class="meta">${equipment.equipmentType}</div>
-            <div class="meta" style="margin-top: 4px;">SN: ${equipment.serialNumber}</div>
+            <div class="unit">${equipment.name ?? equipment.id}</div>
+            ${qrSvg}
+            <div class="meta" style="margin-top: 18px;">${equipment.equipmentType ?? "Equipment"}</div>
+            <div class="meta">SN: ${equipment.serialNumber ?? "N/A"}</div>
           </div>
           <script>
             window.onload = () => {
@@ -85,51 +284,43 @@ function QRModal({ equipment, isOpen, onClose }: { equipment: any; isOpen: boole
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="bg-white border-gray-200 sm:max-w-md rounded-[2.5rem] shadow-2xl p-8">
-        <DialogHeader className="items-center pb-4">
-          <DialogTitle className="text-2xl font-black tracking-tighter text-gray-900">Equipment QR Tag</DialogTitle>
-          <p className="text-sm text-gray-500 font-medium">Digital Identity for {equipment.name ?? equipment.id}</p>
+      <DialogContent className="bg-white border-gray-200 sm:max-w-md rounded-2xl shadow-2xl p-7">
+        <DialogHeader className="items-center pb-3">
+          <DialogTitle className="text-xl font-black tracking-tight text-gray-900">Equipment QR Tag</DialogTitle>
+          <p className="text-sm text-gray-500 font-medium">{equipment.name ?? equipment.id}</p>
         </DialogHeader>
 
-        <div className="flex flex-col items-center gap-8 py-4">
-          <div className="relative group">
-            <div className="absolute -inset-4 bg-gradient-to-br from-[#66B2B2]/20 to-[#10B981]/20 rounded-[2rem] blur-xl opacity-50 group-hover:opacity-100 transition-opacity duration-500" />
-            <div className="relative p-6 bg-white rounded-[2rem] border-2 border-gray-50 shadow-sm flex items-center justify-center">
-              <QRCodeSVG
-                id={`qr-gen-${equipment.id}`}
-                value={JSON.stringify({
-                  id: equipment.id,
-                  name: equipment.name,
-                  serialNumber: equipment.serialNumber,
-                  type: "EQUIPMENT_TAG"
-                })}
-                size={220}
-                level="H"
-                includeMargin={false}
-              />
-            </div>
+        <div className="flex flex-col items-center gap-6 py-2">
+          <div className="p-5 bg-white rounded-2xl border border-gray-100 shadow-sm">
+            <QRCodeSVG
+              id={`client-qr-${equipment.id}`}
+              value={qrPayload}
+              size={220}
+              level="H"
+              includeMargin={false}
+            />
           </div>
 
           <div className="text-center space-y-1">
-            <h3 className="text-xl font-bold text-gray-900 font-mono-tech uppercase tracking-tight">{equipment.unitId}</h3>
-            <p className="text-xs text-gray-500 font-bold uppercase tracking-widest">{equipment.manufacturer} {equipment.model}</p>
+            <h3 className="text-sm font-black text-gray-900 font-mono-tech">{equipment.serialNumber ?? "N/A"}</h3>
+            <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">{equipment.equipmentType ?? "Equipment"}</p>
           </div>
 
           <div className="w-full grid grid-cols-2 gap-3">
-             <Button 
-                variant="outline" 
-                onClick={onClose}
-                className="h-12 rounded-2xl font-black border-gray-200 text-gray-500 hover:bg-gray-50"
-             >
-                Close
-             </Button>
-             <Button 
-                onClick={handlePrint}
-                className="h-12 rounded-2xl font-black bg-[#66B2B2] text-white hover:bg-[#5A9E9E] shadow-lg shadow-[#66B2B2]/20 transition-all active:scale-95"
-             >
-                <Printer className="w-4 h-4 mr-2" />
-                Print Tag
-             </Button>
+            <Button
+              variant="outline"
+              onClick={onClose}
+              className="h-11 rounded-xl font-bold border-gray-200 text-gray-600 hover:bg-gray-50"
+            >
+              Close
+            </Button>
+            <Button
+              onClick={handlePrint}
+              className="h-11 rounded-xl font-bold bg-[#66B2B2] text-white hover:bg-[#5A9E9E] shadow-lg shadow-[#66B2B2]/20"
+            >
+              <Printer className="w-4 h-4 mr-2" />
+              Print Tag
+            </Button>
           </div>
         </div>
       </DialogContent>
@@ -137,325 +328,450 @@ function QRModal({ equipment, isOpen, onClose }: { equipment: any; isOpen: boole
   );
 }
 
-function KPICard({ title, value, subtext, icon: Icon, colorClass, iconBgClass }: {
+function KPICard({
+  title,
+  value,
+  subtext,
+  icon: Icon,
+  colorClass,
+}: {
   title: string;
   value: string | number;
   subtext: string;
-  icon: any;
+  icon: ElementType;
   colorClass: string;
-  iconBgClass: string;
 }) {
   return (
-    <div className="group relative overflow-hidden rounded-xl bg-white border border-gray-200 p-4 shadow-sm transition-all duration-300 hover:border-[#66B2B2]/40 hover:-translate-y-1 hover:shadow-md">
-      <div className="flex items-center justify-between relative z-10">
-        <div>
+    <div className="relative overflow-hidden rounded-xl bg-white border border-gray-200 p-4 shadow-sm transition-all duration-300 hover:border-[#66B2B2]/40 hover:-translate-y-0.5 hover:shadow-md">
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
           <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">{title}</p>
-          <h3 className="text-2xl font-bold text-gray-900 mt-1 font-mono-tech">{value}</h3>
+          <h3 className="text-2xl font-bold text-gray-900 mt-1 font-mono-tech truncate">{value}</h3>
           <p className="text-[10px] text-gray-500 mt-0.5">{subtext}</p>
         </div>
-        <div className={`w-10 h-10 rounded-full flex items-center justify-center ${iconBgClass}`}>
+        <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-[#66B2B2]/10 shrink-0">
           <Icon className={`w-5 h-5 ${colorClass}`} />
         </div>
       </div>
-      <div className="absolute inset-0 bg-gradient-to-br from-[#66B2B2]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
     </div>
   );
 }
 
 export default function ClientEquipment() {
-  const { user } = useAuthStore();
-  const { equipment, serviceRecords, servicePhotos } = useOperationsStore();
+  const { equipment, serviceRecords } = useOperationsStore();
   const { selectedCompanyId } = useClientPortalStore();
-  
-  // Map seedData company ID to numeric clientId
-  const selectedCompanyIndex = seedData.clients.findIndex(c => c.id === selectedCompanyId);
-  const clientId = selectedCompanyIndex !== -1 ? selectedCompanyIndex + 1 : (user?.clientId || 1);
-
   const [searchQuery, setSearchQuery] = useState("");
-  const [expanded, setExpanded] = useState<string | null>(null);
-  const [qrModalItem, setQrModalItem] = useState<any | null>(null);
-  
-  // Metrics calculation
-  const normalizeId = (value: string | number | undefined) => Number(String(value).replace(/\D/g, "")) || 0;
-  const allEqRecords = serviceRecords.filter((r) => normalizeId(r.clientId) === clientId);
-  const totalServices = allEqRecords.length;
-  const completedServices = allEqRecords.filter(r => r.status === 'completed').length;
-  const inProgressServices = allEqRecords.filter(r => r.status === 'in_progress' || r.status === 'scheduled').length;
-  const totalSpent = allEqRecords.reduce((sum, r) => sum + Number(r.cost), 0);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [qrModalItem, setQrModalItem] = useState<Equipment | null>(null);
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-PH', {
-      style: 'currency',
-      currency: 'PHP',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(amount);
-  };
-
-  const clientEquipment = equipment.filter(
-    (e) => Number(String(e.clientId).replace(/\D/g, "")) === clientId &&
-    (searchQuery === "" ||
-     e.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-     (e.serialNumber?.toLowerCase() ?? "").includes(searchQuery.toLowerCase()) ||
-     e.id.toLowerCase().includes(searchQuery.toLowerCase()))
+  const selectedClient = useMemo(
+    () => seedData.clients.find((client) => client.id === selectedCompanyId) ?? seedData.clients[0],
+    [selectedCompanyId]
   );
 
-  const statusBadge = (status: string) => {
-    switch (status) {
-      case "active":
-        return "px-2 py-0.5 rounded text-sm bg-[#10B981]/20 text-[#10B981] font-medium";
-      case "maintenance":
-        return "px-2 py-0.5 rounded text-sm bg-[#66B2B2]/20 text-[#66B2B2] font-medium";
-      case "inactive":
-        return "px-2 py-0.5 rounded text-sm bg-[#6B7280]/20 text-gray-500 font-medium";
-      case "retired":
-        return "px-2 py-0.5 rounded text-sm bg-[#EF4444]/20 text-[#EF4444] font-medium";
-      default:
-        return "px-2 py-0.5 rounded text-sm bg-[#6B7280]/20 text-gray-500 font-medium";
-    }
-  };
+  const selectedClientEquipment = useMemo(() => {
+    const normalizedQuery = searchQuery.trim().toLowerCase();
 
-  const parseH = (text: string) => {
-    const m = String(text ?? "").match(/(\d+)\s*h/i);
-    return m ? Number(m[1]) : 0;
-  };
+    return equipment
+      .filter((item) => item.clientId === selectedClient.id)
+      .filter((item) => {
+        if (!normalizedQuery) return true;
 
-  const parseNumber = (value: number | string | undefined | null) => {
-    if (value === undefined || value === null || value === "") return null;
-    if (typeof value === "number") return Number.isFinite(value) ? value : null;
-    const parsed = parseFloat(String(value).replace(/[^\d.]/g, ""));
-    return Number.isFinite(parsed) ? parsed : null;
-  };
+        return [
+          item.name,
+          item.serialNumber,
+          item.id,
+          item.unitId,
+          item.equipmentType,
+        ]
+          .filter(Boolean)
+          .some((value) => String(value).toLowerCase().includes(normalizedQuery));
+      });
+  }, [equipment, searchQuery, selectedClient.id]);
 
-  const formatKm = (value: number | string | undefined | null) => {
-    const num = parseNumber(value);
-    return num !== null ? `${num.toFixed(2)} km` : "—";
-  };
+  const clientServiceRecords = useMemo(() => {
+    const records = [
+      ...(seedData.serviceRecords as Array<Partial<ServiceRecord> & Record<string, any>>),
+      ...(serviceRecords as Array<Partial<ServiceRecord> & Record<string, any>>),
+    ];
+    const selectedClientName = selectedClient.companyName;
+    const selectedEquipment = equipment.filter((item) => item.clientId === selectedClient.id);
+    const seen = new Set<string>();
 
-  const formatDays = (rawDays: number | string | undefined | null) => {
-    const daysNum = parseNumber(rawDays);
-    const validDays = daysNum !== null && daysNum >= 0;
+    return records.filter((record) => {
+      const matchedEquipment = selectedEquipment.find((item) => serviceMatchesEquipment(record, item, selectedClientName));
+      if (!matchedEquipment) return false;
+
+      const key = `${record.id ?? "record"}-${record.seedEquipmentId ?? record.equipmentId ?? matchedEquipment.id}-${record.completedDate ?? record.scheduledDate ?? ""}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [equipment, selectedClient.companyName, selectedClient.id, serviceRecords]);
+
+  const dashboardMetrics = useMemo(() => {
+    const completedRecords = clientServiceRecords.filter((record) => normalizeStatus(record.status) === "completed");
+    const inProgressRecords = clientServiceRecords.filter((record) => {
+      const status = normalizeStatus(record.status);
+      return status && status !== "completed" && status !== "cancelled";
+    });
+    const totalSpent = completedRecords.reduce((sum, record) => sum + Number(record.finalCost ?? record.cost ?? 0), 0);
+
     return {
-      daysDisplay: validDays ? `${Math.floor(daysNum)}` : "—",
-      weeksDisplay: validDays ? `${(daysNum / 7).toFixed(1)}` : "—",
-      monthsDisplay: validDays ? `${(daysNum / 30.44).toFixed(1)}` : "—",
-      yearsDisplay: validDays ? `${(daysNum / 365.25).toFixed(1)}` : "—",
+      units: selectedClientEquipment.length,
+      totalServices: clientServiceRecords.length,
+      completed: completedRecords.length,
+      inProgress: inProgressRecords.length,
+      totalSpent,
     };
-  };
+  }, [clientServiceRecords, selectedClientEquipment.length]);
 
-  const getClientName = (clientIdValue: string | number | undefined | null) => {
-    return seedData.clients.find((client) => String(client.id) === String(clientIdValue))?.companyName ?? "—";
-  };
-
-  const isServiceDue = (eq: any) => {
-    const config = eq.pmsConfiguration?.[0];
-    if (!config || config.serviceIntervalUnit?.toLowerCase() !== "hours") return false;
-    return parseH(eq.hoursTotal ?? "0h 0m") >= config.serviceInterval;
-  };
+  const getEquipmentRecords = (item: Equipment) =>
+    clientServiceRecords.filter((record) => serviceMatchesEquipment(record, item, selectedClient.companyName, false));
 
   return (
-    <div className="space-y-6 px-8 pt-8 pb-12">
-      <div className="flex items-center justify-between">
+    <div className="space-y-6 px-8 pt-8 pb-12 overflow-x-hidden">
+      <div className="flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-[32px] font-bold text-gray-900 tracking-[-0.02em]" >My Equipment</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{clientEquipment.length} units under management</p>
+          <h1 className="text-[32px] font-bold text-gray-900 tracking-[-0.02em]">My Equipment</h1>
+          <p className="text-sm text-gray-500 mt-0.5">
+            {selectedClient.companyName} · {dashboardMetrics.units} units under management
+          </p>
         </div>
       </div>
 
-      {/* KPI Row */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <KPICard 
-          title="Total Services" 
-          value={totalServices} 
-          subtext="Lifetime fleet records" 
-          icon={Wrench} 
-          colorClass="text-[#66B2B2]" 
-          iconBgClass="bg-white shadow-sm" 
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
+        <KPICard
+          title="Units Under Management"
+          value={dashboardMetrics.units}
+          subtext="Selected company assets"
+          icon={Package}
+          colorClass="text-[#66B2B2]"
         />
-        <KPICard 
-          title="Completed" 
-          value={completedServices} 
-          subtext="Successful operations" 
-          icon={CheckCircle2} 
-          colorClass="text-[#059669]" 
-          iconBgClass="bg-white shadow-sm" 
+        <KPICard
+          title="Total Services"
+          value={dashboardMetrics.totalServices}
+          subtext="Matched service records"
+          icon={Wrench}
+          colorClass="text-[#66B2B2]"
         />
-        <KPICard 
-          title="In Progress" 
-          value={inProgressServices} 
-          subtext="Active service tickets" 
-          icon={Activity} 
-          colorClass="text-[#66B2B2]" 
-          iconBgClass="bg-white shadow-sm" 
+        <KPICard
+          title="Completed"
+          value={dashboardMetrics.completed}
+          subtext="Finished services"
+          icon={CheckCircle2}
+          colorClass="text-[#059669]"
         />
-        <KPICard 
-          title="Total Spent" 
-          value={formatCurrency(totalSpent)} 
-          subtext="Maintenance investment" 
-          icon={Wallet} 
-          colorClass="text-[#DC2626]" 
-          iconBgClass="bg-white shadow-sm" 
+        <KPICard
+          title="In Progress"
+          value={dashboardMetrics.inProgress}
+          subtext="Active service records"
+          icon={Activity}
+          colorClass="text-[#B77900]"
+        />
+        <KPICard
+          title="Total Spent"
+          value={formatCurrency(dashboardMetrics.totalSpent)}
+          subtext="Completed services only"
+          icon={Wallet}
+          colorClass="text-[#DC2626]"
         />
       </div>
 
-      {/* Filter Bar */}
-      <div className="flex items-center justify-between pt-2">
-        <div className=" flex items-center gap-3 relative w-full max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
-          <Input
-            placeholder="Search serial, model, or unit ID..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10 h-10 bg-white border-gray-200 text-gray-900 text-sm focus:border-[#10B981]/50 transition-colors"
-          />
+      <div className="space-y-3 animate-in fade-in duration-300">
+        <div className="flex items-center gap-3">
+          <div className="relative flex-1 max-w-sm">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500" />
+            <Input
+              placeholder="Search name, serial, unit ID, or type..."
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              className="pl-9 h-10 bg-white border-gray-200 text-gray-900 text-sm rounded-xl"
+            />
+          </div>
         </div>
-      </div>
 
-      <div className="space-y-3">
-        {clientEquipment.map((eq) => {
-          const eqRecords = serviceRecords.filter((r) => r.equipmentId === eq.id && r.clientId === clientId);
-          const eqPhotos = servicePhotos.filter((p) => eqRecords.some((r) => r.id === p.serviceRecordId));
-          const isExpanded = expanded === eq.id;
-          const serviceDue = isServiceDue(eq);
+        <div className="data-card overflow-auto rounded-xl">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="bg-gray-50 border-b border-gray-200">
+                <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider">Image</th>
+                <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider">Equipment</th>
+                <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider">Serial Number</th>
+                <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider">Total Hours</th>
+                <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider">Total KM</th>
+                <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider">Days</th>
+                <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider">Weeks</th>
+                <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider">Months</th>
+                <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider">Years</th>
+                <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider">Status</th>
+                <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider">Services</th>
+                <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider">QR Code</th>
+                <th className="py-2.5 px-3 w-8"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {selectedClientEquipment.map((item) => {
+                const isExpanded = expandedId === item.id;
+                const equipmentRecords = getEquipmentRecords(item);
+                const pmsProgress = getPmsProgress(item);
+                const worstProgress = getWorstPmsProgress(item);
+                const displayStatus = getDisplayStatus(item);
+                const days = getDaysBreakdown(item.days);
+                const location =
+                  item.lat != null && item.lng != null
+                    ? `${Number(item.lat).toFixed(5)}°N, ${Number(item.lng).toFixed(5)}°E`
+                    : "—";
 
-          return (
-            <div 
-              key={eq.id} 
-              className={`data-card transition-all duration-300 hover:border-[#10B981]/30`}
-            >
-              <button
-                onClick={() => setExpanded(isExpanded ? null : eq.id)}
-                className="w-full flex items-center justify-between p-4"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded bg-white shadow-sm flex items-center justify-center">
-                    <Package className="w-4 h-4 text-[#66B2B2]" />
-                  </div>
-                  <div className="text-left">
-                    <div className="flex items-center gap-2">
-                      <span className="text-base lg:text-lg font-semibold text-gray-900 font-mono-tech">{eq.name ?? eq.id}</span>
-                      <span className="text-xs text-gray-500">{eq.equipmentType}</span>
-                      <span className={statusBadge(eq.status ?? "active")}>{eq.status ?? "active"}</span>
-                    </div>
-                    <div className="text-[10px] text-gray-500">SN: {eq.serialNumber}</div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  {serviceDue && (
-                    <span className="px-1.5 py-0.5 rounded text-[10px] bg-[#EF4444]/20 text-[#EF4444] font-medium">Service Due</span>
-                  )}
-                  <span className="text-[10px] text-gray-500">{eqRecords.length} services</span>
-                  {isExpanded ? (                    <ChevronUp className="w-4 h-4 text-gray-500" />
-                  ) : (
-                    <ChevronDown className="w-4 h-4 text-gray-500" />
-                  )}
-                </div>
-              </button>
-
-              {isExpanded && (
-                <div className="px-6 pb-4 border-t border-gray-200 pt-3">
-                  <div className="grid grid-cols-4 gap-2 mb-3 text-xs">
-                    <div>
-                      <div className="text-[10px] text-gray-500">Serial</div>
-                      <div className="text-gray-900 font-mono-tech">{eq.serialNumber}</div>
-                    </div>
-                    <div>
-                      <div className="text-[10px] text-gray-500">Hours Total</div>
-                      <div className="text-gray-900 font-mono-tech">{eq.hoursTotal ?? "—"}</div>
-                    </div>
-                    {eq.pmsConfiguration?.[0] && (
-                      <div className="col-span-2">
-                        <div className="flex justify-between items-center mb-1">
-                          <div className="text-[10px] text-gray-500">Usage Progress</div>
-                          <div className="text-[10px] text-gray-900 font-mono-tech">
-                            {eq.hoursTotal ?? "0h"} / {eq.pmsConfiguration[0].serviceInterval}{eq.pmsConfiguration[0].serviceIntervalUnit}
-                          </div>
+                return (
+                  <Fragment key={item.id}>
+                    <tr
+                      className={`grid-table-row border-b border-gray-100 cursor-pointer hover:bg-[#66B2B2]/5 transition-all ${
+                        isExpanded ? "bg-[#66B2B2]/10 border-[#66B2B2]/30" : ""
+                      }`}
+                      onClick={() => setExpandedId(isExpanded ? null : item.id)}
+                    >
+                      <td className="py-3 px-3">
+                        <div className="h-11 w-11 shrink-0 overflow-hidden rounded-lg border bg-gray-100 flex items-center justify-center">
+                          {item.image ? (
+                            <img src={item.image} alt={item.name ?? ""} className="h-full w-full object-cover" />
+                          ) : (
+                            <Wrench className="w-4 h-4 text-gray-400" />
+                          )}
                         </div>
-                        <div className="h-1.5 bg-gray-50 rounded-full overflow-hidden">
-                          <div
-                            className={`h-full rounded-full ${serviceDue ? "bg-[#EF4444]" : "bg-[#66B2B2]"}`}
-                            style={{ width: `${Math.min(100, (parseH(eq.hoursTotal ?? "0h 0m") / eq.pmsConfiguration[0].serviceInterval) * 100)}%` }}
-                          />
-                        </div>
-                      </div>
-                    )}
-                    <div>
-                      <div className="text-[10px] text-gray-500">PMS Interval</div>
-                      <div className="text-gray-900 font-mono-tech">
-                        {eq.pmsConfiguration?.[0] ? `${eq.pmsConfiguration[0].serviceInterval} ${eq.pmsConfiguration[0].serviceIntervalUnit}` : "—"}
-                      </div>
-                    </div>
-                  </div>
+                      </td>
+                      <td className="py-3 px-3">
+                        <div className="font-bold text-gray-900">{item.name ?? "—"}</div>
+                        <div className="text-[10px] text-gray-500 mt-0.5">{item.equipmentType ?? "—"}</div>
+                      </td>
+                      <td className="py-3 px-3 text-gray-600 font-mono-tech">{item.serialNumber || "—"}</td>
+                      <td className="py-3 px-3 font-mono-tech text-gray-800">{formatHours(item.hoursTotal)}</td>
+                      <td className="py-3 px-3 font-mono-tech text-gray-800">{formatKm(item.kmTotal)}</td>
+                      <td className="py-3 px-3 font-mono-tech text-gray-800">{days.daysDisplay}</td>
+                      <td className="py-3 px-3 font-mono-tech text-gray-800">{days.weeksDisplay}</td>
+                      <td className="py-3 px-3 font-mono-tech text-gray-800">{days.monthsDisplay}</td>
+                      <td className="py-3 px-3 font-mono-tech text-gray-800">{days.yearsDisplay}</td>
+                      <td className="py-3 px-3">
+                        <span className={`px-2 py-0.5 rounded-full border text-[10px] font-black uppercase whitespace-nowrap ${getStatusBadgeClasses(displayStatus)}`}>
+                          {displayStatus}
+                        </span>
+                      </td>
+                      <td className="py-3 px-3 text-gray-600 font-mono-tech">{equipmentRecords.length}</td>
+                      <td className="py-3 px-3">
+                        <button
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setQrModalItem(item);
+                          }}
+                          className="p-1.5 rounded-lg bg-white border border-gray-100 hover:border-[#66B2B2] transition-all shadow-sm active:scale-95 group/qr"
+                          title="View QR Tag"
+                        >
+                          <QrCode className="w-5 h-5 text-gray-500 group-hover/qr:text-[#66B2B2] transition-colors" />
+                        </button>
+                      </td>
+                      <td className="py-3 px-3 w-8 text-center">
+                        <ChevronDown className={`w-3.5 h-3.5 text-gray-400 transition-transform duration-200 ${isExpanded ? "rotate-180 text-[#66B2B2]" : ""}`} />
+                      </td>
+                    </tr>
 
-                  {eqRecords.length > 0 && (
-                    <div className="mb-3">
-                      <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Service Records</div>
-                      <div className="space-y-1">
-                        {eqRecords.map((record) => (
-                          <div key={record.id} className="p-2 rounded bg-gray-100 space-y-2">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-2">
-                                <Wrench className="w-3 h-3 text-[#66B2B2]" />
-                                <span className="text-xs text-gray-900">{record.serviceCategory}</span>
-                                <span className="text-[10px] text-gray-500">{record.technician}</span>
+                    {isExpanded && (
+                      <tr>
+                        <td
+                          colSpan={13}
+                          className="p-0 border-b-2 border-[#66B2B2]/25 bg-gradient-to-b from-[#66B2B2]/5 to-white"
+                          onClick={(event) => event.stopPropagation()}
+                        >
+                          <div className="px-5 py-5 space-y-5 animate-in slide-in-from-top-1 duration-200">
+                            <div className="flex items-start justify-between gap-4">
+                              <div>
+                                <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-[#66B2B2]/10 text-[#66B2B2] text-[9px] font-black uppercase tracking-[0.1em] mb-1.5">
+                                  <Package className="w-2.5 h-2.5" /> Managed Asset
+                                </div>
+                                <h3 className="text-lg font-black text-gray-900 tracking-tight">{item.name ?? "—"}</h3>
+                                <p className="text-[11px] text-gray-500 font-medium mt-0.5">{item.equipmentType ?? "—"}</p>
                               </div>
-                              <div className="flex items-center gap-2">
-                                <span className="text-[10px] text-[#66B2B2] font-mono-tech">₱{record.cost.toFixed(2)}</span>
-                                <span className="text-[10px] text-gray-500">{record.completedDate ? new Date(record.completedDate).toLocaleDateString() : "—"}</span>
+                              <div className="flex flex-col items-end gap-1.5">
+                                <span className={`px-2.5 py-1 rounded-full border text-[10px] font-black uppercase tracking-wide ${getStatusBadgeClasses(displayStatus)}`}>
+                                  {displayStatus}
+                                </span>
+                                <span className="text-[9px] text-gray-400 font-mono-tech font-bold">{item.id}</span>
                               </div>
                             </div>
-                            {record.serviceCategory === "Lab Testing Service" && (
-                              <div className="grid grid-cols-3 gap-2 px-5 py-1 border-t border-gray-200">
-                                <div>
-                                  <div className="text-[8px] text-gray-500 uppercase">Test Type</div>
-                                  <div className="text-[10px] text-gray-900">{record.testType}</div>
-                                </div>
-                                <div>
-                                  <div className="text-[8px] text-gray-500 uppercase">Project</div>
-                                  <div className="text-[10px] text-gray-900">{record.projectName}</div>
-                                </div>
-                                <div>
-                                  <div className="text-[8px] text-gray-500 uppercase">Status</div>
-                                  <div className="text-[10px] text-[#10B981] font-bold uppercase">{record.labStatus}</div>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
 
-                  {eqPhotos.length > 0 && (
-                    <div>
-                      <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Documentation</div>
-                      <div className="grid grid-cols-4 gap-1.5">
-                        {eqPhotos.map((photo, idx) => (
-                          <div key={idx} className="relative">
-                            <img src={photo.url} alt={photo.caption} className="w-full h-16 object-cover rounded" />
-                            <span className={`absolute top-0.5 left-0.5 text-[8px] px-1 py-0.5 rounded font-medium ${photo.type === "before" ? "bg-[#66B2B2]/80 text-white" : "bg-[#10B981]/80 text-white"}`}>{photo.type}</span>
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                              {[
+                                { label: "Client", value: selectedClient.companyName },
+                                { label: "Serial Number", value: item.serialNumber || "—" },
+                                { label: "Equipment Type", value: item.equipmentType || "—" },
+                                { label: "GPS Location", value: location, icon: MapPin },
+                              ].map(({ label, value, icon: Icon }) => (
+                                <div key={label} className="p-3 rounded-xl bg-white border border-gray-100 space-y-0.5">
+                                  <div className="flex items-center gap-1.5 text-[9px] text-gray-400 uppercase font-black tracking-widest">
+                                    {Icon && <Icon className="w-3 h-3" />}
+                                    {label}
+                                  </div>
+                                  <div className="text-xs font-bold text-gray-900">{value}</div>
+                                </div>
+                              ))}
+                            </div>
+
+                            <div>
+                              <div className="text-[9px] text-gray-400 uppercase font-black tracking-widest mb-2">Usage Metrics</div>
+                              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2">
+                                {[
+                                  { label: "Hours Today", value: item.hoursToday || "—" },
+                                  { label: "Total Hours", value: formatHours(item.hoursTotal) },
+                                  { label: "KM Today", value: formatKm(item.kmToday) },
+                                  { label: "Total KM", value: formatKm(item.kmTotal) },
+                                  { label: "Days Active", value: days.daysDisplay },
+                                  { label: "Years", value: days.yearsDisplay },
+                                ].map(({ label, value }) => (
+                                  <div key={label} className="p-2.5 rounded-lg bg-white border border-gray-100 text-center space-y-0.5">
+                                    <div className="text-[9px] text-gray-400 uppercase font-black tracking-widest leading-tight">{label}</div>
+                                    <div className={`text-xs font-black font-mono-tech ${value === "—" ? "text-gray-300" : "text-gray-900"}`}>{value}</div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+
+                            <div>
+                              <div className="text-[9px] text-gray-400 uppercase font-black tracking-widest mb-2">Usage Progress</div>
+                              {worstProgress ? (
+                                <div className="p-4 rounded-xl bg-white border border-gray-100">
+                                  <div className="flex items-center justify-between gap-4 mb-2">
+                                    <div>
+                                      <div className="text-xs font-bold text-gray-900">{worstProgress.serviceType}</div>
+                                      <div className="text-[10px] text-gray-500 font-mono-tech">
+                                        {worstProgress.currentUsage.toFixed(1)} / {worstProgress.serviceInterval} {worstProgress.serviceIntervalUnit}
+                                      </div>
+                                    </div>
+                                    <span className={`px-2 py-0.5 rounded-full border text-[10px] font-black uppercase ${getStatusBadgeClasses(worstProgress.status)}`}>
+                                      {worstProgress.status}
+                                    </span>
+                                  </div>
+                                  <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                                    <div
+                                      className={`h-full rounded-full ${worstProgress.status === "Overdue" ? "bg-[#EF4444]" : worstProgress.status === "Due" ? "bg-[#F2A900]" : "bg-[#66B2B2]"}`}
+                                      style={{ width: `${worstProgress.progressBarWidth}%` }}
+                                    />
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="text-center py-6 bg-white rounded-xl border border-dashed border-gray-200">
+                                  <div className="text-[10px] text-gray-400 font-bold uppercase tracking-[0.1em]">No PMS schedule</div>
+                                </div>
+                              )}
+                            </div>
+
+                            <div>
+                              <div className="text-[9px] text-gray-400 uppercase font-black tracking-widest mb-2">PMS Schedules</div>
+                              {pmsProgress.length > 0 ? (
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                                  {pmsProgress.map((entry, index) => (
+                                    <div key={`${entry.serviceType}-${index}`} className="p-3 rounded-xl bg-white border border-gray-100 space-y-2">
+                                      <div className="flex items-start justify-between gap-3">
+                                        <div className="min-w-0">
+                                          <div className="text-xs font-bold text-gray-900 truncate">{entry.serviceType}</div>
+                                          <div className="text-[10px] text-gray-500 font-mono-tech">
+                                            Every {entry.serviceInterval} {entry.serviceIntervalUnit}
+                                          </div>
+                                        </div>
+                                        <span className={`px-2 py-0.5 rounded-full border text-[9px] font-black uppercase whitespace-nowrap ${getStatusBadgeClasses(entry.status)}`}>
+                                          {entry.status}
+                                        </span>
+                                      </div>
+                                      <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                        <div className="h-full rounded-full bg-[#66B2B2]" style={{ width: `${entry.progressBarWidth}%` }} />
+                                      </div>
+                                      {entry.estimatedCost != null && (
+                                        <div className="text-[10px] font-black text-[#66B2B2]">
+                                          Est. {formatCurrency(Number(entry.estimatedCost))}
+                                        </div>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <div className="text-center py-6 bg-white rounded-xl border border-dashed border-gray-200">
+                                  <div className="text-[10px] text-gray-400 font-bold uppercase tracking-[0.1em]">No PMS schedule</div>
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="space-y-2.5">
+                              <div className="text-[10px] text-gray-400 uppercase font-black tracking-[0.2em] flex items-center gap-2">
+                                <History className="w-3.5 h-3.5" /> Maintenance History
+                              </div>
+                              {equipmentRecords.length > 0 ? (
+                                equipmentRecords.slice(0, 6).map((record) => {
+                                  const status = normalizeStatus(record.status);
+                                  const isCompleted = status === "completed";
+                                  const cost = Number(record.finalCost ?? record.cost ?? 0);
+
+                                  return (
+                                    <div
+                                      key={`${record.id}-${record.completedDate ?? record.scheduledDate ?? item.id}`}
+                                      className="flex items-center justify-between gap-4 p-4 rounded-xl border border-gray-100 bg-white hover:border-[#66B2B2]/30 hover:bg-[#66B2B2]/5 transition-all"
+                                    >
+                                      <div className="flex items-center gap-4 min-w-0">
+                                        <div className={`w-9 h-9 rounded-full border flex items-center justify-center shrink-0 ${isCompleted ? "bg-green-50 border-green-100" : "bg-[#66B2B2]/10 border-[#66B2B2]/20"}`}>
+                                          {isCompleted ? <Check className="w-4 h-4 text-green-500" /> : <Wrench className="w-4 h-4 text-[#66B2B2]" />}
+                                        </div>
+                                        <div className="min-w-0">
+                                          <div className="text-xs font-bold text-gray-900 truncate">
+                                            {record.serviceType || record.serviceCategory || "Service Record"}
+                                          </div>
+                                          <div className="text-[10px] text-gray-400 font-medium uppercase mt-0.5">
+                                            {formatDate(record.completedDate ?? record.scheduledDate)}
+                                            <span className="mx-1">•</span>Tech: {record.technician || "—"}
+                                          </div>
+                                        </div>
+                                      </div>
+                                      <div className="text-right shrink-0">
+                                        <div className={`text-[10px] font-black uppercase ${isCompleted ? "text-[#059669]" : "text-[#66B2B2]"}`}>
+                                          {record.status || "—"}
+                                        </div>
+                                        {cost > 0 && <div className="text-[10px] font-mono-tech text-gray-500">{formatCurrency(cost)}</div>}
+                                      </div>
+                                    </div>
+                                  );
+                                })
+                              ) : (
+                                <div className="text-center py-8 bg-white rounded-xl border border-dashed border-gray-200">
+                                  <FileText className="w-5 h-5 text-gray-300 mx-auto mb-2" />
+                                  <div className="text-[10px] text-gray-400 font-bold uppercase tracking-[0.1em]">No prior service history</div>
+                                </div>
+                              )}
+                            </div>
                           </div>
-                        ))}
-                        {eqRecords.some(r => r.reportAttachment) && (
-                           <div className="w-full h-16 rounded bg-[#66B2B2]/10 border border-[#66B2B2]/20 flex flex-col items-center justify-center gap-1 cursor-pointer hover:bg-[#66B2B2]/20 transition-colors">
-                              <FileText className="w-4 h-4 text-[#66B2B2]" />
-                              <span className="text-[8px] text-gray-900 font-medium">View Report</span>
-                           </div>
-                        )}
-                      </div>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })}
+
+              {selectedClientEquipment.length === 0 && (
+                <tr>
+                  <td colSpan={13} className="py-12 px-4 text-center">
+                    <Package className="w-8 h-8 text-gray-300 mx-auto mb-3" />
+                    <div className="text-sm font-bold text-gray-700">No equipment found</div>
+                    <div className="text-xs text-gray-500 mt-1">
+                      {searchQuery ? "Try a different search term." : "This selected company has no equipment yet."}
                     </div>
-                  )}
-                </div>
+                  </td>
+                </tr>
               )}
-            </div>
-          );
-        })}
+            </tbody>
+          </table>
+        </div>
       </div>
+
       {qrModalItem && (
-        <QRModal 
-          equipment={qrModalItem} 
-          isOpen={!!qrModalItem} 
-          onClose={() => setQrModalItem(null)} 
+        <QRModal
+          equipment={qrModalItem}
+          isOpen={Boolean(qrModalItem)}
+          onClose={() => setQrModalItem(null)}
         />
       )}
     </div>
