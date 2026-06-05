@@ -3,7 +3,8 @@ import AppShell from '@/components/AppShell'
 import ClientPortalShell from '@/components/ClientPortalShell'
 import Login from '@/pages/Login'
 import Dashboard from '@/pages/Dashboard'
-import TechnicianDashboard from '@/pages/TechnicianDashboard'
+import TechnicianDashboard from '@/pages/technician/TechnicianDashboard'
+import TechnicianReports from '@/pages/technician/TechnicianReports'
 import CRM from '@/pages/CRM'
 import Services from '@/pages/Services'
 import Fleet from '@/pages/Fleet'
@@ -79,7 +80,7 @@ function TechnicianRoutes() {
         <Route path="/portal" element={<ClientPortal />} />
         <Route path="/billing" element={<Billing />} />
         <Route path="/marketing" element={<Marketing />} />
-        <Route path="/reports" element={<Reports />} />
+        <Route path="/reports" element={<TechnicianReports />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/scan/:serial" element={<AssetScanner />} />
         <Route path="*" element={<NotFound />} />
@@ -102,7 +103,7 @@ export default function App() {
           element={
             !isAuthenticated ? <Login /> :
             user?.role === 'client' ? <ClientPortalRoutes /> :
-            (user?.role === 'tech' || user?.role === 'technician') ? <TechnicianRoutes /> :
+            user?.role === 'tech' ? <TechnicianRoutes /> :
             <AuthenticatedRoutes />
           }
         />
