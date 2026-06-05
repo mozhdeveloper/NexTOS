@@ -929,6 +929,13 @@ export const appRouter = createRouter({
         return { ok: true };
       }),
   }),
+  clients: createRouter({
+    list: publicQuery.query(async () => {
+      const parsed = await readSeedData();
+      return { clients: Array.isArray((parsed as any).clients) ? (parsed as any).clients : [] };
+    }),
+  }),
+
   deals: createRouter({
     add: publicQuery
       .input(
@@ -998,39 +1005,289 @@ export const appRouter = createRouter({
       }),
   }),
 
-  tasks: createRouter({
-    update: publicQuery
-      .input(
-        z.object({
-          id: z.number(),
-          data: z.object({
-            title: z.string().optional(),
-            description: z.string().optional(),
-            dueDate: z.string().optional(),
-            priority: z.string().optional(),
-            status: z.string().optional(),
-            assignedTo: z.string().optional(),
-          }),
-        })
-      )
+  leads: createRouter({
+    list: publicQuery.query(async () => {
+      const parsed = await readSeedData();
+      return { leads: Array.isArray((parsed as any).leads) ? (parsed as any).leads : [] };
+    }),
+
+    create: publicQuery
+      .input(z.object({
+        clientId: z.number().nullable().optional(),
+        name: z.string().optional(),
+        company: z.string().optional(),
+        email: z.string().optional(),
+        phone: z.string().optional(),
+        source: z.string(),
+        inquiryType: z.string().optional(),
+        priority: z.enum(["low", "medium", "high"]),
+        score: z.number(),
+        status: z.string().optional(),
+        notes: z.string().optional(),
+        assignedTo: z.string().optional(),
+        createdAt: z.string(),
+      }))
       .mutation(async ({ input }) => {
-        const parsed = await readSeedData();
-        const tasks: any[] = Array.isArray((parsed as any).tasks) ? (parsed as any).tasks : [];
-        const idx = tasks.findIndex((t: any) => t.id === input.id);
-        if (idx !== -1) tasks[idx] = { ...tasks[idx], ...input.data };
-        (parsed as any).tasks = tasks;
-        await writeSeedData(parsed);
-        return { ok: true };
+        return await updateSeedData((parsed) => {
+          const leads: any[] = Array.isArray((parsed as any).leads) ? [...(parsed as any).leads] : [];
+          const newLead = { ...input, id: Date.now() };
+          leads.push(newLead);
+          (parsed as any).leads = leads;
+          return { ok: true, lead: newLead };
+        });
+      }),
+
+    update: publicQuery
+      .input(z.object({
+        id: z.number(),
+        data: z.object({
+          clientId: z.number().nullable().optional(),
+          name: z.string().optional(),
+          company: z.string().optional(),
+          email: z.string().optional(),
+          phone: z.string().optional(),
+          source: z.string().optional(),
+          inquiryType: z.string().optional(),
+          priority: z.string().optional(),
+          score: z.number().optional(),
+          status: z.string().optional(),
+          notes: z.string().optional(),
+          assignedTo: z.string().optional(),
+          convertedToDealId: z.number().optional(),
+          convertedAt: z.string().optional(),
+        }),
+      }))
+      .mutation(async ({ input }) => {
+        return await updateSeedData((parsed) => {
+          const leads: any[] = Array.isArray((parsed as any).leads) ? (parsed as any).leads : [];
+          const idx = leads.findIndex((l: any) => l.id === input.id);
+          if (idx !== -1) leads[idx] = { ...leads[idx], ...input.data };
+          (parsed as any).leads = leads;
+          return { ok: true };
+        });
       }),
 
     delete: publicQuery
       .input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => {
-        const parsed = await readSeedData();
-        const tasks: any[] = Array.isArray((parsed as any).tasks) ? (parsed as any).tasks : [];
-        (parsed as any).tasks = tasks.filter((t: any) => t.id !== input.id);
-        await writeSeedData(parsed);
-        return { ok: true };
+        return await updateSeedData((parsed) => {
+          const leads: any[] = Array.isArray((parsed as any).leads) ? (parsed as any).leads : [];
+          (parsed as any).leads = leads.filter((l: any) => l.id !== input.id);
+          return { ok: true };
+        });
+      }),
+
+    // Atomic conversion: create client (if needed) + create deal + mark lead converted,
+    // all in ONE file write. A single write can't be interrupted mid-sequence, so the
+    // seed stays consistent even if the dev server reloads right after.
+    convert: publicQuery
+      .input(z.object({
+        leadId: z.number(),
+        existingClientId: z.number().nullable(),
+        clientData: z.object({
+          companyName: z.string(),
+          industry: z.string(),
+          contactName: z.string(),
+          email: z.string(),
+          phone: z.string(),
+          status: z.string(),
+          address: z.string(),
+          city: z.string(),
+          country: z.string(),
+          contractValue: z.number(),
+          lastContact: z.string(),
+          notes: z.string(),
+        }),
+        dealTitle: z.string(),
+        assignedTo: z.string(),
+      }))
+      .mutation(async ({ input }) => {
+        return await updateSeedData((parsed) => {
+          const now = Date.now();
+          const convertedAt = new Date().toISOString();
+
+          // 1 — resolve client id. When the lead has no client, create one in the main
+          // `clients` array using the canonical CL-XXX id scheme. The numeric id used by
+          // the deal/store is the stripped CL number (CL-005 -> 5), matching seedClients().
+          let clientId: number;
+          let createdClient: any = null;
+          if (input.existingClientId != null) {
+            clientId = input.existingClientId;
+          } else {
+            const clients: any[] = Array.isArray((parsed as any).clients) ? [...(parsed as any).clients] : [];
+            const maxNum = clients
+              .map((c: any) => Number(String(c.id).replace("CL-", "")))
+              .filter((n: number) => Number.isFinite(n))
+              .reduce((max: number, n: number) => Math.max(max, n), 0);
+            const num = maxNum + 1;
+            clientId = num;
+            // Seed-shape client written into clients[]
+            const seedClient = {
+              id: `CL-${String(num).padStart(3, "0")}`,
+              companyName: input.clientData.companyName,
+              industry: input.clientData.industry,
+              address: input.clientData.address,
+              mainContact: input.clientData.contactName,
+              email: input.clientData.email,
+              phone: input.clientData.phone,
+              status: input.clientData.status,
+              contractValue: input.clientData.contractValue,
+              lastContact: input.clientData.lastContact,
+              departments: [],
+            };
+            clients.push(seedClient);
+            (parsed as any).clients = clients;
+            // Store-shape client returned for immediate Zustand insertion
+            createdClient = {
+              id: num,
+              companyName: input.clientData.companyName,
+              industry: input.clientData.industry,
+              contactName: input.clientData.contactName,
+              email: input.clientData.email,
+              phone: input.clientData.phone,
+              status: input.clientData.status,
+              address: input.clientData.address,
+              city: input.clientData.city,
+              country: input.clientData.country,
+              contractValue: input.clientData.contractValue,
+              lastContact: input.clientData.lastContact,
+              notes: input.clientData.notes,
+              createdAt: convertedAt,
+            };
+          }
+
+          // 2 — create the deal
+          const dealId = now + 1;
+          const deal = {
+            id: dealId,
+            clientId,
+            title: input.dealTitle,
+            value: 0,
+            stage: "inquiry",
+            probability: 20,
+            expectedClose: convertedAt,
+            assignedTo: input.assignedTo,
+            createdAt: convertedAt,
+          };
+          const deals: any[] = Array.isArray((parsed as any).deals) ? [...(parsed as any).deals] : [];
+          deals.push(deal);
+          (parsed as any).deals = deals;
+
+          // 3 — mark the lead converted
+          const leads: any[] = Array.isArray((parsed as any).leads) ? (parsed as any).leads : [];
+          const idx = leads.findIndex((l: any) => l.id === input.leadId);
+          if (idx !== -1) {
+            leads[idx] = { ...leads[idx], status: "qualified", clientId, convertedToDealId: dealId, convertedAt };
+          }
+          (parsed as any).leads = leads;
+
+          return { ok: true, clientId, createdClient, deal, convertedAt };
+        });
+      }),
+  }),
+
+  tasks: createRouter({
+    list: publicQuery.query(async () => {
+      const parsed = await readSeedData();
+      return { tasks: Array.isArray((parsed as any).tasks) ? (parsed as any).tasks : [] };
+    }),
+
+    create: publicQuery
+      .input(z.object({
+        id: z.number(),
+        title: z.string(),
+        description: z.string().optional(),
+        assignedTo: z.string(),
+        relatedType: z.enum(["client", "deal", "equipment", "general"]),
+        relatedId: z.number().nullable().optional(),
+        dueDate: z.string(),
+        priority: z.enum(["low", "medium", "high"]),
+        status: z.string(),
+        salesTaskType: z.string().optional(),
+        clientId: z.number().nullable().optional(),
+        isAutoAssigned: z.boolean().optional(),
+        createdAt: z.string(),
+      }))
+      .mutation(async ({ input }) => {
+        return await updateSeedData((parsed) => {
+          const tasks: any[] = Array.isArray((parsed as any).tasks) ? [...(parsed as any).tasks] : [];
+          tasks.push(input);
+          (parsed as any).tasks = tasks;
+          return { ok: true };
+        });
+      }),
+
+    update: publicQuery
+      .input(z.object({
+        id: z.number(),
+        data: z.object({
+          title: z.string().optional(),
+          description: z.string().optional(),
+          dueDate: z.string().optional(),
+          priority: z.string().optional(),
+          status: z.string().optional(),
+          assignedTo: z.string().optional(),
+          salesTaskType: z.string().optional(),
+          clientId: z.number().nullable().optional(),
+          relatedType: z.string().optional(),
+          relatedId: z.number().nullable().optional(),
+          isAutoAssigned: z.boolean().optional(),
+        }),
+      }))
+      .mutation(async ({ input }) => {
+        return await updateSeedData((parsed) => {
+          const tasks: any[] = Array.isArray((parsed as any).tasks) ? (parsed as any).tasks : [];
+          const idx = tasks.findIndex((t: any) => t.id === input.id);
+          if (idx !== -1) tasks[idx] = { ...tasks[idx], ...input.data };
+          (parsed as any).tasks = tasks;
+          return { ok: true };
+        });
+      }),
+
+    delete: publicQuery
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        return await updateSeedData((parsed) => {
+          const tasks: any[] = Array.isArray((parsed as any).tasks) ? (parsed as any).tasks : [];
+          (parsed as any).tasks = tasks.filter((t: any) => t.id !== input.id);
+          return { ok: true };
+        });
+      }),
+  }),
+
+  taskReports: createRouter({
+    list: publicQuery.query(async () => {
+      const parsed = await readSeedData();
+      return { reports: Array.isArray((parsed as any).taskReports) ? (parsed as any).taskReports : [] };
+    }),
+
+    upsert: publicQuery
+      .input(z.object({
+        id: z.number(),
+        taskId: z.number(),
+        taskTitle: z.string(),
+        notes: z.string(),
+        files: z.array(z.object({ name: z.string(), url: z.string() })),
+        completedAt: z.string(),
+        completedBy: z.string(),
+        // Optional snapshots
+        salesTaskType: z.string().optional(),
+        salesTaskTypeLabel: z.string().optional(),
+        clientName: z.string().optional(),
+        taskCreatedAt: z.string().optional(),
+        dueDate: z.string().optional(),
+        priority: z.enum(["low", "medium", "high"]).optional(),
+        status: z.string().optional(),
+        taskOrigin: z.enum(["manual", "auto"]).optional(),
+      }))
+      .mutation(async ({ input }) => {
+        return await updateSeedData((parsed) => {
+          const reports: any[] = Array.isArray((parsed as any).taskReports) ? [...(parsed as any).taskReports] : [];
+          const idx = reports.findIndex((r: any) => r.id === input.id);
+          if (idx !== -1) { reports[idx] = { ...reports[idx], ...input }; } else { reports.push(input); }
+          (parsed as any).taskReports = reports;
+          return { ok: true };
+        });
       }),
   }),
 

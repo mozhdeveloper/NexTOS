@@ -12,6 +12,13 @@ export default defineConfig({
     inspectAttr(), react()],
   server: {
     port: 3000,
+    watch: {
+      // Don't trigger a full page reload when the API writes to seed-data.json.
+      // Live data is served through tRPC queries, not the static JSON import, so a
+      // reload is unnecessary — and it breaks multi-step mutations (e.g. lead
+      // conversion) by aborting the async sequence mid-flight after the first write.
+      ignored: ["**/src/data/seed-data.json"],
+    },
   },
   resolve: {
     alias: {

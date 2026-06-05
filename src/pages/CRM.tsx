@@ -1,12 +1,13 @@
-import { useState, useMemo, useEffect } from "react";
-import { useCRMStore, seedStaff } from "@/stores/useCRMStore";
+import { useState, useMemo, useEffect, useRef } from "react";
+import { useCRMStore, seedStaff, computeTaskStatus } from "@/stores/useCRMStore";
 import seedData from "@/data/seed-data.json";
 import { useAuthStore } from "@/stores/useAuthStore";
 import { useOperationsStore } from "@/stores/useOperationsStore";
 import { useBillingStore } from "@/stores/useBillingStore";
-import type { Deal, DealStage, Task, Client, Contact, Equipment, ServiceRecord, Booking, Package, Invoice, Lead } from "@/types";
+import type { Deal, DealStage, Task, TaskReport, Client, Contact, Equipment, ServiceRecord, Booking, Package, Invoice, Lead } from "@/types";
 import { QRCodeSVG } from "qrcode.react";
 import CRMDashboard from "@/components/CRMDashboard";
+import { TaskReportView } from "@/components/TaskReportView";
 import { trpc } from "@/providers/trpc";
 import {
   Search,
@@ -51,7 +52,7 @@ import {
 type TabType = "dashboard" | "clients" | "pipeline" | "tasks" | "leads" | "performance";
 type LeadListView = "active" | "converted" | "lost";
 
-const STATUS_ORDER: Record<string, number> = { overdue: 0, in_progress: 1, pending: 2 };
+const STATUS_ORDER: Record<string, number> = { overdue: 0, due_today: 1, due_soon: 2, upcoming: 3 };
 const LEAD_SOURCES = ["Website", "Referral", "LinkedIn", "Cold Call", "Email Campaign", "Trade Show", "Partner", "Inbound Call"];
 const LEAD_INQUIRY_TYPES: NonNullable<Lead["inquiryType"]>[] = ["sales", "quote", "pms", "equipment", "general"];
 const CRM_MODAL_VIEWPORT_CLASS = "fixed inset-0 z-50 flex h-dvh w-dvw items-center justify-center overflow-hidden p-5";
@@ -73,8 +74,8 @@ export default function CRM() {
     tasks,
     leads,
     contacts,
+    taskReports,
     moveDealStage,
-    completeTask,
     getOverdueTasks,
   } = useCRMStore();
 
@@ -104,8 +105,18 @@ export default function CRM() {
   const [leadPhone, setLeadPhone] = useState("");
   const [leadInquiryType, setLeadInquiryType] = useState<NonNullable<Lead["inquiryType"]>>("sales");
   const [leadPriority, setLeadPriority] = useState<Lead["priority"]>("medium");
-  const [leadAssignedTo, setLeadAssignedTo] = useState(seedStaff.find((s) => ["sales", "admin"].includes(s.role?.toLowerCase()))?.name || seedStaff[0]?.name || "Sales");
   const [leadNotes, setLeadNotes] = useState("");
+
+  // Edit lead modal state
+  const [editingLead, setEditingLead] = useState<Lead | null>(null);
+  const [editLeadCompany, setEditLeadCompany] = useState("");
+  const [editLeadName, setEditLeadName] = useState("");
+  const [editLeadSource, setEditLeadSource] = useState("");
+  const [editLeadInquiryType, setEditLeadInquiryType] = useState("");
+  const [editLeadEmail, setEditLeadEmail] = useState("");
+  const [editLeadPhone, setEditLeadPhone] = useState("");
+  const [editLeadPriority, setEditLeadPriority] = useState<"low" | "medium" | "high">("medium");
+  const [editLeadNotes, setEditLeadNotes] = useState("");
 
   // Deal action menu and modals
   const [openMenuDealId, setOpenMenuDealId] = useState<number | null>(null);
@@ -120,22 +131,38 @@ export default function CRM() {
   // Task modal state
   const [taskModalOpen, setTaskModalOpen] = useState(false);
   const [taskTitle, setTaskTitle] = useState("");
+  const [salesTaskType, setSalesTaskType] = useState("");
   const [taskDueDate, setTaskDueDate] = useState("");
   const [taskPriority, setTaskPriority] = useState<"low" | "medium" | "high">("medium");
-  const [taskClientId, setTaskClientId] = useState<number | null>(clients[0]?.id ?? null);
-  const [taskDepartment, setTaskDepartment] = useState<"sales" | "technician">("sales");
+  const [taskClientId, setTaskClientId] = useState<number | null>(null);
   const [taskAssignedTo, setTaskAssignedTo] = useState<string>("");
-  const [taskServiceType, setTaskServiceType] = useState("");
+  const autoAssignTask = (() => {
+    try { return window.localStorage.getItem("nextos-auto-assign-task") !== "false"; }
+    catch { return true; }
+  })();
 
   // Edit Task modal state
   const [editTaskOpen, setEditTaskOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [editTaskTitle, setEditTaskTitle] = useState("");
-  const [editTaskDescription, setEditTaskDescription] = useState("");
+  const [editTaskType, setEditTaskType] = useState("");
   const [editTaskDueDate, setEditTaskDueDate] = useState("");
   const [editTaskPriority, setEditTaskPriority] = useState<"low" | "medium" | "high">("medium");
-  const [editTaskStatus, setEditTaskStatus] = useState<Task["status"]>("pending");
+  const [editTaskClientId, setEditTaskClientId] = useState<string>("none");
   const [editTaskAssignedTo, setEditTaskAssignedTo] = useState("");
+
+  // Tasks sub-tab
+  const [tasksView, setTasksView] = useState<"active" | "reports">("active");
+
+  // Done modal (sales)
+  const [doneModalOpen, setDoneModalOpen] = useState(false);
+  const [doneTask, setDoneTask] = useState<Task | null>(null);
+  const [doneNotes, setDoneNotes] = useState("");
+  const [doneFiles, setDoneFiles] = useState<File[]>([]);
+
+  // View Report modal
+  const [viewReportOpen, setViewReportOpen] = useState(false);
+  const [viewingReport, setViewingReport] = useState<TaskReport | null>(null);
 
   // Equipment modal state
   const [equipmentModalOpen, setEquipmentModalOpen] = useState(false);
@@ -218,9 +245,86 @@ export default function CRM() {
   const addDealMutation = trpc.deals.add.useMutation();
   const updateDealMutation = trpc.deals.update.useMutation();
   const deleteDealMutation = trpc.deals.delete.useMutation();
+  const createTaskMutation = trpc.tasks.create.useMutation();
   const updateTaskMutation = trpc.tasks.update.useMutation();
   const deleteTaskMutation = trpc.tasks.delete.useMutation();
+  const upsertTaskReportMutation = trpc.taskReports.upsert.useMutation();
   const moveDealMutation = trpc.deals.move.useMutation();
+
+  const trpcUtils = trpc.useUtils();
+  const { data: tasksData } = trpc.tasks.list.useQuery(undefined, { staleTime: 30_000 });
+  const { data: taskReportsData } = trpc.taskReports.list.useQuery(undefined, { staleTime: 30_000 });
+
+  const crmTasksInjectedRef = useRef(false);
+  useEffect(() => {
+    if (!tasksData || crmTasksInjectedRef.current) return;
+    crmTasksInjectedRef.current = true;
+    const injectedTasks = tasksData.tasks.map((t: any) => ({
+      id: t.id, title: t.title, description: t.description ?? "",
+      assignedTo: t.assignedTo, relatedType: t.relatedType,
+      relatedId: t.relatedId ?? null, dueDate: t.dueDate,
+      priority: t.priority, status: t.status, createdAt: t.createdAt,
+      salesTaskType: t.salesTaskType, clientId: t.clientId ?? null,
+      isAutoAssigned: t.isAutoAssigned ?? false,
+    }));
+    useCRMStore.setState({ tasks: injectedTasks } as any);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tasksData]);
+
+  const crmReportsInjectedRef = useRef(false);
+  useEffect(() => {
+    if (!taskReportsData || crmReportsInjectedRef.current) return;
+    crmReportsInjectedRef.current = true;
+    useCRMStore.setState({ taskReports: taskReportsData.reports });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [taskReportsData]);
+
+  const { data: leadsData } = trpc.leads.list.useQuery(undefined, { staleTime: 30_000 });
+  const crmLeadsInjectedRef = useRef(false);
+  useEffect(() => {
+    if (!leadsData || crmLeadsInjectedRef.current) return;
+    crmLeadsInjectedRef.current = true;
+    useCRMStore.setState({ leads: leadsData.leads } as any);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leadsData]);
+
+  const createLeadMutation = trpc.leads.create.useMutation();
+  const updateLeadMutation = trpc.leads.update.useMutation();
+  const convertLeadMutation = trpc.leads.convert.useMutation();
+
+  // Seed `clients` is the live source of truth for the CRM client list. Map seed shape
+  // (CL-XXX string id, mainContact) to store shape (numeric id, contactName) and MERGE —
+  // so seed clients (incl. ones created by lead conversion) appear, while clients added
+  // locally via the Add Client modal (not yet persisted to seed) are preserved.
+  const { data: clientsData } = trpc.clients.list.useQuery(undefined, { staleTime: 30_000 });
+  const crmClientsInjectedRef = useRef(false);
+  useEffect(() => {
+    if (!clientsData || crmClientsInjectedRef.current) return;
+    crmClientsInjectedRef.current = true;
+    const mapped = clientsData.clients.map((c: any) => ({
+      id: Number(String(c.id).replace("CL-", "")),
+      companyName: c.companyName,
+      industry: c.industry ?? "",
+      contactName: c.mainContact ?? "",
+      email: c.email ?? "",
+      phone: c.phone ?? "",
+      status: (c.status as "active" | "inactive" | "prospect") ?? "active",
+      address: c.address ?? "",
+      city: "",
+      country: "Philippines",
+      contractValue: c.contractValue ?? 0,
+      lastContact: c.lastContact ?? new Date().toISOString(),
+      notes: "",
+      createdAt: new Date().toISOString(),
+    }));
+    useCRMStore.setState((state: any) => ({
+      clients: [
+        ...state.clients.filter((c: any) => !mapped.some((mc) => mc.id === c.id)),
+        ...mapped,
+      ],
+    }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clientsData]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -324,17 +428,30 @@ export default function CRM() {
   };
 
   const getLeadDealTitle = (lead: Lead) => {
-    const label = lead.inquiryType ? lead.inquiryType.toUpperCase() === "PMS" ? "PMS" : lead.inquiryType[0].toUpperCase() + lead.inquiryType.slice(1) : "General";
-    return `${label} Inquiry - ${lead.company || lead.name || "New Prospect"}`;
+    return lead.notes?.trim() || lead.company || lead.name || "New Prospect";
   };
 
   const isLeadConverted = (lead: Lead) => {
     return Boolean(lead.convertedToDealId || lead.convertedAt);
   };
 
+  // Component-scope task-type label resolver (mirrors the one inside the active-tasks
+  // render block) so the Done handler and report fallbacks can reuse it.
+  const resolveTaskTypeLabel = (task: { salesTaskType?: string; serviceType?: string }): string => {
+    const list = (seedData as any).salesTaskTypes as { value: string; label: string }[];
+    if (task.salesTaskType) {
+      return list.find((t) => t.value === task.salesTaskType)?.label ?? task.salesTaskType;
+    }
+    if (task.serviceType) {
+      return (seedData as any).serviceTypes.find((t: any) => t.value === task.serviceType)?.label ?? task.serviceType;
+    }
+    return "—";
+  };
+
   const handleAddLead = () => {
-    const score = Math.floor(Math.random() * 81) + 20;
-    useCRMStore.getState().addLead({
+    const newId = Date.now();
+    const payload = {
+      id: newId,
       clientId: null,
       company: leadCompany.trim(),
       name: leadName.trim(),
@@ -342,29 +459,84 @@ export default function CRM() {
       email: leadEmail.trim(),
       phone: leadPhone.trim(),
       inquiryType: leadInquiryType,
-      status: score >= 95 ? "qualified" : "new",
+      status: "active" as const,
       priority: leadPriority,
-      score,
-      assignedTo: leadAssignedTo,
+      score: 0,
+      assignedTo: user?.name || "",
       notes: leadNotes.trim() || leadCompany.trim() || leadName.trim() || "New lead",
+      createdAt: new Date().toISOString(),
+    };
+    useCRMStore.getState().addLead(payload);
+    createLeadMutation.mutate(payload, {
+      onSuccess: () => trpcUtils.leads.list.invalidate(),
+      onError: (err) => console.error("leads.create failed", err),
     });
     setLeadModalOpen(false);
     resetLeadForm();
   };
 
+  const handleOpenEditLead = (lead: Lead) => {
+    setEditingLead(lead);
+    setEditLeadCompany(lead.company || "");
+    setEditLeadName(lead.name || "");
+    setEditLeadSource(lead.source || "");
+    setEditLeadInquiryType(lead.inquiryType || "");
+    setEditLeadEmail(lead.email || "");
+    setEditLeadPhone(lead.phone || "");
+    setEditLeadPriority(lead.priority);
+    setEditLeadNotes(lead.notes || "");
+  };
+
   const handleUpdateLeadStatus = (leadId: number, status: Lead["status"]) => {
     useCRMStore.getState().updateLead(leadId, { status });
+    updateLeadMutation.mutate({ id: leadId, data: { status } }, {
+      onError: (err) => console.error("leads.update failed", err),
+    });
   };
 
   const handleConvertLead = (lead: Lead) => {
     if (isLeadConverted(lead)) return;
-    useCRMStore.getState().convertLeadToDeal(lead.id, {
-      title: getLeadDealTitle(lead),
-      value: 0,
-      stage: "inquiry",
-      probability: 20,
-      expectedClose: new Date().toISOString(),
+
+    const clientData = {
+      companyName: lead.company || lead.name || "New Prospect",
+      industry: "-",
+      contactName: lead.name || "-",
+      email: lead.email || "-",
+      phone: lead.phone || "-",
+      status: "prospect",
+      address: "-",
+      city: "-",
+      country: "-",
+      contractValue: 0,
+      lastContact: lead.createdAt || new Date().toISOString(),
+      notes: lead.notes || "",
+    };
+
+    // ONE atomic server mutation does client + deal + lead in a single write.
+    convertLeadMutation.mutate({
+      leadId: lead.id,
+      existingClientId: lead.clientId ?? null,
+      clientData,
+      dealTitle: getLeadDealTitle(lead),
       assignedTo: lead.assignedTo || user?.name || "Sales",
+    }, {
+      onSuccess: (res: any) => {
+        // Reflect the same server-assigned ids into the live store for instant UI update.
+        useCRMStore.setState((state: any) => ({
+          clients: res.createdClient
+            ? [...state.clients.filter((c: any) => c.id !== res.createdClient.id), res.createdClient]
+            : state.clients,
+          deals: [...state.deals.filter((d: any) => d.id !== res.deal.id), res.deal],
+          leads: state.leads.map((l: Lead) =>
+            l.id === lead.id
+              ? { ...l, status: "qualified", clientId: res.clientId, convertedToDealId: res.deal.id, convertedAt: res.convertedAt }
+              : l
+          ),
+        }));
+        trpcUtils.leads.list.invalidate();
+        trpcUtils.clients.list.invalidate();
+      },
+      onError: (err) => console.error("leads.convert failed", err),
     });
   };
 
@@ -457,7 +629,7 @@ export default function CRM() {
                   { id: "pipeline" as TabType, label: "Pipeline", icon: TrendingUp },
                   { id: "clients" as TabType, label: "Clients", icon: Building2 },
                   { id: "leads" as TabType, label: "Leads", icon: ArrowRightLeft },
-                  { id: "tasks" as TabType, label: "Tasks", icon: Clock },
+                  { id: "tasks" as TabType, label: user?.role === "sales" ? "My Tasks" : "Tasks", icon: Clock },
                 ] as const
               ).map((tab) => (
                 <button
@@ -529,15 +701,17 @@ export default function CRM() {
                     })}
                   </div>
                 )}
-                <div className="relative w-80 max-w-[36vw] shrink-0">
-                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-600" />
-                  <Input
-                    placeholder={`Search ${activeTab === "pipeline" ? "deals" : activeTab}...`}
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-8 h-8 rounded-xl bg-white border-gray-200 text-black text-xs placeholder:text-gray-400"
-                  />
-                </div>
+                {activeTab !== "tasks" && (
+                  <div className="relative w-80 max-w-[36vw] shrink-0">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-600" />
+                    <Input
+                      placeholder={`Search ${activeTab === "pipeline" ? "deals" : activeTab}...`}
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="pl-8 h-8 rounded-xl bg-white border-gray-200 text-black text-xs placeholder:text-gray-400"
+                    />
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -707,6 +881,13 @@ export default function CRM() {
                     isConverted={isLeadConverted(lead)}
                     onStatusChange={handleUpdateLeadStatus}
                     onConvert={handleConvertLead}
+                    onScoreChange={(leadId, score) => {
+                      useCRMStore.getState().updateLead(leadId, { score });
+                      updateLeadMutation.mutate({ id: leadId, data: { score } }, {
+                        onError: (err) => console.error("leads.update score failed", err),
+                      });
+                    }}
+                    onEdit={handleOpenEditLead}
                   />
                 ))}
               </div>
@@ -721,8 +902,23 @@ export default function CRM() {
           {/* Tasks Tab */}
           {activeTab === "tasks" && (
             <div className="space-y-3">
-              <div className="flex justify-between items-center mb-2">
-                <div className="flex gap-2">
+              {/* Sub-tab switcher */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1 rounded-xl border border-gray-200 bg-white p-0.5">
+                  {(["active", "reports"] as const).map((v) => (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => setTasksView(v)}
+                      className={`h-7 rounded-lg px-3 text-xs font-medium transition-colors ${
+                        tasksView === v ? "bg-[#66B2B2]/10 text-[#66B2B2]" : "text-gray-600 hover:text-black"
+                      }`}
+                    >
+                      {v === "active" ? "Active Tasks" : "Task Reports"}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex items-center gap-2">
                   <div className="relative max-w-xs">
                     <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-600" />
                     <Input
@@ -732,64 +928,179 @@ export default function CRM() {
                       className="pl-8 h-8 rounded-xl bg-white border-gray-200 text-black text-xs placeholder:text-gray-400"
                     />
                   </div>
+                  {tasksView === "active" && user?.role === "admin" && (
+                    <Button onClick={() => setTaskModalOpen(true)} className="h-8 rounded-xl bg-[#66B2B2] hover:bg-[#66B2B2]/80 text-white text-xs font-bold">
+                      <Plus className="w-3 h-3 mr-2" />
+                      Add Task
+                    </Button>
+                  )}
                 </div>
-                <Button onClick={() => setTaskModalOpen(true)} className="h-8 rounded-xl bg-[#66B2B2] hover:bg-[#66B2B2]/80 text-white text-xs font-bold">
-                  <Plus className="w-3 h-3 mr-2" />
-                  Add Task
-                </Button>
               </div>
 
-              {overdueTasks.length > 0 && (
-                <div className="mb-3 p-3 rounded border border-[#EF4444]/20 bg-[#EF4444]/5">
-                  <div className="flex items-center gap-2">
-                    <AlertTriangle className="w-4 h-4 text-[#EF4444]" />
-                    <span className="text-sm font-semibold text-[#EF4444]">Overdue Tasks ({overdueTasks.length})</span>
+              {/* Active Tasks */}
+              {tasksView === "active" && (() => {
+                const salesTaskTypeList = (seedData as any).salesTaskTypes as { value: string; label: string }[];
+                const getTaskTypeLabel = (task: Task) => {
+                  if (task.salesTaskType) {
+                    return salesTaskTypeList.find(t => t.value === task.salesTaskType)?.label ?? task.salesTaskType;
+                  }
+                  if (task.serviceType) {
+                    return (seedData as any).serviceTypes.find((t: any) => t.value === task.serviceType)?.label ?? task.serviceType;
+                  }
+                  return "—";
+                };
+                const getClientName = (task: Task): string => {
+                  const id = task.clientId ?? (task.relatedType === "client" ? task.relatedId : null);
+                  return id != null ? (clients.find(c => c.id === id)?.companyName ?? "—") : "—";
+                };
+
+                if (user?.role === "admin") {
+                  const filtered = tasks
+                    .filter(t => t.status !== "completed")
+                    .filter(t => searchQuery === "" || t.title.toLowerCase().includes(searchQuery.toLowerCase()))
+                    .sort((a, b) => (STATUS_ORDER[computeTaskStatus(a)] ?? 9) - (STATUS_ORDER[computeTaskStatus(b)] ?? 9));
+                  return (
+                    <>
+                      {overdueTasks.length > 0 && (
+                        <div className="p-3 rounded border border-[#EF4444]/20 bg-[#EF4444]/5">
+                          <div className="flex items-center gap-2">
+                            <AlertTriangle className="w-4 h-4 text-[#EF4444]" />
+                            <span className="text-sm font-semibold text-[#EF4444]">Overdue Tasks ({overdueTasks.length})</span>
+                          </div>
+                        </div>
+                      )}
+                      <div className="data-card overflow-auto rounded-xl">
+                        <table className="w-full text-xs">
+                          <thead>
+                            <tr className="bg-gray-50">
+                              <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Task Title</th>
+                              <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Task Type</th>
+                              <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Client</th>
+                              <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Created At</th>
+                              <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Due Date</th>
+                              <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Assigned To</th>
+                              <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Priority</th>
+                              <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Status</th>
+                              <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {filtered.map((task) => (
+                              <AdminTaskRow
+                                key={task.id}
+                                task={task}
+                                taskTypeLabel={getTaskTypeLabel(task)}
+                                clientName={getClientName(task)}
+                                onEdit={() => {
+                                  setEditingTask(task);
+                                  setEditTaskTitle(task.title);
+                                  setEditTaskType(task.salesTaskType ?? "");
+                                  setEditTaskDueDate(task.dueDate);
+                                  setEditTaskPriority(task.priority);
+                                  setEditTaskClientId(task.clientId != null ? String(task.clientId) : "none");
+                                  setEditTaskAssignedTo(task.assignedTo ?? "");
+                                  setEditTaskOpen(true);
+                                }}
+                                onDelete={(id) => {
+                                  useCRMStore.getState().deleteTask(id);
+                                  deleteTaskMutation.mutate({ id }, {
+                                    onSuccess: () => trpcUtils.tasks.list.invalidate(),
+                                    onError: (err) => console.error("tasks.delete failed", err),
+                                  });
+                                }}
+                              />
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </>
+                  );
+                }
+
+                // Sales role
+                const filtered = tasks
+                  .filter(t => computeTaskStatus(t) !== "completed")
+                  .filter(t => t.assignedTo === user?.name || t.isAutoAssigned === true)
+                  .filter(t => searchQuery === "" || t.title.toLowerCase().includes(searchQuery.toLowerCase()))
+                  .sort((a, b) => (STATUS_ORDER[computeTaskStatus(a)] ?? 9) - (STATUS_ORDER[computeTaskStatus(b)] ?? 9));
+                return (
+                  <div className="data-card overflow-auto rounded-xl">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="bg-gray-50">
+                          <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Task Title</th>
+                          <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Task Type</th>
+                          <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Client</th>
+                          <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Due Date</th>
+                          <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Priority</th>
+                          <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Status</th>
+                          <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Done</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filtered.map((task) => (
+                          <SalesTaskRow
+                            key={task.id}
+                            task={task}
+                            taskTypeLabel={getTaskTypeLabel(task)}
+                            clientName={getClientName(task)}
+                            onDone={() => {
+                              setDoneTask(task);
+                              setDoneNotes("");
+                              setDoneFiles([]);
+                              setDoneModalOpen(true);
+                            }}
+                          />
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
+                );
+              })()}
+
+              {/* Task Reports */}
+              {tasksView === "reports" && (
+                <div className="data-card overflow-auto rounded-xl">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="bg-gray-50">
+                        <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Task</th>
+                        <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Completed By</th>
+                        <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Completed At</th>
+                        <th className="text-left py-2.5 px-3 text-gray-600 font-medium">View</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {taskReports
+                        .filter(r => searchQuery === "" || r.taskTitle.toLowerCase().includes(searchQuery.toLowerCase()) || r.completedBy.toLowerCase().includes(searchQuery.toLowerCase()))
+                        .map((report) => (
+                          <tr key={report.id} className="border-b border-gray-200 hover:bg-gray-50">
+                            <td className="py-2.5 px-3 text-black font-medium">{report.taskTitle}</td>
+                            <td className="py-2.5 px-3 text-gray-700">{report.completedBy}</td>
+                            <td className="py-2.5 px-3 text-gray-500 font-mono-tech">
+                              {new Date(report.completedAt).toLocaleDateString("en-PH")}
+                            </td>
+                            <td className="py-2.5 px-3">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 rounded-lg px-3 text-[10px] font-bold border-[#66B2B2]/30 text-[#66B2B2] hover:bg-[#66B2B2]/10"
+                                onClick={() => { setViewingReport(report); setViewReportOpen(true); }}
+                              >
+                                View Report
+                              </Button>
+                            </td>
+                          </tr>
+                        ))}
+                      {taskReports.length === 0 && (
+                        <tr>
+                          <td colSpan={4} className="py-8 text-center text-xs text-gray-500">No task reports yet.</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
                 </div>
               )}
-
-              <div className="data-card overflow-auto rounded-xl">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="bg-gray-50">
-                      <th className="py-2.5 px-3 w-8"></th>
-                      <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Task</th>
-                      <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Created</th>
-                      <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Due Date</th>
-                      <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Assigned To</th>
-                      <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Status</th>
-                      <th className="text-left py-2.5 px-3 text-gray-600 font-medium">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {tasks
-                      .filter((t) => t.status !== "completed")
-                      .filter((t) => searchQuery === "" || t.title.toLowerCase().includes(searchQuery.toLowerCase()))
-                      .sort((a, b) => (STATUS_ORDER[a.status] ?? 3) - (STATUS_ORDER[b.status] ?? 3))
-                      .map((task) => (
-                        <TaskRow
-                          key={task.id}
-                          task={task}
-                          onComplete={completeTask}
-                          onEdit={() => {
-                            setEditingTask(task);
-                            setEditTaskTitle(task.title);
-                            setEditTaskDescription(task.description);
-                            setEditTaskDueDate(task.dueDate);
-                            setEditTaskPriority(task.priority);
-                            setEditTaskStatus(task.status);
-                            setEditTaskAssignedTo(task.assignedTo);
-                            setEditTaskOpen(true);
-                          }}
-                          onDelete={(id) => {
-                            useCRMStore.getState().deleteTask(id);
-                            deleteTaskMutation.mutate({ id }, { onError: (err) => console.error("tasks.delete failed", err) });
-                          }}
-                        />
-                      ))}
-                  </tbody>
-                </table>
-              </div>
             </div>
           )}
         </>
@@ -809,7 +1120,7 @@ export default function CRM() {
                   <Input value={leadCompany} onChange={(e) => setLeadCompany(e.target.value)} className={CRM_MODAL_INPUT_CLASS} />
                 </div>
                 <div className="space-y-1">
-                  <label className={CRM_MODAL_LABEL_CLASS}>Person Name</label>
+                  <label className={CRM_MODAL_LABEL_CLASS}>Contact Name</label>
                   <Input value={leadName} onChange={(e) => setLeadName(e.target.value)} className={CRM_MODAL_INPUT_CLASS} />
                 </div>
                 <div className="space-y-1">
@@ -853,19 +1164,8 @@ export default function CRM() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-1">
-                  <label className={CRM_MODAL_LABEL_CLASS}>Assigned To</label>
-                  <Select value={leadAssignedTo} onValueChange={setLeadAssignedTo}>
-                    <SelectTrigger className={CRM_MODAL_SELECT_CLASS}><SelectValue /></SelectTrigger>
-                    <SelectContent className="bg-white border-gray-200">
-                      {seedStaff.map((staff) => (
-                        <SelectItem key={staff.id} value={staff.name} className="text-xs text-black">{staff.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
                 <div className="space-y-1 md:col-span-2">
-                  <label className={CRM_MODAL_LABEL_CLASS}>Notes</label>
+                  <label className={CRM_MODAL_LABEL_CLASS}>Description</label>
                   <textarea
                     value={leadNotes}
                     onChange={(e) => setLeadNotes(e.target.value)}
@@ -876,6 +1176,100 @@ export default function CRM() {
                   <Button variant="outline" onClick={() => setLeadModalOpen(false)} className={CRM_MODAL_CANCEL_CLASS}>Cancel</Button>
                   <Button className={CRM_MODAL_SUBMIT_CLASS} onClick={handleAddLead}>
                     Create Lead
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Lead Modal */}
+      {editingLead && (
+        <div className={CRM_MODAL_VIEWPORT_CLASS}>
+          <div className={CRM_MODAL_BACKDROP_CLASS} onClick={() => setEditingLead(null)} />
+          <div className={CRM_MODAL_PANEL_CLASS}>
+            <div className={CRM_MODAL_CARD_CLASS}>
+              <button onClick={() => setEditingLead(null)} className="absolute top-5 right-5 text-gray-500 hover:text-gray-900"><X className="w-4 h-4" /></button>
+              <h3 className="text-lg font-bold text-gray-900 border-b border-gray-50 pb-4 mb-4">Edit Lead</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className={CRM_MODAL_LABEL_CLASS}>Company Name</label>
+                  <Input value={editLeadCompany} onChange={(e) => setEditLeadCompany(e.target.value)} className={CRM_MODAL_INPUT_CLASS} />
+                </div>
+                <div className="space-y-1">
+                  <label className={CRM_MODAL_LABEL_CLASS}>Contact Name</label>
+                  <Input value={editLeadName} onChange={(e) => setEditLeadName(e.target.value)} className={CRM_MODAL_INPUT_CLASS} />
+                </div>
+                <div className="space-y-1">
+                  <label className={CRM_MODAL_LABEL_CLASS}>Source</label>
+                  <Select value={editLeadSource} onValueChange={setEditLeadSource}>
+                    <SelectTrigger className={CRM_MODAL_SELECT_CLASS}><SelectValue /></SelectTrigger>
+                    <SelectContent className="bg-white border-gray-200">
+                      {LEAD_SOURCES.map((source) => (
+                        <SelectItem key={source} value={source} className="text-xs text-black">{source}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <label className={CRM_MODAL_LABEL_CLASS}>Inquiry Type</label>
+                  <Select value={editLeadInquiryType} onValueChange={setEditLeadInquiryType}>
+                    <SelectTrigger className={CRM_MODAL_SELECT_CLASS}><SelectValue /></SelectTrigger>
+                    <SelectContent className="bg-white border-gray-200">
+                      {LEAD_INQUIRY_TYPES.map((type) => (
+                        <SelectItem key={type} value={type} className="text-xs text-black">{type.toUpperCase() === "PMS" ? "PMS" : type[0].toUpperCase() + type.slice(1)}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <label className={CRM_MODAL_LABEL_CLASS}>Email</label>
+                  <Input type="email" value={editLeadEmail} onChange={(e) => setEditLeadEmail(e.target.value)} className={CRM_MODAL_INPUT_CLASS} />
+                </div>
+                <div className="space-y-1">
+                  <label className={CRM_MODAL_LABEL_CLASS}>Phone</label>
+                  <Input value={editLeadPhone} onChange={(e) => setEditLeadPhone(e.target.value)} className={CRM_MODAL_INPUT_CLASS} />
+                </div>
+                <div className="space-y-1">
+                  <label className={CRM_MODAL_LABEL_CLASS}>Priority</label>
+                  <Select value={editLeadPriority} onValueChange={(v) => setEditLeadPriority(v as "low" | "medium" | "high")}>
+                    <SelectTrigger className={CRM_MODAL_SELECT_CLASS}><SelectValue /></SelectTrigger>
+                    <SelectContent className="bg-white border-gray-200">
+                      <SelectItem value="low" className="text-xs text-black">Low</SelectItem>
+                      <SelectItem value="medium" className="text-xs text-black">Medium</SelectItem>
+                      <SelectItem value="high" className="text-xs text-black">High</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1 md:col-span-2">
+                  <label className={CRM_MODAL_LABEL_CLASS}>Description</label>
+                  <textarea
+                    value={editLeadNotes}
+                    onChange={(e) => setEditLeadNotes(e.target.value)}
+                    className="min-h-20 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-xs text-black outline-none focus-visible:border-[#66B2B2]"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3 pt-2 md:col-span-2">
+                  <Button variant="outline" onClick={() => setEditingLead(null)} className={CRM_MODAL_CANCEL_CLASS}>Cancel</Button>
+                  <Button
+                    className={CRM_MODAL_SUBMIT_CLASS}
+                    onClick={() => {
+                      if (!editingLead) return;
+                      const patch = {
+                        company: editLeadCompany, name: editLeadName,
+                        source: editLeadSource, inquiryType: editLeadInquiryType as Lead["inquiryType"],
+                        email: editLeadEmail, phone: editLeadPhone,
+                        priority: editLeadPriority, notes: editLeadNotes,
+                      };
+                      useCRMStore.getState().updateLead(editingLead.id, patch);
+                      updateLeadMutation.mutate({ id: editingLead.id, data: patch }, {
+                        onError: (err) => console.error("leads.update (edit) failed", err),
+                      });
+                      setEditingLead(null);
+                    }}
+                  >
+                    Save Changes
                   </Button>
                 </div>
               </div>
@@ -983,12 +1377,25 @@ export default function CRM() {
                   <Input placeholder="Task title" value={taskTitle} onChange={(e) => setTaskTitle(e.target.value)} className={CRM_MODAL_INPUT_CLASS} />
                 </div>
                 <div className="space-y-1">
+                  <label className={CRM_MODAL_LABEL_CLASS}>Task Type</label>
+                  <Select value={salesTaskType} onValueChange={setSalesTaskType}>
+                    <SelectTrigger className={CRM_MODAL_SELECT_CLASS}>
+                      <SelectValue placeholder="Select task type" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-white border-gray-200">
+                      {(seedData as any).salesTaskTypes.map((opt: { value: string; label: string }) => (
+                        <SelectItem key={opt.value} value={opt.value} className="text-xs text-black">{opt.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
                   <label className={CRM_MODAL_LABEL_CLASS}>Due Date</label>
                   <Input type="date" value={taskDueDate} onChange={(e) => setTaskDueDate(e.target.value)} className={CRM_MODAL_INPUT_CLASS} />
                 </div>
                 <div className="space-y-1">
                   <label className={CRM_MODAL_LABEL_CLASS}>Priority</label>
-                  <Select value={taskPriority} onValueChange={(v) => setTaskPriority(v as any)}>
+                  <Select value={taskPriority} onValueChange={(v) => setTaskPriority(v as "low" | "medium" | "high")}>
                     <SelectTrigger className={CRM_MODAL_SELECT_CLASS}>
                       <SelectValue />
                     </SelectTrigger>
@@ -1000,95 +1407,66 @@ export default function CRM() {
                   </Select>
                 </div>
                 <div className="space-y-1">
-                  <label className={CRM_MODAL_LABEL_CLASS}>Department</label>
-                  <Select
-                    value={taskDepartment}
-                    onValueChange={(v) => {
-                      setTaskDepartment(v as "sales" | "technician");
-                      setTaskAssignedTo("");
-                    }}
-                  >
-                    <SelectTrigger className={CRM_MODAL_SELECT_CLASS}>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="bg-white border-gray-200">
-                      <SelectItem value="sales" className="text-xs text-black">Sales</SelectItem>
-                      <SelectItem value="technician" className="text-xs text-black">Technician</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1">
-                  <label className={CRM_MODAL_LABEL_CLASS}>Assigned To</label>
-                  <Select value={taskAssignedTo} onValueChange={setTaskAssignedTo}>
-                    <SelectTrigger className={CRM_MODAL_SELECT_CLASS}>
-                      <SelectValue placeholder="Select person" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-white border-gray-200">
-                      {seedStaff
-                        .filter((s) => s.role === taskDepartment)
-                        .map((s) => (
-                          <SelectItem key={s.id} value={s.name} className="text-xs text-black">
-                            {s.name}
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                {taskDepartment === "technician" && (
-                  <div className="space-y-1">
-                    <label className={CRM_MODAL_LABEL_CLASS}>Service Type</label>
-                    <Select value={taskServiceType} onValueChange={setTaskServiceType}>
-                      <SelectTrigger className={CRM_MODAL_SELECT_CLASS}>
-                        <SelectValue placeholder="Select service type" />
-                      </SelectTrigger>
-                      <SelectContent className="bg-white border-gray-200">
-                        {(seedData as any).serviceTypes.map((opt: { value: string; label: string }) => (
-                          <SelectItem key={opt.value} value={opt.value} className="text-xs text-black">
-                            {opt.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-                <div className="space-y-1">
-                  <label className={CRM_MODAL_LABEL_CLASS}>Client</label>
+                  <label className={CRM_MODAL_LABEL_CLASS}>Client (Optional)</label>
                   <Select value={taskClientId === null ? "none" : String(taskClientId)} onValueChange={(v) => setTaskClientId(v === "none" ? null : Number(v))}>
                     <SelectTrigger className={CRM_MODAL_SELECT_CLASS}>
-                      <SelectValue placeholder="Assign to client (optional)" />
+                      <SelectValue placeholder="None" />
                     </SelectTrigger>
                     <SelectContent className="bg-white border-gray-200">
-                      <SelectItem value="none">None</SelectItem>
+                      <SelectItem value="none" className="text-xs text-black">None</SelectItem>
                       {clients.map((c) => (
                         <SelectItem key={c.id} value={String(c.id)} className="text-xs text-black">{c.companyName}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
+                {!autoAssignTask && (
+                  <div className="space-y-1">
+                    <label className={CRM_MODAL_LABEL_CLASS}>Assign To</label>
+                    <Select value={taskAssignedTo} onValueChange={setTaskAssignedTo}>
+                      <SelectTrigger className={CRM_MODAL_SELECT_CLASS}>
+                        <SelectValue placeholder="Select salesperson" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-white border-gray-200">
+                        {seedStaff.filter(s => s.role === "sales").map(s => (
+                          <SelectItem key={s.id} value={s.name} className="text-xs text-black">{s.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
                 <div className="grid grid-cols-2 gap-3 pt-2">
                   <Button variant="outline" onClick={() => setTaskModalOpen(false)} className={CRM_MODAL_CANCEL_CLASS}>Cancel</Button>
                   <Button
                     className={CRM_MODAL_SUBMIT_CLASS}
                     onClick={() => {
-                      useCRMStore.getState().addTask({
+                      const newId = Date.now();
+                      const newTaskPayload = {
+                        id: newId,
                         title: taskTitle,
                         description: "",
-                        assignedTo: taskAssignedTo || user?.name || "Sales Team",
-                        relatedType: taskClientId ? "client" : "general",
+                        assignedTo: autoAssignTask ? "" : (taskAssignedTo || ""),
+                        isAutoAssigned: autoAssignTask,
+                        salesTaskType: salesTaskType || undefined,
+                        clientId: taskClientId,
+                        relatedType: (taskClientId ? "client" : "general") as Task["relatedType"],
                         relatedId: taskClientId ?? null,
                         dueDate: taskDueDate || new Date().toISOString(),
                         priority: taskPriority,
-                        status: "pending",
-                        serviceType: taskDepartment === "technician" ? taskServiceType || undefined : undefined,
+                        status: "upcoming" as Task["status"],
+                        createdAt: new Date().toISOString(),
+                      };
+                      useCRMStore.getState().addTask(newTaskPayload);
+                      createTaskMutation.mutate(newTaskPayload, {
+                        onSuccess: () => trpcUtils.tasks.list.invalidate(),
+                        onError: (err) => console.error("tasks.create failed", err),
                       });
-                      setTimeout(() => {
-                        setTaskModalOpen(false);
-                        setTaskTitle("");
-                        setTaskDueDate("");
-                        setTaskDepartment("sales");
-                        setTaskAssignedTo("");
-                        setTaskServiceType("");
-                      }, 1200);
+                      setTaskModalOpen(false);
+                      setTaskTitle("");
+                      setSalesTaskType("");
+                      setTaskDueDate("");
+                      setTaskClientId(null);
+                      setTaskAssignedTo("");
                     }}
                   >
                     Create
@@ -1114,8 +1492,15 @@ export default function CRM() {
                   <Input value={editTaskTitle} onChange={(e) => setEditTaskTitle(e.target.value)} className={CRM_MODAL_INPUT_CLASS} />
                 </div>
                 <div className="space-y-1">
-                  <label className={CRM_MODAL_LABEL_CLASS}>Description</label>
-                  <Input value={editTaskDescription} onChange={(e) => setEditTaskDescription(e.target.value)} className={CRM_MODAL_INPUT_CLASS} />
+                  <label className={CRM_MODAL_LABEL_CLASS}>Task Type</label>
+                  <Select value={editTaskType} onValueChange={setEditTaskType}>
+                    <SelectTrigger className={CRM_MODAL_SELECT_CLASS}><SelectValue placeholder="Select type" /></SelectTrigger>
+                    <SelectContent className="bg-white border-gray-200">
+                      {((seedData as any).salesTaskTypes as { value: string; label: string }[]).map(t => (
+                        <SelectItem key={t.value} value={t.value} className="text-xs text-black">{t.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="space-y-1">
                   <label className={CRM_MODAL_LABEL_CLASS}>Due Date</label>
@@ -1133,36 +1518,51 @@ export default function CRM() {
                   </Select>
                 </div>
                 <div className="space-y-1">
-                  <label className={CRM_MODAL_LABEL_CLASS}>Status</label>
-                  <Select value={editTaskStatus} onValueChange={(v) => setEditTaskStatus(v as Task["status"])}>
-                    <SelectTrigger className={CRM_MODAL_SELECT_CLASS}><SelectValue /></SelectTrigger>
+                  <label className={CRM_MODAL_LABEL_CLASS}>Client (Optional)</label>
+                  <Select value={editTaskClientId} onValueChange={setEditTaskClientId}>
+                    <SelectTrigger className={CRM_MODAL_SELECT_CLASS}><SelectValue placeholder="None" /></SelectTrigger>
                     <SelectContent className="bg-white border-gray-200">
-                      <SelectItem value="pending" className="text-xs text-black">Pending</SelectItem>
-                      <SelectItem value="in_progress" className="text-xs text-black">In Progress</SelectItem>
-                      <SelectItem value="overdue" className="text-xs text-black">Overdue</SelectItem>
+                      <SelectItem value="none" className="text-xs text-black">None</SelectItem>
+                      {clients.map((c) => (
+                        <SelectItem key={c.id} value={String(c.id)} className="text-xs text-black">{c.companyName}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-1">
-                  <label className={CRM_MODAL_LABEL_CLASS}>Assigned To</label>
-                  <Input value={editTaskAssignedTo} onChange={(e) => setEditTaskAssignedTo(e.target.value)} className={CRM_MODAL_INPUT_CLASS} />
-                </div>
+                {!autoAssignTask && (
+                  <div className="space-y-1">
+                    <label className={CRM_MODAL_LABEL_CLASS}>Assign To</label>
+                    <Select value={editTaskAssignedTo} onValueChange={setEditTaskAssignedTo}>
+                      <SelectTrigger className={CRM_MODAL_SELECT_CLASS}><SelectValue placeholder="Select salesperson" /></SelectTrigger>
+                      <SelectContent className="bg-white border-gray-200">
+                        {seedStaff.filter(s => s.role === "sales").map(s => (
+                          <SelectItem key={s.id} value={s.name} className="text-xs text-black">{s.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
                 <div className="grid grid-cols-2 gap-3 pt-2">
                   <Button variant="outline" onClick={() => setEditTaskOpen(false)} className={CRM_MODAL_CANCEL_CLASS}>Cancel</Button>
                   <Button
                     className={CRM_MODAL_SUBMIT_CLASS}
                     onClick={() => {
                       if (!editingTask) return;
+                      const resolvedClientId = editTaskClientId !== "none" ? Number(editTaskClientId) : null;
                       const taskPatch = {
                         title: editTaskTitle,
-                        description: editTaskDescription,
+                        salesTaskType: editTaskType || undefined,
                         dueDate: editTaskDueDate,
                         priority: editTaskPriority,
-                        status: editTaskStatus,
-                        assignedTo: editTaskAssignedTo,
+                        clientId: resolvedClientId,
+                        relatedType: resolvedClientId ? "client" as const : "general" as const,
+                        relatedId: resolvedClientId,
+                        assignedTo: autoAssignTask ? "" : (editTaskAssignedTo || ""),
+                        isAutoAssigned: autoAssignTask,
                       };
                       useCRMStore.getState().updateTask(editingTask.id, taskPatch);
                       updateTaskMutation.mutate({ id: editingTask.id, data: taskPatch }, {
+                        onSuccess: () => trpcUtils.tasks.list.invalidate(),
                         onError: (err) => console.error("tasks.update failed", err),
                       });
                       setEditTaskOpen(false);
@@ -1404,6 +1804,149 @@ export default function CRM() {
                     Add Client →
                   </Button>
                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Done Modal (Sales) */}
+      {doneModalOpen && doneTask && (
+        <div className={CRM_MODAL_VIEWPORT_CLASS}>
+          <div className={CRM_MODAL_BACKDROP_CLASS} onClick={() => setDoneModalOpen(false)} />
+          <div className={CRM_MODAL_PANEL_CLASS}>
+            <div className={CRM_MODAL_CARD_CLASS}>
+              <button onClick={() => setDoneModalOpen(false)} className="absolute top-5 right-5 text-gray-500 hover:text-gray-900"><X className="w-4 h-4" /></button>
+              <h3 className="text-lg font-bold text-gray-900 border-b border-gray-50 pb-4 mb-4">Mark Task as Complete</h3>
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <label className={CRM_MODAL_LABEL_CLASS}>What happened?</label>
+                  <textarea
+                    required
+                    value={doneNotes}
+                    onChange={(e) => setDoneNotes(e.target.value)}
+                    placeholder="Describe what happened or the outcome of this task..."
+                    className="min-h-24 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-xs text-black outline-none focus-visible:border-[#66B2B2]"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className={CRM_MODAL_LABEL_CLASS}>Attachments (Optional)</label>
+                  <label className="flex items-center gap-2 cursor-pointer h-10 w-full rounded-xl border border-dashed border-gray-300 px-3 text-xs text-gray-500 hover:border-[#66B2B2] hover:text-[#66B2B2] transition-colors">
+                    <Plus className="w-3.5 h-3.5" />
+                    Add files
+                    <input
+                      type="file"
+                      multiple
+                      className="sr-only"
+                      onChange={(e) => {
+                        const picked = Array.from(e.target.files ?? []);
+                        setDoneFiles((prev) => [...prev, ...picked]);
+                        e.target.value = "";
+                      }}
+                    />
+                  </label>
+                  {doneFiles.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 pt-1">
+                      {doneFiles.map((f, i) => (
+                        <span key={i} className="flex items-center gap-1 rounded-full bg-gray-100 px-2.5 py-1 text-[10px] text-gray-700 border border-gray-200">
+                          {f.name}
+                          <button type="button" onClick={() => setDoneFiles((prev) => prev.filter((_, j) => j !== i))} className="ml-0.5 text-gray-400 hover:text-[#EF4444]">
+                            <X className="w-2.5 h-2.5" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="grid grid-cols-2 gap-3 pt-2">
+                  <Button variant="outline" onClick={() => setDoneModalOpen(false)} className={CRM_MODAL_CANCEL_CLASS}>Cancel</Button>
+                  <Button
+                    className={CRM_MODAL_SUBMIT_CLASS}
+                    disabled={!doneNotes.trim()}
+                    onClick={async () => {
+                      // Capture before clearing state
+                      const taskId = doneTask.id;
+                      const taskTitle = doneTask.title;
+                      const notes = doneNotes.trim();
+                      const files = [...doneFiles];
+                      // Snapshot task context onto the report (robust against the live task
+                      // changing or being deleted later).
+                      const snapSalesTaskType = doneTask.salesTaskType;
+                      const snapTypeLabel = resolveTaskTypeLabel(doneTask);
+                      const snapClientName = clients.find((c) => c.id === doneTask.clientId)?.companyName ?? "-";
+                      const snapTaskCreatedAt = doneTask.createdAt;
+                      const snapDueDate = doneTask.dueDate;
+                      const snapPriority = doneTask.priority;
+                      // Close immediately — don't wait for async file conversion
+                      setDoneModalOpen(false);
+                      setDoneTask(null);
+                      setDoneNotes("");
+                      setDoneFiles([]);
+                      // Update store right away so the task disappears from the table
+                      useCRMStore.getState().updateTask(taskId, { status: "completed" as const });
+                      // Convert files async in background
+                      const fileToBase64 = (file: File): Promise<string> =>
+                        new Promise((resolve, reject) => {
+                          const reader = new FileReader();
+                          reader.onload = () => resolve(reader.result as string);
+                          reader.onerror = reject;
+                          reader.readAsDataURL(file);
+                        });
+                      const convertedFiles = await Promise.all(
+                        files.map(async (f) => ({ name: f.name, url: await fileToBase64(f) }))
+                      );
+                      const reportPayload = {
+                        id: Date.now(),
+                        taskId,
+                        taskTitle,
+                        notes,
+                        files: convertedFiles,
+                        completedAt: new Date().toISOString(),
+                        completedBy: user?.name ?? "",
+                        // Snapshots
+                        salesTaskType: snapSalesTaskType,
+                        salesTaskTypeLabel: snapTypeLabel,
+                        clientName: snapClientName,
+                        taskCreatedAt: snapTaskCreatedAt,
+                        dueDate: snapDueDate,
+                        priority: snapPriority,
+                        status: "completed",
+                        taskOrigin: "manual" as const,
+                      };
+                      useCRMStore.getState().addTaskReport(reportPayload);
+                      updateTaskMutation.mutate({ id: taskId, data: { status: "completed" } }, {
+                        onError: (err) => console.error("tasks.update (complete) failed", err),
+                      });
+                      upsertTaskReportMutation.mutate(reportPayload, {
+                        onSuccess: () => trpcUtils.taskReports.list.invalidate(),
+                        onError: (err) => console.error("taskReports.upsert failed", err),
+                      });
+                    }}
+                  >
+                    Mark as Complete
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* View Report Modal */}
+      {viewReportOpen && viewingReport && (
+        <div className={CRM_MODAL_VIEWPORT_CLASS}>
+          <div className={CRM_MODAL_BACKDROP_CLASS} onClick={() => setViewReportOpen(false)} />
+          <div className="relative z-10 w-full max-w-3xl max-h-[92vh] overflow-y-auto animate-in fade-in-0 zoom-in-95 duration-200">
+            <div className="relative bg-white border border-gray-200 rounded-2xl p-6 shadow-2xl">
+              <button onClick={() => setViewReportOpen(false)} className="absolute top-5 right-5 z-20 text-gray-500 hover:text-gray-900 no-print"><X className="w-4 h-4" /></button>
+              <TaskReportView
+                report={viewingReport}
+                clients={clients}
+                tasks={tasks}
+                resolveTypeLabel={resolveTaskTypeLabel}
+              />
+              <div className="pt-2 no-print">
+                <Button variant="outline" onClick={() => setViewReportOpen(false)} className={`w-full ${CRM_MODAL_CANCEL_CLASS}`}>Close</Button>
               </div>
             </div>
           </div>
@@ -1943,7 +2486,12 @@ function DealCard({
       className="relative data-card p-3 rounded-xl cursor-grab active:cursor-grabbing hover:border-[#66B2B2]/30 transition-all"
     >
       <div className="flex items-start justify-between mb-1.5 gap-2">
-        <span className="text-[10px] text-gray-600 font-mono-tech">{client?.companyName || "Unknown"}</span>
+        <div className="min-w-0">
+          <span className="text-[10px] text-gray-600 font-mono-tech block truncate">{client?.companyName || "Unknown"}</span>
+          {client?.contactName && client.contactName !== "-" && (
+            <span className="text-[10px] text-gray-400 font-mono-tech block truncate">{client.contactName}</span>
+          )}
+        </div>
         <div className="relative">
           <button
             type="button"
@@ -2080,171 +2628,218 @@ function ClientRow({ client, onClick, onEdit }: { client: Client; onClick: () =>
 
 function LeadCard({
   lead,
-  client,
+  client: _client,
   isConverted,
   onStatusChange,
   onConvert,
+  onScoreChange,
+  onEdit,
 }: {
   lead: Lead;
   client?: Client;
   isConverted: boolean;
   onStatusChange: (leadId: number, status: Lead["status"]) => void;
   onConvert: (lead: Lead) => void;
+  onScoreChange: (leadId: number, score: number) => void;
+  onEdit: (lead: Lead) => void;
 }) {
-  const priorityColors = {
-    low: "bg-[#66B2B2]/20 text-[#66B2B2]",
-    medium: "bg-[#66B2B2]/20 text-[#66B2B2]",
-    high: "bg-[#EF4444]/20 text-[#EF4444]",
-  };
+  const [editingScore, setEditingScore] = useState(false);
+  const [scoreInput, setScoreInput] = useState(String(lead.score ?? 0));
 
-  const statusColors = {
-    new: "#66B2B2",
-    contacted: "#66B2B2",
-    qualified: "#10B981",
-    lost: "#EF4444",
-  };
-
-  const displayName = lead.company || client?.companyName || lead.name || lead.notes;
-  const inquiryLabel = lead.inquiryType
-    ? lead.inquiryType.toUpperCase() === "PMS" ? "PMS" : lead.inquiryType[0].toUpperCase() + lead.inquiryType.slice(1)
-    : "General";
   const isLost = lead.status === "lost";
   const isDone = isConverted && !isLost;
 
+  const priorityColors: Record<string, string> = {
+    low: "bg-gray-100 text-gray-500",
+    medium: "bg-amber-100 text-amber-700",
+    high: "bg-red-100 text-red-700",
+  };
+
+  const companyName = lead.company || _client?.companyName || lead.name || "Unknown";
+  const contactName = lead.name && lead.name !== lead.company ? lead.name : null;
+  const inquiryLabel = !lead.inquiryType ? "General"
+    : lead.inquiryType.toUpperCase() === "PMS" ? "PMS"
+    : lead.inquiryType[0].toUpperCase() + lead.inquiryType.slice(1);
+
+  const scoreVal = lead.score ?? 0;
+  const scoreColor = scoreVal >= 80 ? "#10B981" : scoreVal >= 30 ? "#F2A900" : "#9CA3AF";
+  const scoreBarColor = scoreVal >= 80 ? "bg-[#10B981]" : scoreVal >= 30 ? "bg-amber-400" : "bg-gray-300";
+
+  const commitScore = () => {
+    const n = Math.max(0, Math.min(100, parseInt(scoreInput) || 0));
+    setEditingScore(false);
+    setScoreInput(String(n));
+    if (n !== scoreVal) onScoreChange(lead.id, n);
+  };
+
   return (
-    <div className={`data-card p-3 rounded-xl ${
-      isLost ? "border-[#EF4444]/20 bg-[#EF4444]/[0.03]" : isDone ? "border-[#10B981]/20 bg-[#10B981]/[0.03]" : ""
+    <div className={`data-card p-4 rounded-xl flex flex-col gap-3 ${
+      isLost ? "border-[#EF4444]/20 bg-[#EF4444]/[0.03]"
+      : isDone ? "border-[#10B981]/20 bg-[#10B981]/[0.03]" : ""
     }`}>
-      <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center gap-2">
-          <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${priorityColors[lead.priority]}`}>
-            {lead.priority}
-          </span>
-          <span className="text-[10px] text-gray-600">{lead.source}</span>
-        </div>
-        <div className="flex items-center gap-1">
-          <div className="w-1.5 h-1.5 rounded-full" style={{ background: statusColors[lead.status] }} />
-          <span className={`text-[10px] capitalize ${
-            isLost ? "font-medium text-[#EF4444]" : isDone ? "font-medium text-[#10B981]" : "text-gray-600"
-          }`}>
-            {isLost ? "Lost lead" : isDone ? "Converted" : lead.status}
-          </span>
-        </div>
-      </div>
-      <div className="text-xs text-black font-semibold mb-1">{displayName}</div>
-      <div className="text-[10px] text-gray-600 mb-2">{lead.notes}</div>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-gray-600 mb-3">
-        <span>{inquiryLabel}</span>
-        <span>Assigned: {lead.assignedTo}</span>
-        {lead.email && (
-          <span className="inline-flex items-center gap-1">
-            <Mail className="w-3 h-3" />
-            {lead.email}
-          </span>
-        )}
-        {lead.phone && (
-          <span className="inline-flex items-center gap-1">
-            <Phone className="w-3 h-3" />
-            {lead.phone}
-          </span>
-        )}
-      </div>
-      <div className="flex items-center justify-between gap-3">
-        <span className="text-[10px] text-[#8B5CF6] font-mono-tech font-bold">Score: {lead.score}</span>
+      {/* Header: priority badge + source chip + edit button */}
+      <div className="flex items-center justify-between">
+        <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase ${priorityColors[lead.priority] ?? priorityColors.low}`}>
+          {lead.priority}
+        </span>
         <div className="flex items-center gap-1.5">
-          {isLost && (
-            <>
-              <span className="hidden text-[10px] text-gray-500 sm:inline">Removed from active funnel</span>
-              <Button onClick={() => onStatusChange(lead.id, "contacted")} variant="outline" className="h-7 px-2.5 border-[#66B2B2]/30 text-[#66B2B2] hover:bg-[#66B2B2]/10 text-[10px] font-bold">
-                Restore
-              </Button>
-            </>
-          )}
-          {lead.status === "new" && (
-            <>
-              <Button onClick={() => onStatusChange(lead.id, "contacted")} className="h-7 px-2.5 bg-[#66B2B2] hover:bg-[#66B2B2]/80 text-white text-[10px] font-bold">
-                Mark Contacted
-              </Button>
-              <Button onClick={() => onStatusChange(lead.id, "lost")} variant="outline" className="h-7 px-2.5 border-[#EF4444]/30 text-[#EF4444] hover:bg-[#EF4444]/10 text-[10px] font-bold">
-                Lost
-              </Button>
-            </>
-          )}
-          {lead.status === "contacted" && (
-            <>
-              <Button onClick={() => onStatusChange(lead.id, "qualified")} className="h-7 px-2.5 bg-[#66B2B2] hover:bg-[#66B2B2]/80 text-white text-[10px] font-bold">
-                Qualify
-              </Button>
-              <Button onClick={() => onStatusChange(lead.id, "lost")} variant="outline" className="h-7 px-2.5 border-[#EF4444]/30 text-[#EF4444] hover:bg-[#EF4444]/10 text-[10px] font-bold">
-                Lost
-              </Button>
-            </>
-          )}
-          {isDone && (
-            <span className="inline-flex h-7 items-center rounded-lg bg-[#10B981]/10 px-2.5 text-[10px] font-bold text-[#10B981]">
-              Deal Created
-            </span>
-          )}
-          {lead.status === "qualified" && !isDone && (
-            <Button
-              onClick={() => onConvert(lead)}
-              disabled={isConverted}
-              className="h-7 min-w-28 bg-[#10B981] hover:bg-[#10B981]/80 text-white text-[10px] font-bold disabled:opacity-60"
+          <span className="text-[10px] text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">{lead.source}</span>
+          <button
+            type="button"
+            onClick={() => onEdit(lead)}
+            className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+          >
+            <Pencil className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+
+      {/* Company + contact */}
+      <div>
+        <div className="text-sm font-bold text-gray-900 leading-tight">{companyName}</div>
+        {contactName && <div className="text-[11px] text-gray-500 mt-0.5">Contact: {contactName}</div>}
+      </div>
+
+      {/* Notes */}
+      {lead.notes && (
+        <p className="text-[11px] text-gray-500 line-clamp-2 leading-snug">{lead.notes}</p>
+      )}
+
+      {/* Info row: inquiry type, email, phone */}
+      <div className="grid grid-cols-3 gap-1.5 text-[10px]">
+        <div className="bg-gray-50 rounded px-2 py-1.5 text-center">
+          <div className="text-gray-400 mb-0.5">Inquiry</div>
+          <div className="font-semibold text-gray-700">{inquiryLabel}</div>
+        </div>
+        <div className="bg-gray-50 rounded px-2 py-1.5 text-center min-w-0">
+          <div className="text-gray-400 mb-0.5 flex items-center justify-center gap-0.5"><Mail className="w-2.5 h-2.5" /> Email</div>
+          <div className="font-medium text-gray-700 truncate">{lead.email || "—"}</div>
+        </div>
+        <div className="bg-gray-50 rounded px-2 py-1.5 text-center min-w-0">
+          <div className="text-gray-400 mb-0.5 flex items-center justify-center gap-0.5"><Phone className="w-2.5 h-2.5" /> Phone</div>
+          <div className="font-medium text-gray-700 truncate">{lead.phone || "—"}</div>
+        </div>
+      </div>
+
+      {/* Score editor + bar */}
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between">
+          <span className="text-[10px] text-gray-500 font-semibold">Score</span>
+          {editingScore ? (
+            <input
+              type="number" min={0} max={100}
+              value={scoreInput}
+              onChange={(e) => setScoreInput(e.target.value)}
+              onBlur={commitScore}
+              onKeyDown={(e) => { if (e.key === "Enter") commitScore(); if (e.key === "Escape") { setEditingScore(false); setScoreInput(String(scoreVal)); } }}
+              className="w-16 h-6 text-center text-xs border border-gray-200 rounded focus:outline-none focus:border-[#66B2B2]"
+              autoFocus
+            />
+          ) : (
+            <button
+              type="button"
+              onClick={() => { setEditingScore(true); setScoreInput(String(scoreVal)); }}
+              className="inline-flex items-center gap-1 text-xs font-black font-mono-tech hover:opacity-70 transition-opacity group"
+              style={{ color: scoreColor }}
+              title="Click to edit score"
             >
-              {isConverted ? "Converted" : "Convert to Deal"}
-            </Button>
+              {scoreVal}
+              <Pencil className="w-2.5 h-2.5 opacity-40 group-hover:opacity-80 transition-opacity" />
+            </button>
           )}
         </div>
+        <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+          <div className={`h-full rounded-full transition-all ${scoreBarColor}`} style={{ width: `${Math.min(100, scoreVal)}%` }} />
+        </div>
+      </div>
+
+      {/* Action buttons */}
+      <div className="flex items-center justify-between gap-2 pt-0.5">
+        {isDone ? (
+          <span className="inline-flex h-7 items-center rounded-lg bg-[#10B981]/10 px-3 text-[10px] font-bold text-[#10B981]">
+            ✓ Converted
+          </span>
+        ) : isLost ? (
+          <Button
+            onClick={() => onStatusChange(lead.id, "active" as Lead["status"])}
+            variant="outline"
+            className="h-7 px-3 border-[#66B2B2]/30 text-[#66B2B2] hover:bg-[#66B2B2]/10 text-[10px] font-bold"
+          >
+            Restore
+          </Button>
+        ) : (
+          <>
+            {scoreVal >= 80 && (
+              <Button
+                onClick={() => onConvert(lead)}
+                className="h-7 flex-1 bg-[#10B981] hover:bg-[#10B981]/80 text-white text-[10px] font-bold"
+              >
+                Convert to Deal
+              </Button>
+            )}
+            <Button
+              onClick={() => onStatusChange(lead.id, "lost" as Lead["status"])}
+              variant="outline"
+              className="h-7 px-3 border-[#EF4444]/30 text-[#EF4444] hover:bg-[#EF4444]/10 text-[10px] font-bold"
+            >
+              Lost
+            </Button>
+          </>
+        )}
       </div>
     </div>
   );
 }
 
-function TaskRow({ task, onComplete, onEdit, onDelete }: {
+const TASK_STATUS_CONFIG: Record<string, { label: string; color: string }> = {
+  upcoming:  { label: "Upcoming",  color: "#66B2B2" },
+  due_soon:  { label: "Due Soon",  color: "#F2A900" },
+  due_today: { label: "Due Today", color: "#F97316" },
+  overdue:   { label: "Overdue",   color: "#EF4444" },
+  completed: { label: "Completed", color: "#10B981" },
+};
+
+function TaskStatusBadge({ task }: { task: Task }) {
+  const s = computeTaskStatus(task);
+  const cfg = TASK_STATUS_CONFIG[s] ?? TASK_STATUS_CONFIG.upcoming;
+  return (
+    <span
+      className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase"
+      style={{ background: `${cfg.color}20`, color: cfg.color }}
+    >
+      {cfg.label}
+    </span>
+  );
+}
+
+const PRIORITY_COLORS: Record<string, string> = {
+  low: "bg-gray-100 text-gray-600",
+  medium: "bg-[#F2A900]/15 text-[#B87900]",
+  high: "bg-[#EF4444]/15 text-[#EF4444]",
+};
+
+function AdminTaskRow({ task, taskTypeLabel, clientName, onEdit, onDelete }: {
   task: Task;
-  onComplete: (id: number) => void;
+  taskTypeLabel: string;
+  clientName: string;
   onEdit: () => void;
   onDelete: (id: number) => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
-
-  const statusConfig: Record<string, { label: string; color: string; bg: string }> = {
-    pending:     { label: "Pending",     color: "#66B2B2", bg: "#66B2B2" },
-    in_progress: { label: "In Progress", color: "#8B5CF6", bg: "#8B5CF6" },
-    overdue:     { label: "Overdue",     color: "#EF4444", bg: "#EF4444" },
-  };
-  const st = statusConfig[task.status] ?? statusConfig.pending;
-
   return (
     <tr className="border-b border-gray-200 hover:bg-gray-50">
+      <td className="py-2.5 px-3 font-medium text-black">{task.title}</td>
+      <td className="py-2.5 px-3 text-gray-600">{taskTypeLabel}</td>
+      <td className="py-2.5 px-3 text-gray-600">{clientName}</td>
+      <td className="py-2.5 px-3 text-gray-500 font-mono-tech">{new Date(task.createdAt).toLocaleDateString("en-PH")}</td>
+      <td className="py-2.5 px-3 text-gray-700 font-mono-tech">{new Date(task.dueDate).toLocaleDateString("en-PH")}</td>
+      <td className="py-2.5 px-3 text-gray-700">{task.assignedTo || "—"}</td>
       <td className="py-2.5 px-3">
-        <button
-          onClick={() => onComplete(task.id)}
-          className="w-4 h-4 rounded border border-gray-300 flex items-center justify-center hover:border-[#10B981] hover:bg-[#10B981]/10 transition-colors"
-        >
-          {task.status === "completed" && <CheckCircle2 className="w-3 h-3 text-[#10B981]" />}
-        </button>
-      </td>
-      <td className="py-2.5 px-3">
-        <p className={`font-medium ${task.status === "overdue" ? "text-[#EF4444]" : "text-black"}`}>{task.title}</p>
-        {task.description && <p className="text-[10px] text-gray-500 mt-0.5">{task.description}</p>}
-        {task.serviceType && <p className="text-[10px] text-[#66B2B2] mt-0.5">{task.serviceType}</p>}
-      </td>
-      <td className="py-2.5 px-3 text-gray-500 font-mono-tech">
-        {new Date(task.createdAt).toLocaleDateString("en-PH")}
-      </td>
-      <td className="py-2.5 px-3 text-gray-700 font-mono-tech">
-        {new Date(task.dueDate).toLocaleDateString("en-PH")}
-      </td>
-      <td className="py-2.5 px-3 text-gray-700">{task.assignedTo}</td>
-      <td className="py-2.5 px-3">
-        <span
-          className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase"
-          style={{ background: `${st.bg}20`, color: st.color }}
-        >
-          {st.label}
+        <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${PRIORITY_COLORS[task.priority] ?? ""}`}>
+          {task.priority}
         </span>
       </td>
+      <td className="py-2.5 px-3"><TaskStatusBadge task={task} /></td>
       <td className="py-2.5 px-3">
         <div className="relative">
           <button
@@ -2277,6 +2872,39 @@ function TaskRow({ task, onComplete, onEdit, onDelete }: {
   );
 }
 
+function SalesTaskRow({ task, taskTypeLabel, clientName, onDone }: {
+  task: Task;
+  taskTypeLabel: string;
+  clientName: string;
+  onDone: () => void;
+}) {
+  return (
+    <tr className="border-b border-gray-200 hover:bg-gray-50">
+      <td className="py-2.5 px-3 font-medium text-black">{task.title}</td>
+      <td className="py-2.5 px-3 text-gray-600">{taskTypeLabel}</td>
+      <td className="py-2.5 px-3 text-gray-600">{clientName}</td>
+      <td className="py-2.5 px-3 text-gray-700 font-mono-tech">{new Date(task.dueDate).toLocaleDateString("en-PH")}</td>
+      <td className="py-2.5 px-3">
+        <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${PRIORITY_COLORS[task.priority] ?? ""}`}>
+          {task.priority}
+        </span>
+      </td>
+      <td className="py-2.5 px-3"><TaskStatusBadge task={task} /></td>
+      <td className="py-2.5 px-3">
+        {computeTaskStatus(task) !== "completed" && (
+          <Button
+            size="sm"
+            className="h-7 rounded-lg px-3 text-[10px] font-bold bg-[#10B981] hover:bg-[#10B981]/80 text-white"
+            onClick={onDone}
+          >
+            Done
+          </Button>
+        )}
+      </td>
+    </tr>
+  );
+}
+
 function SalesPerformance({ leads, deals, tasks }: { leads: Lead[]; deals: Deal[]; tasks: Task[] }) {
   const salespeople = ["Sarah Blake", "James Rodriguez", "Marcus Chen", "Marketing System"];
 
@@ -2284,7 +2912,7 @@ function SalesPerformance({ leads, deals, tasks }: { leads: Lead[]; deals: Deal[
     const assignedLeads = leads.filter(l => l.assignedTo === person).length;
     const contactedLeads = leads.filter(l => l.assignedTo === person && l.status !== "new").length;
     const wonDeals = deals.filter(d => d.assignedTo === person && d.stage === "closed_won").length;
-    const overdueTasks = tasks.filter(t => t.assignedTo === person && t.status === "overdue").length;
+    const overdueTasks = tasks.filter(t => t.assignedTo === person && computeTaskStatus(t) === "overdue").length;
     const conversion = assignedLeads > 0 ? Math.round((wonDeals / assignedLeads) * 100) : 0;
     
     return {
@@ -2319,7 +2947,7 @@ function SalesPerformance({ leads, deals, tasks }: { leads: Lead[]; deals: Deal[
         </div>
         <div className="data-card p-4 border border-[#EF4444]/20 bg-[#EF4444]/5">
           <div className="text-[10px] text-[#EF4444] uppercase font-bold mb-1">Critical Follow-ups</div>
-          <div className="text-xl font-bold text-[#EF4444]">{tasks.filter(t => t.status === 'overdue').length}</div>
+          <div className="text-xl font-bold text-[#EF4444]">{tasks.filter(t => computeTaskStatus(t) === 'overdue').length}</div>
           <div className="text-[10px] text-[#EF4444]/70 mt-1">Immediate action required</div>
         </div>
       </div>

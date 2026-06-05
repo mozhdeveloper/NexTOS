@@ -139,7 +139,7 @@ const GPS001_HOURS_TODAY_CACHE_KEY = "nextos-gps001-hours-today-ms";
 const GPS001_HOURS_TODAY_TIMESTAMP_KEY = "nextos-gps001-hours-today-timestamps";
 const GPS001_KM_TODAY_CACHE_KEY = "nextos-gps001-km-today";
 const GPS001_TOTAL_KM_CACHE_KEY = "nextos-gps001-total-km";
-const GPS001_WORKING_DAYS_BY_DAY_CACHE_KEY = "fleet:gps001WorkingDaysByDay:v2";
+const GPS001_WORKING_DAYS_BY_DAY_CACHE_KEY = "fleet:gps001WorkingDaysByDay:v4";
 const ADDED_EQUIPMENT_STORAGE_KEY = "nextos-fleet-added-equipment";
 const HISTORY_DOT_STATUS_CACHE_KEY = "nextos-fleet-history-dot-statuses";
 const HISTORY_TABLE_DATA_CACHE_KEY = "nextos-fleet-history-table-data:v5";
@@ -1591,7 +1591,7 @@ export default function Fleet() {
         const totalDays = await fetchAllTimeWorkingDays(
           GPS51_USERNAME,
           GPS51_PASSWORD,
-          monthStart,
+          "2000-01-01", // all-time: count every calendar day the machine had ACC-on time
           targetDay
         );
 

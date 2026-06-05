@@ -1353,68 +1353,6 @@ export async function fetchAllTimeWorkingDays(
     return Math.max(explicitMs, parsedDurationMs);
   };
 
-  const resolveRecordMileageMeters = (record: Record<string, unknown>): number => {
-    const starterMeters = toFiniteNumber(record.starter, 0);
-    const endDistanceMeters = toFiniteNumber(record.enddis, 0);
-    const edgeDistanceMeters = endDistanceMeters - starterMeters;
-
-    return pickFirstNonNegative(
-      record.totaldistance,
-      record.distance,
-      record.allmile,
-      edgeDistanceMeters > 0 ? edgeDistanceMeters : undefined
-    ) ?? 0;
-  };
-
-  const resolveRecordDrivingMs = (record: Record<string, unknown>): number => {
-    const explicitMs = pickFirstNonNegative(
-      record.totaltriptime,
-      record.drivingduration,
-      record.drivingtime,
-      record.triptime
-    ) ?? 0;
-
-    const parsedDurationMs = Math.max(
-      parseDurationFromRecordStrings(record, /(trip|driving|drive).*(str|text|duration|time)/i),
-      parseDurationFromRecordStrings(record, /(str|text|duration).*(trip|driving|drive)/i)
-    );
-
-    return Math.max(explicitMs, parsedDurationMs);
-  };
-
-  const resolveRecordIdleMs = (record: Record<string, unknown>): number => {
-    const explicitMs = pickFirstNonNegative(
-      record.totalidle,
-      record.idleduration,
-      record.idletime
-    ) ?? 0;
-
-    const parsedDurationMs = Math.max(
-      parseDurationFromRecordStrings(record, /(idle).*(str|text|duration|time)/i),
-      parseDurationFromRecordStrings(record, /(str|text|duration).*(idle)/i)
-    );
-
-    return Math.max(explicitMs, parsedDurationMs);
-  };
-
-  const resolveRecordParkingMs = (record: Record<string, unknown>): number => {
-    const explicitMs = pickFirstNonNegative(
-      record.parkingduration,
-      record.parkduration,
-      record.parkingtime,
-      record.totalpark,
-      record.totalparking,
-      record.parktime,
-      record.stopduration
-    ) ?? 0;
-
-    const parsedDurationMs = Math.max(
-      parseDurationFromRecordStrings(record, /(park|parking|stop).*(str|text|duration|time)/i),
-      parseDurationFromRecordStrings(record, /(str|text|duration).*(park|parking|stop)/i)
-    );
-
-    return Math.max(explicitMs, parsedDurationMs);
-  };
 
   const fetchRangeRecords = async (rangeStart: string, rangeEnd: string): Promise<Record<string, unknown>[]> => {
     const data = await postGps51Action("reportmileagedetail", username, password, {
@@ -1481,24 +1419,10 @@ export async function fetchAllTimeWorkingDays(
     if (!dayKey) continue;
     if (dayKey < startDay || dayKey > finalEndDay) continue;
 
-    const mileageMeters = resolveRecordMileageMeters(record);
-    const maxSpeed = toFiniteNumber(record.maxspeed, 0);
-    const avgSpeed = toFiniteNumber(record.avgspeed, 0);
-    const drivingMs = resolveRecordDrivingMs(record);
+    // A day counts only if the working column (totalacc / ACC-on) is > 0.
+    // Idle/parking/mileage-only days are intentionally excluded.
     const workingMs = resolveRecordWorkingMs(record);
-    const idleMs = resolveRecordIdleMs(record);
-    const parkingMs = resolveRecordParkingMs(record);
-
-    const hasMovementEvidence =
-      Math.abs(mileageMeters) > 0 ||
-      Math.abs(maxSpeed) > 0 ||
-      Math.abs(avgSpeed) > 0 ||
-      drivingMs > 0;
-
-    const hasSupportedStationaryEvidence =
-      workingMs > 0 || idleMs > 0 || parkingMs > 0;
-
-    if (!hasMovementEvidence && !hasSupportedStationaryEvidence) continue;
+    if (!(workingMs > 0)) continue;
 
     activeDayKeys.add(dayKey);
   }

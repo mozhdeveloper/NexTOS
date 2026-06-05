@@ -95,15 +95,6 @@ const serviceTypeOptions = [
   { value: "Installation", label: "Installation" },
 ];
 
-function getPmsMetricLabel(unit: string): string {
-  switch (unit.toLowerCase()) {
-    case "km": return "KM Logged";
-    case "weeks": return "Weeks Logged";
-    case "months": return "Months Logged";
-    case "years": return "Years Logged";
-    default: return "Hours Logged";
-  }
-}
 
 function getPmsMetricValue(seedEq: any, unit: string, gps001CacheMs: number, gps001HoursOffsetMs = 0): string {
   const u = unit.toLowerCase();
@@ -2713,6 +2704,7 @@ export default function Services() {
                         _seedEqId: svcTaskEquipmentId,
                         label: `${svcTaskServiceType} for ${selectedSeedEq?.name ?? ""}`,
                         _serviceType: svcTaskServiceType,
+                        _dueDate: svcTaskDueDate || null,
                         ...(svcTaskTargetsPms && svcTaskMetricUnit ? {
                           _serviceIntervalUnit: svcTaskMetricUnit,
                           _resetOnComplete: true,

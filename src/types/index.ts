@@ -78,14 +78,36 @@ export interface Task {
   id: number;
   title: string;
   description: string;
-  assignedTo: string;
+  assignedTo: string;           // "" or "Auto" when auto-assigned
   relatedType: "client" | "deal" | "equipment" | "general";
   relatedId: number | null;
   dueDate: string;
   priority: "low" | "medium" | "high";
-  status: "pending" | "in_progress" | "completed" | "overdue";
-  serviceType?: string;
+  status: "upcoming" | "due_soon" | "due_today" | "overdue" | "completed";
+  serviceType?: string;         // keep for backwards compat
   createdAt: string;
+  salesTaskType?: string;       // value from salesTaskTypes
+  clientId?: number | null;     // optional client reference
+  isAutoAssigned?: boolean;     // true when assigned via auto-assign
+}
+
+export interface TaskReport {
+  id: number;
+  taskId: number;
+  taskTitle: string;
+  notes: string;
+  files: { name: string; url: string }[];
+  completedAt: string;
+  completedBy: string;
+  // Optional snapshots taken at completion time (older reports may lack these)
+  salesTaskType?: string;
+  salesTaskTypeLabel?: string;
+  clientName?: string;
+  taskCreatedAt?: string;
+  dueDate?: string;
+  priority?: "low" | "medium" | "high";
+  status?: string;
+  taskOrigin?: "manual" | "auto";
 }
 
 // Values sourced from equipmentTypes in src/data/seed-data.json
@@ -182,6 +204,7 @@ export interface ServiceRecord {
   invoiceId: number | null;
   clientSignature?: string;
   techSignature?: string;
+  clientRepresentativeName?: string;
   safetyChecklist?: {
     ppeChecked: boolean;
     engineOff: boolean;
