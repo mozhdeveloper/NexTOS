@@ -10,10 +10,9 @@ import type { ServiceType, ServiceRecord } from "@/types";
 import {
   Shield,
   History,
+  FileText,
   Calendar,
   CreditCard,
-  ChevronDown,
-  ChevronUp,
   CheckCircle2,
   Clock,
   X,
@@ -48,9 +47,9 @@ export default function ClientPortal() {
   const { clients } = useCRMStore();
   const { invoices, packages, markInvoicePaid, addInvoice } = useBillingStore();
   const [activeTab, setActiveTab] = useState<TabType>("history");
-  const [expandedEquipment, setExpandedEquipment] = useState<string | null>(null);
   const [showReport, setShowReport] = useState<ServiceRecord | null>(null);
   const [equipmentSearchQuery, setEquipmentSearchQuery] = useState("");
+  const [serviceReportSearchQuery, setServiceReportSearchQuery] = useState("");
   const [qrSerial, setQrSerial] = useState("");
   const [qrUnitName, setQrUnitName] = useState("");
   const [showQR, setShowQR] = useState(false);
@@ -62,16 +61,89 @@ export default function ClientPortal() {
 
   const selectedCompanyIndex = seedData.clients.findIndex((c) => c.id === selectedCompanyId);
   const clientId = selectedCompanyIndex !== -1 ? selectedCompanyIndex + 1 : user?.clientId || 1;
+  const selectedSeedClient = seedData.clients.find((c) => c.id === selectedCompanyId) ?? seedData.clients[0];
   const client = clients.find((c) => c.id === clientId);
   const seedEquipmentById = new Map((seedData.equipment as any[]).map((e) => [String(e.id), e]));
   const clientEquipment = equipment
     .map((e) => ({ ...(seedEquipmentById.get(e.id) ?? {}), ...e }))
-    .filter((e) => normalizeId(e.clientId) === clientId);
-  const clientRecords = serviceRecords.filter((r) => normalizeId(r.clientId) === clientId);
+    .filter((e) => String(e.clientId) === selectedSeedClient.id || normalizeId(e.clientId) === clientId);
   const clientInvoices = invoices.filter((i) => normalizeId(i.clientId) === clientId);
   const clientPackages = packages.filter((p) => normalizeId(p.clientId) === clientId);
   const availablePackages = packages.filter((p) => normalizeId(p.clientId) !== clientId);
   const clientBookings = bookings.filter((b) => normalizeId(b.clientId) === clientId);
+
+  const findEquipmentForRecord = (record: any) =>
+    clientEquipment.find((item) =>
+      String(item.id) === String(record.seedEquipmentId ?? record.equipmentId ?? "") ||
+      (record.serialNumber && item.serialNumber === record.serialNumber) ||
+      (record.equipmentName && item.name === record.equipmentName)
+    );
+
+  const recordBelongsToSelectedClient = (record: any) => {
+    if (String(record.clientId) === selectedSeedClient.id || normalizeId(record.clientId) === clientId) return true;
+    if (record.clientName === selectedSeedClient.companyName) return true;
+    return Boolean(findEquipmentForRecord(record));
+  };
+
+  const toClientSafeReport = (record: any): ServiceRecord & Record<string, any> => {
+    const matchingEquipment = findEquipmentForRecord(record);
+    const equipmentName = record.equipmentName ?? matchingEquipment?.name ?? "—";
+    const serialNumber = record.serialNumber ?? matchingEquipment?.serialNumber ?? "—";
+    const equipmentType = record.equipmentType ?? matchingEquipment?.equipmentType ?? "—";
+    const serviceType = record.serviceType ?? record.serviceCategory ?? "—";
+    const cost = Number(record.finalCost ?? record.cost ?? 0);
+
+    return {
+      ...record,
+      id: Number(record.id ?? Date.now()),
+      equipmentId: String(record.equipmentId ?? record.seedEquipmentId ?? matchingEquipment?.id ?? ""),
+      clientId,
+      technician: record.technician ?? "Technician (Signed)",
+      serviceCategory: record.serviceCategory ?? serviceType,
+      serviceType,
+      description: record.description ?? "",
+      partsUsed: record.partsUsed ?? "",
+      status: record.status ?? "completed",
+      scheduledDate: record.scheduledDate ?? record.completedDate ?? "",
+      completedDate: record.completedDate ?? record.scheduledDate ?? null,
+      cost,
+      invoiceId: record.invoiceId ?? null,
+      createdAt: record.createdAt ?? record.completedDate ?? record.scheduledDate ?? new Date().toISOString(),
+      equipmentName,
+      clientName: selectedSeedClient.companyName,
+      serialNumber,
+      equipmentType,
+      finalCost: record.finalCost ?? cost,
+    } as ServiceRecord & Record<string, any>;
+  };
+
+  const clientRecords = [
+    ...(seedData.serviceRecords as any[]),
+    ...serviceRecords,
+  ]
+    .filter(recordBelongsToSelectedClient)
+    .filter((record: any) => String(record.status ?? "").toLowerCase() === "completed")
+    .map(toClientSafeReport)
+    .sort((a, b) => {
+      const bTime = new Date(b.completedDate ?? b.scheduledDate ?? 0).getTime();
+      const aTime = new Date(a.completedDate ?? a.scheduledDate ?? 0).getTime();
+      return bTime - aTime;
+    });
+
+  const filteredClientRecords = clientRecords.filter((record) => {
+    const query = serviceReportSearchQuery.trim().toLowerCase();
+    if (!query) return true;
+    return [
+      record.equipmentName,
+      record.serialNumber,
+      record.equipmentType,
+      record.serviceType,
+      record.serviceCategory,
+      record.technician,
+      record.completedDate,
+      record.scheduledDate,
+    ].some((value) => String(value ?? "").toLowerCase().includes(query));
+  });
 
   const filteredClientEquipment = clientEquipment.filter((eq) => {
     const query = equipmentSearchQuery.trim().toLowerCase();
@@ -171,17 +243,6 @@ export default function ClientPortal() {
     }, 3000);
   };
 
-  const isServiceDueFor = (eq: any) => {
-    if (!eq) return false;
-    if (eq.equipmentType === "Heavy Equipment") {
-      return typeof eq.nextPMSHours === "number" && eq.nextPMSHours > 0 && eq.currentHours >= eq.nextPMSHours;
-    }
-    if (eq.equipmentType === "Lab Equipment" || eq.equipmentType === "Testing Equipment") {
-      return eq.nextCalibrationDate ? new Date(eq.nextCalibrationDate) <= new Date() : false;
-    }
-    return false;
-  };
-
   // When a booking completes inside the modal, auto-close the modal and return to bookings list
   useEffect(() => {
     if (bookingComplete && bookingModalOpen) {
@@ -252,7 +313,7 @@ export default function ClientPortal() {
         <div>
           <h1 className="text-[32px] font-bold text-black tracking-[-0.02em]">Client Portal</h1>
           <p className="text-sm text-gray-600 mt-0.5">
-            {client?.companyName || "Your Account"} — Equipment history, bookings &amp; billing
+            {selectedSeedClient.companyName || client?.companyName || "Your Account"} — Service reports, bookings &amp; billing
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -297,16 +358,16 @@ export default function ClientPortal() {
           <div className="text-[10px] text-gray-600 mt-1">Units under management</div>
         </div>
         <div className="data-card p-4">
-          <div className="text-[10px] text-gray-600 uppercase tracking-wider mb-1">Service History</div>
+          <div className="text-[10px] text-gray-600 uppercase tracking-wider mb-1">Service Reports</div>
           <div className="text-3xl font-bold text-black">{clientRecords.length}</div>
-          <div className="text-[10px] text-gray-600 mt-1">Total service records</div>
+          <div className="text-[10px] text-gray-600 mt-1">Completed reports</div>
         </div>
       </div>
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-gray-200">
         {[
-          { id: "history" as TabType, label: "Equipment History", icon: History },
+          { id: "history" as TabType, label: "Service Reports", icon: History },
           { id: "equipment" as TabType, label: "Equipment", icon: Package },
           { id: "booking" as TabType, label: "Book Service", icon: Calendar },
           { id: "packages" as TabType, label: "Packages", icon: Package },
@@ -327,154 +388,81 @@ export default function ClientPortal() {
         ))}
       </div>
 
-      {/* Equipment History Tab */}
+      {/* Service Reports Tab */}
       {activeTab === "history" && (
-        <div className="space-y-3">
-          {clientEquipment.map((eq) => {
-            const eqRecords = clientRecords.filter((r) => r.equipmentId === eq.id);
-            const eqPhotos = servicePhotos.filter((p) => eqRecords.some((r) => r.id === p.serviceRecordId));
-            const isExpanded = expandedEquipment === eq.id;
-            const serviceDue = isServiceDueFor(eq);
+        <div className="space-y-3 animate-in fade-in duration-300">
+          <div className="flex items-center gap-3">
+            <div className="relative flex-1 max-w-xs">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500" />
+              <Input
+                placeholder="Search reports..."
+                value={serviceReportSearchQuery}
+                onChange={(e) => setServiceReportSearchQuery(e.target.value)}
+                className="pl-8 h-8 bg-white border-gray-200 text-black text-xs"
+              />
+            </div>
+            <div className="flex items-center gap-1.5 text-[10px] text-[#66B2B2] font-black uppercase tracking-wider">
+              <Shield className="w-3 h-3" />
+              Client-safe reports
+            </div>
+          </div>
 
-            return (
-              <div key={eq.id} className="data-card">
-                <button
-                  onClick={() => setExpandedEquipment(isExpanded ? null : eq.id)}
-                  className="w-full flex items-center justify-between p-4"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded bg-[#66B2B2]/20 flex items-center justify-center">
-                      <Package className="w-4 h-4 text-[#66B2B2]" />
-                    </div>
-                    <div className="text-left">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-semibold text-black font-mono-tech">{eq.name ?? eq.unitId}</span>
-                        <span className="text-xs text-gray-600">{eq.equipmentType ?? eq.type}</span>
-                      </div>
-                      <div className="text-[10px] text-gray-500 mt-1">ID: {eq.unitId ?? eq.id}</div>
-                      <div className="text-[10px] text-gray-600 mt-2">
-                        {eq.manufacturer} {eq.model} — {eq.location}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    {serviceDue && (
-                      <span className="px-1.5 py-0.5 rounded text-[10px] bg-[#EF4444]/20 text-[#EF4444] font-medium">
-                        Service Due
-                      </span>
-                    )}
-                    <span className="text-[10px] text-gray-600">{eqRecords.length} services</span>
-                    {isExpanded ? (
-                      <ChevronUp className="w-4 h-4 text-gray-600" />
-                    ) : (
-                      <ChevronDown className="w-4 h-4 text-gray-600" />
-                    )}
-                  </div>
-                </button>
+          <div className="data-card overflow-auto rounded-xl">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-200">
+                  <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider whitespace-nowrap">Equipment</th>
+                  <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider whitespace-nowrap">Serial Number</th>
+                  <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider whitespace-nowrap">Equipment Type</th>
+                  <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider whitespace-nowrap">Service Type</th>
+                  <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider whitespace-nowrap">Cost</th>
+                  <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider whitespace-nowrap">Technician</th>
+                  <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider whitespace-nowrap">Completed Date</th>
+                  <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider whitespace-nowrap">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredClientRecords.map((record) => {
+                  const cost = Number((record as any).finalCost ?? record.cost ?? 0);
+                  const completedDate = record.completedDate ?? record.scheduledDate;
 
-                {isExpanded && (
-                  <div className="px-4 pb-4 border-t border-gray-200 pt-3">
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3 text-xs">
-                      <div>
-                        <div className="text-[10px] text-gray-600">Serial</div>
-                        <div className="text-black font-mono-tech">{eq.serialNumber}</div>
-                      </div>
-                      <div>
-                        <div className="text-[10px] text-gray-600">Warranty Expiry</div>
-                        <div className="text-black">
-                          {eq.warrantyExpiry ? new Date(eq.warrantyExpiry).toLocaleDateString() : "—"}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-[10px] text-gray-600">Current Hours</div>
-                        <div className={`font-mono-tech ${serviceDue ? "text-[#EF4444]" : "text-black"}`}>
-                          {typeof eq.currentHours === "number" ? `${eq.currentHours} hrs` : "—"}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-[10px] text-gray-600">{eq.equipmentType === "Heavy Equipment" ? "Last PMS" : "Last Calibration"}</div>
-                        <div className={`font-mono-tech ${serviceDue ? "text-[#EF4444]" : "text-black"}`}>
-                          {eq.equipmentType === "Heavy Equipment"
-                            ? (typeof eq.lastPMSHours === "number" ? `${eq.lastPMSHours} hrs` : "—")
-                            : (eq.lastCalibrationDate ? new Date(eq.lastCalibrationDate).toLocaleDateString() : "—")}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Service Records */}
-                    {eqRecords.length > 0 && (
-                      <div className="mb-3">
-                        <div className="text-[10px] text-gray-600 uppercase tracking-wider mb-2 flex items-center justify-between">
-                            <span>Service Records</span>
-                            <span className="flex items-center gap-1 text-[#66B2B2] font-black">
-                                <Shield className="w-2.5 h-2.5" />
-                                SECURE AUDIT TRAIL ENABLED
-                            </span>
-                        </div>
-                        <div className="space-y-2">
-                          {eqRecords.filter(r => r.status === 'completed').map((record) => (
-                            <div
-                              key={record.id}
-                              className="flex items-center justify-between p-3 rounded-xl border border-gray-100 bg-gray-50/50 hover:bg-white transition-all group"
-                            >
-                              <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 rounded-full bg-white border border-gray-100 flex items-center justify-center">
-                                    <CheckCircle2 className="w-4 h-4 text-green-500" />
-                                </div>
-                                <div>
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-xs font-bold text-gray-900 capitalize">{record.serviceCategory}</span>
-                                        {record.safetyChecklist && (
-                                            <span className="px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-600 text-[8px] font-black uppercase tracking-tighter border border-amber-100">
-                                                Safety Verified
-                                            </span>
-                                        )}
-                                    </div>
-                                    <div className="text-[10px] text-gray-500 font-medium">Tech: {record.technician} <span className="mx-1">•</span> {record.completedDate ? new Date(record.completedDate).toLocaleDateString() : "—"}</div>
-                                </div>
-                              </div>
-                              <Button 
-                                variant="ghost" 
-                                size="sm" 
-                                onClick={() => setShowReport(record)}
-                                className="h-8 text-[10px] font-bold text-[#66B2B2] hover:bg-[#66B2B2]/10 rounded-lg group-hover:translate-x-1 transition-all"
-                              >
-                                View Full Report
-                                <ArrowRight className="w-3 h-3 ml-1.5" />
-                              </Button>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Photos */}
-                    {eqPhotos.length > 0 && (
-                      <div>
-                        <div className="text-[10px] text-gray-600 uppercase tracking-wider mb-1">Documentation</div>
-                        <div className="grid grid-cols-4 gap-1.5">
-                          {eqPhotos.map((photo, idx) => (
-                            <div key={idx} className="relative">
-                              <img src={photo.url} alt={photo.caption} className="w-full h-16 object-cover rounded" />
-                              <span
-                                className={`absolute top-0.5 left-0.5 text-[8px] px-1 py-0.5 rounded font-medium ${
-                                  photo.type === "before"
-                                    ? "bg-[#66B2B2]/80 text-white"
-                                    : "bg-[#10B981]/80 text-white"
-                                }`}
-                              >
-                                {photo.type}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
+                  return (
+                    <tr key={`${record.id}-${record.equipmentId}-${completedDate}`} className="grid-table-row border-b border-gray-100 hover:bg-gray-50 transition-all">
+                      <td className="py-3 px-3 font-bold text-gray-900 whitespace-nowrap">{(record as any).equipmentName ?? "—"}</td>
+                      <td className="py-3 px-3 text-gray-500 font-mono-tech whitespace-nowrap">{(record as any).serialNumber ?? "—"}</td>
+                      <td className="py-3 px-3 text-gray-600 whitespace-nowrap">{(record as any).equipmentType ?? "—"}</td>
+                      <td className="py-3 px-3 text-gray-700 whitespace-nowrap">{(record as any).serviceType ?? record.serviceCategory ?? "—"}</td>
+                      <td className="py-3 px-3 text-gray-700 font-mono-tech whitespace-nowrap">
+                        ₱{cost.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+                      <td className="py-3 px-3 text-gray-700 whitespace-nowrap">{record.technician ?? "Technician (Signed)"}</td>
+                      <td className="py-3 px-3 text-gray-500 font-mono-tech whitespace-nowrap">
+                        {completedDate ? new Date(completedDate).toLocaleDateString() : "—"}
+                      </td>
+                      <td className="py-3 px-3">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setShowReport(record)}
+                          className="h-7 text-[10px] border-gray-200 hover:bg-[#66B2B2] hover:text-white transition-all whitespace-nowrap"
+                        >
+                          <FileText className="w-3 h-3 mr-1" />
+                          View Report
+                        </Button>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {filteredClientRecords.length === 0 && (
+                  <tr>
+                    <td colSpan={8} className="py-12 text-center text-gray-400 text-xs font-bold uppercase tracking-widest">
+                      No service reports found
+                    </td>
+                  </tr>
                 )}
-              </div>
-            );
-          })}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
