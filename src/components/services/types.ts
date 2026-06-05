@@ -1,4 +1,4 @@
-export type TabType = "tasks" | "equipment" | "reports" | "new" | "scheduled-maintenance";
+export type TabType = "dashboard" | "tasks" | "equipment" | "reports" | "new" | "scheduled-maintenance";
 
 export type ScheduledMaintenanceEntry = {
   id: string;
