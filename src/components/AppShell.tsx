@@ -16,6 +16,7 @@ import {
   LogOut,
   ClipboardList,
   CreditCard,
+  UserCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -40,6 +41,7 @@ const navItems: NavItem[] = [
   { label: "Inventory", path: "/inventory", icon: Box, roles: ["admin", "tech"] },
   { label: "Fleet", path: "/fleet", icon: MapPin, roles: ["admin", "tech", "client"] },
   { label: "Client Portal", path: "/portal", icon: Shield, roles: ["admin", "client"] },
+  { label: "Profile", path: "/profile", icon: UserCircle, roles: ["tech"] },
   { label: "Billing", path: "/billing", icon: CreditCard, roles: ["admin", "client"] },
   { label: "Reports", path: "/reports", icon: ClipboardList, roles: ["admin", "sales", "tech"] },
   { label: "Settings", path: "/settings", icon: Settings, roles: ["admin", "sales", "tech", "client"] },

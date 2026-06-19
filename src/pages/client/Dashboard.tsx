@@ -12,24 +12,8 @@ import {
 import seedData from "@/data/seed-data.json";
 import type { Booking, Client, Equipment, Package as ClientPackage, ServiceCategory, ServicePhoto, ServiceRecord } from "@/types";
 import { ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
-import {
-  ArrowRight,
-  Bell,
-  Calendar,
-  CheckCircle2,
-  ChevronRight,
-  ClipboardList,
-  Eye,
-  FileText,
-  FlaskConical,
-  HardHat,
-  PackageCheck,
-  Plus,
-  Receipt,
-  Siren,
-  Wrench,
-  Printer
-} from "lucide-react";
+import { Clock, Eye, Download, Camera, CheckCircle2, ChevronRight, FileText, Calendar, Plus, ExternalLink, HardHat, PackageCheck, ClipboardList, Settings, Wrench, Siren, HeartPulse, Gauge, Zap, Bell, Check, Users, MapPin, Receipt, ArrowRight, Printer } from "lucide-react";
+import { TechnicianRatingForm } from "@/components/TechnicianRatingForm";
 import {
   Dialog,
   DialogContent,
@@ -1466,6 +1450,17 @@ function ServiceReportView({
           </div>
         </div>
       </div>
+
+      {record.status === "completed" && record.technician && record.technician !== "Unassigned" && record.technician !== "Pending Assignment" && (
+        <div className="no-print mt-6 border-t border-gray-100 pt-6">
+          <TechnicianRatingForm
+            serviceRecordId={record.id}
+            clientId={record.clientId}
+            technician={record.technician}
+            canRate={true}
+          />
+        </div>
+      )}
     </div>
   );
 }

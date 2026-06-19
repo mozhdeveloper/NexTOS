@@ -1,12 +1,14 @@
 import { Printer, CheckCircle2, X, ShieldCheck, MapPin, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { ServiceRecord, Equipment, Client, ServicePhoto } from "@/types";
+import { TechnicianRatingForm } from "./TechnicianRatingForm";
 
 interface ServiceReportViewProps {
   record: ServiceRecord & Record<string, any>;
   equipment?: Equipment;
   client?: Client;
   photos: ServicePhoto[];
+  viewerRole?: 'admin' | 'technician' | 'client';
 }
 
 function formatServiceInterval(interval: number, unit: string): string {
@@ -53,7 +55,7 @@ function formatElapsed(fromIso: string | null | undefined, toIso: string | null 
   }
 }
 
-export function ServiceReportView({ record, equipment, client, photos }: ServiceReportViewProps) {
+export function ServiceReportView({ record, equipment, client, photos, viewerRole }: ServiceReportViewProps) {
   // Prefer rich fields saved directly on the record (from seed), fall back to looked-up store data
   const eqName: string = record.equipmentName || equipment?.unitId || "";
   const clientName: string = record.clientName || client?.companyName || "";
@@ -512,6 +514,17 @@ export function ServiceReportView({ record, equipment, client, photos }: Service
                 </div>
               </div>
             )}
+          </div>
+        )}
+        
+        {record.status === "completed" && record.technician && record.technician !== "Unassigned" && record.technician !== "Pending Assignment" && (
+          <div className="no-print mt-6 border-t border-gray-100 pt-6">
+            <TechnicianRatingForm
+              serviceRecordId={record.id}
+              clientId={record.clientId}
+              technician={record.technician}
+              canRate={viewerRole === 'client'}
+            />
           </div>
         )}
       </div>

@@ -4,6 +4,7 @@ import ClientPortalShell from '@/components/ClientPortalShell'
 import Login from '@/pages/Login'
 import Dashboard from '@/pages/Dashboard'
 import TechnicianDashboard from '@/pages/TechnicianDashboard'
+import TechnicianProfile from '@/pages/TechnicianProfile'
 import CRM from '@/pages/CRM'
 import Services from '@/pages/Services'
 import Fleet from '@/pages/Fleet'
@@ -73,6 +74,7 @@ function TechnicianRoutes() {
       <Routes>
         <Route path="/" element={<TechnicianDashboard />} />
         <Route path="/crm" element={<CRM />} />
+        <Route path="/profile" element={<TechnicianProfile />} />
         <Route path="/services" element={<Services />} />
         <Route path="/inventory" element={<Inventory />} />
         <Route path="/fleet" element={<Fleet />} />

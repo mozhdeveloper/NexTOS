@@ -3,6 +3,7 @@ import { useAuthStore } from "@/stores/useAuthStore";
 import { useOperationsStore } from "@/stores/useOperationsStore";
 import { useBillingStore } from "@/stores/useBillingStore";
 import { useClientPortalStore } from "@/stores/useClientPortalStore";
+import { trpc } from "@/providers/trpc";
 import type { Booking, Package, ServiceType } from "@/types";
 import {
   Calendar,
@@ -282,6 +283,7 @@ export default function ClientBookings() {
   const { bookings, equipment, addBooking, updateBooking } = useOperationsStore();
   const { packages, invoices } = useBillingStore();
   const { selectedCompanyId } = useClientPortalStore();
+  const upsertSeedServiceRecord = trpc.seedServiceRecords.upsert.useMutation();
   
   const selectedCompanyNumericId = normalizeClientId(selectedCompanyId);
   const clientId = selectedCompanyNumericId || user?.clientId || 1;
@@ -473,6 +475,84 @@ export default function ClientBookings() {
     const packageId = selectedPackage?.id;
     const packageName = selectedPackage?.name ?? selectedPackageLabel;
 
+    const bookingId = editBookingId || `BK-${Date.now()}`;
+    
+    // Check if an existing task matches this booking ID
+    const existingTask = useOperationsStore.getState().serviceRecords.find((r) => {
+      try {
+        const meta = JSON.parse(r.description ?? "{}");
+        return meta._bookingId === bookingId;
+      } catch {
+        return false;
+      }
+    });
+
+    const taskId = existingTask ? existingTask.id : Date.now();
+    const clientSeedId = selectedEquipment?.clientId || selectedCompanyId || `CL-${String(clientId).padStart(3, "0")}`;
+    const clientNum = normalizeClientId(clientSeedId);
+
+    const taskDescription = JSON.stringify({
+      _src: "booking",
+      _origin: "booking",
+      _bookingId: bookingId,
+      _priority: "medium",
+      _seedEqId: bookingEquipment,
+      label: `${toServiceCategory(bookingType)} for ${selectedEquipment?.name ?? ""}`,
+      _serviceType: bookingType,
+      _dueDate: bookingDate,
+      preferredTime: bookingTime,
+      notes: bookingNotes.trim(),
+      technician: bookingTechnician,
+      packageName,
+      packageId,
+    });
+
+    const taskPayload = {
+      id: taskId,
+      equipmentId: bookingEquipment,
+      clientId: clientSeedId,
+      technician: bookingTechnician === "No preference" ? "Pending Assignment" : bookingTechnician,
+      serviceCategory: toServiceCategory(bookingType),
+      description: taskDescription,
+      partsUsed: "Pending",
+      status: "scheduled" as const,
+      scheduledDate: normalizedDate.toISOString(),
+      completedDate: null,
+      cost: 0,
+      invoiceId: null,
+      createdAt: new Date().toISOString(),
+    };
+
+    // Update the Zustand store immediately
+    useOperationsStore.setState((state) => {
+      const filtered = state.serviceRecords.filter((r) => r.id !== taskId);
+      return {
+        serviceRecords: [...filtered, taskPayload],
+      };
+    });
+
+    // Update/insert on the server
+    upsertSeedServiceRecord.mutate({
+      id: taskId,
+      seedEquipmentId: bookingEquipment,
+      pmsConfigIndex: 0,
+      equipmentId: bookingEquipment,
+      clientId: clientNum,
+      serviceCategory: toServiceCategory(bookingType),
+      status: "scheduled",
+      scheduledDate: normalizedDate.toISOString(),
+      technician: bookingTechnician === "No preference" ? "Pending Assignment" : bookingTechnician,
+      description: taskDescription,
+      findings: "",
+      workDone: "",
+      recommendation: "",
+      partsUsed: "Pending",
+      cost: 0,
+      hoursAtService: 0,
+      priority: "medium",
+      taskOrigin: "booking",
+    });
+
     if (editBookingId) {
       const noteWithStatus = setTag(noteWithTech, "status", "rescheduled");
       updateBooking(editBookingId, {
@@ -491,6 +571,7 @@ export default function ClientBookings() {
     } else {
       const noteWithStatus = setTag(noteWithTech, "status", "pending");
       addBooking({
+        id: bookingId,
         clientId: selectedCompanyId,
         equipmentId: bookingEquipment,
         serviceCategory: toServiceCategory(bookingType),

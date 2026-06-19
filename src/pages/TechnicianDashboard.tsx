@@ -30,6 +30,7 @@ import {
   CheckCircle2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { TechnicianRatingsSection } from "@/components/TechnicianRatingsSection";
 
 const STATUS_COLORS = {
   pending: "#60A5FA",
@@ -496,6 +497,8 @@ export default function TechnicianDashboard() {
           </div>
         </div>
       </div>
+
+      <TechnicianRatingsSection technicianName={user?.name || ""} />
     </div>
   );
 }

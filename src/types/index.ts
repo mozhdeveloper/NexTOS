@@ -335,3 +335,15 @@ export interface MarketingCampaign {
   scheduledDate: string;
   createdAt: string;
 }
+
+export interface Rating {
+  id: number;
+  serviceRecordId: number;
+  clientId: string | number;
+  technician: string;
+  rating: number;
+  comments: string;
+  suggestions?: string;
+  createdAt: string;
+}
+

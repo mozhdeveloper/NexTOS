@@ -229,6 +229,7 @@ export default function Services() {
   // Modal State
   const [executionTask, setExecutionTask] = useState<ServiceRecord | null>(null);
   const [confirmTask, setConfirmTask] = useState<ServiceRecord | null>(null);
+  const [viewTaskDetails, setViewTaskDetails] = useState<ServiceRecord | null>(null);
   const [svcTaskModalOpen, setSvcTaskModalOpen] = useState(false);
   const [svcTaskTitle, setSvcTaskTitle] = useState("");
   const [svcTaskDueDate, setSvcTaskDueDate] = useState("");
@@ -1414,9 +1415,7 @@ export default function Services() {
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-gray-100">
-                    {["Status", "ID", "Equipment", "Client", "Service", "Metric at Service", "Service Interval",
-                      ...(isTech ? ["Action"] : [])
-                    ].map((col) => (
+                    {["Status", "ID", "Equipment", "Client", "Service", "Metric at Service", "Service Interval", "Origin", "Action"].map((col) => (
                       <th key={col} className="px-3 py-2.5 text-left text-[9px] font-bold uppercase tracking-wider text-gray-400 whitespace-nowrap">
                         {col}
                       </th>
@@ -1432,7 +1431,9 @@ export default function Services() {
                     let pmsMeta: any = {};
                     try { pmsMeta = JSON.parse(task.description ?? "{}"); } catch {}
                     const isPmsTask = pmsMeta._src === "pms";
-                    const pmsSeedEq = isPmsTask
+                    const isBookingTask = pmsMeta._src === "booking";
+                    
+                    const pmsSeedEq = (isPmsTask || isBookingTask) && pmsMeta._seedEqId
                       ? liveEquipment.find((s) => s.id === pmsMeta._seedEqId) ?? null
                       : null;
                     const pmsCfg = pmsSeedEq && pmsMeta._pmsIdx !== undefined
@@ -1442,30 +1443,32 @@ export default function Services() {
                       ? liveClients.find((c) => c.id === pmsSeedEq.clientId) ?? null
                       : null;
 
-                    const displayName = isPmsTask
+                    const displayName = (isPmsTask || isBookingTask)
                       ? (pmsSeedEq?.name ?? eq?.name ?? "Unknown Equipment")
                       : (eq?.name ?? "No unit selected");
-                    const displaySub = isPmsTask ? null : (eq ? eq.equipmentType : null);
-                    const displayClient = isPmsTask
+                    const displaySub = (isPmsTask || isBookingTask) ? null : (eq ? eq.equipmentType : null);
+                    const displayClient = (isPmsTask || isBookingTask)
                       ? (pmsSeedClient?.companyName ?? client?.companyName ?? "Unknown Client")
                       : (client?.companyName ?? "Unknown Client");
                     const metricUnit = pmsCfg?.serviceIntervalUnit ?? "Hours";
                     const metricValue = isPmsTask
                       ? getPmsMetricValue(pmsSeedEq, metricUnit, gps001CacheMs, gps001HoursOffsetMs)
-                      : (eq?.hoursTotal ?? "—");
+                      : isBookingTask
+                        ? (pmsSeedEq ? getPmsMetricValue(pmsSeedEq, "Hours", gps001CacheMs, gps001HoursOffsetMs) : "—")
+                        : (eq?.hoursTotal ?? "—");
                     const serviceIntervalDisplay = (isPmsTask && pmsCfg)
                       ? formatServiceInterval(pmsCfg.serviceInterval, pmsCfg.serviceIntervalUnit)
                       : null;
+
+                    const taskOrigin = pmsMeta._origin === "manual" ? "manual" : (pmsMeta._origin === "booking" ? "booking" : "auto");
 
                     const handleRowClick = () => draftExecutions[task.id]?.travelStartTime ? setExecutionTask(task) : setConfirmTask(task);
 
                     return (
                       <tr
                         key={task.id}
-                        className={`border-b border-gray-50 last:border-0 transition-colors ${
-                          isTech ? "hover:bg-gray-50/60 cursor-pointer" : "cursor-default"
-                        }`}
-                        onClick={isTech ? handleRowClick : undefined}
+                        className="border-b border-gray-50 last:border-0 transition-colors hover:bg-gray-50/60 cursor-pointer"
+                        onClick={isTech ? handleRowClick : () => setViewTaskDetails(task)}
                       >
                         <td className="px-3 py-3 whitespace-nowrap">
                           {task.status === "scheduled" && !isDraft ? (
@@ -1489,8 +1492,17 @@ export default function Services() {
                         <td className="px-3 py-3 whitespace-nowrap">
                           <span className="font-mono-tech text-xs text-gray-700">{serviceIntervalDisplay ?? "—"}</span>
                         </td>
-                        {isTech && (
-                          <td className="px-3 py-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                        <td className="px-3 py-3 whitespace-nowrap">
+                          {taskOrigin === "booking" ? (
+                            <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase bg-blue-100 text-blue-700">Booking</span>
+                          ) : taskOrigin === "manual" ? (
+                            <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase bg-[#66B2B2]/10 text-[#0F766E]">Manual</span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase bg-gray-100 text-gray-500">Auto</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                          {isTech ? (
                             <Button
                               className="h-8 px-3 text-xs bg-gray-900 hover:bg-[#66B2B2] text-white font-bold transition-all"
                               onClick={handleRowClick}
@@ -1501,8 +1513,15 @@ export default function Services() {
                                 <><CheckCircle2 className="w-3 h-3 mr-1.5" /> Continue Execution</>
                               )}
                             </Button>
-                          </td>
-                        )}
+                          ) : (
+                            <Button
+                              className="h-8 px-3 text-xs bg-[#66B2B2] hover:bg-[#5A9E9E] text-white font-bold transition-all"
+                              onClick={() => setViewTaskDetails(task)}
+                            >
+                              View Details
+                            </Button>
+                          )}
+                        </td>
                       </tr>
                     );
                   })}
@@ -2651,6 +2670,190 @@ export default function Services() {
         onMetricsReset={handleMetricsReset}
       />
 
+      {/* Task Details Modal */}
+      <Dialog open={!!viewTaskDetails} onOpenChange={(open) => !open && setViewTaskDetails(null)}>
+        <DialogContent className="max-w-xl bg-white border border-gray-200 rounded-2xl shadow-2xl p-0 overflow-hidden text-gray-900">
+          {viewTaskDetails && (() => {
+            const task = viewTaskDetails;
+            let meta: any = {};
+            try { meta = JSON.parse(task.description ?? "{}"); } catch {}
+            
+            const isBooking = meta._src === "booking";
+            const isPms = meta._src === "pms";
+            
+            const seedEq = (isPms || isBooking) && meta._seedEqId
+              ? liveEquipment.find((s) => s.id === meta._seedEqId) ?? null
+              : (liveEquipment.find((e) => e.id === task.equipmentId) ?? null);
+            
+            const seedClient = liveClients.find((c) => String(c.id) === String(task.clientId) || String(c.id) === String(seedEq?.clientId));
+            const metricUnit = isPms && seedEq && seedEq.pmsConfiguration?.[meta._pmsIdx]?.serviceIntervalUnit || "Hours";
+            const metricValue = isPms
+              ? getPmsMetricValue(seedEq, metricUnit, gps001CacheMs, gps001HoursOffsetMs)
+              : isBooking
+                ? (seedEq ? getPmsMetricValue(seedEq, "Hours", gps001CacheMs, gps001HoursOffsetMs) : "—")
+                : (equipment.find(e => e.id === task.equipmentId)?.hoursTotal ?? "—");
+
+            const taskOrigin = meta._origin === "manual" ? "manual" : (meta._origin === "booking" ? "booking" : "auto");
+
+            return (
+              <>
+                <DialogHeader className="p-6 border-b border-gray-100 bg-gradient-to-br from-[#66B2B2]/5 to-transparent">
+                  <DialogTitle className="flex items-center justify-between text-gray-900 text-lg font-bold">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-9 h-9 rounded-xl bg-[#66B2B2]/10 flex items-center justify-center">
+                        <Wrench className="w-4.5 h-4.5 text-[#66B2B2]" />
+                      </div>
+                      <span>Task Details #{task.id}</span>
+                    </div>
+                    <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+                      task.status === "scheduled"
+                        ? "bg-gray-100 text-gray-500"
+                        : "bg-amber-100 text-amber-700"
+                    }`}>
+                      {task.status}
+                    </span>
+                  </DialogTitle>
+                  <DialogDescription className="text-xs text-gray-500 mt-1">
+                    Complete information for this maintenance and service task.
+                  </DialogDescription>
+                </DialogHeader>
+
+                <div className="p-6 space-y-5 max-h-[70vh] overflow-y-auto">
+                  {/* Client Info Card */}
+                  <div className="space-y-2">
+                    <h4 className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Client Information</h4>
+                    <div className="p-4 rounded-xl border border-gray-100 bg-gray-50/55 space-y-2">
+                      <div className="grid grid-cols-2 gap-3 text-xs">
+                        <div>
+                          <span className="text-gray-400 block text-[10px] uppercase">Company Name</span>
+                          <span className="font-bold text-gray-800">{seedClient?.companyName ?? "N/A"}</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-400 block text-[10px] uppercase">Industry</span>
+                          <span className="font-semibold text-gray-700">{seedClient?.industry ?? "N/A"}</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-400 block text-[10px] uppercase">Main Contact</span>
+                          <span className="font-semibold text-gray-700">{seedClient?.mainContact ?? seedClient?.contactName ?? "N/A"}</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-400 block text-[10px] uppercase">Phone</span>
+                          <span className="font-semibold text-gray-700">{seedClient?.phone ?? "N/A"}</span>
+                        </div>
+                        <div className="col-span-2">
+                          <span className="text-gray-400 block text-[10px] uppercase">Email</span>
+                          <span className="font-semibold text-gray-700">{seedClient?.email ?? "N/A"}</span>
+                        </div>
+                        <div className="col-span-2">
+                          <span className="text-gray-400 block text-[10px] uppercase">Address</span>
+                          <span className="font-semibold text-gray-700">{seedClient?.address ?? "N/A"}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Equipment Info Card */}
+                  <div className="space-y-2">
+                    <h4 className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Equipment Details</h4>
+                    <div className="p-4 rounded-xl border border-gray-100 bg-gray-50/55 space-y-2">
+                      <div className="grid grid-cols-2 gap-3 text-xs">
+                        <div>
+                          <span className="text-gray-400 block text-[10px] uppercase">Unit ID / Name</span>
+                          <span className="font-bold text-gray-800">{seedEq?.name ?? seedEq?.unitId ?? "N/A"}</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-400 block text-[10px] uppercase">Serial Number</span>
+                          <span className="font-mono text-gray-800">{seedEq?.serialNumber ?? "N/A"}</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-400 block text-[10px] uppercase">Manufacturer / Model</span>
+                          <span className="font-semibold text-gray-700">
+                            {seedEq?.manufacturer && seedEq?.model ? `${seedEq.manufacturer} ${seedEq.model}` : (seedEq?.manufacturer ?? seedEq?.model ?? "N/A")}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-gray-400 block text-[10px] uppercase">Current Reading</span>
+                          <span className="font-mono text-gray-800 font-semibold">{metricValue}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Service & Schedule Card */}
+                  <div className="space-y-2">
+                    <h4 className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Service &amp; Schedule</h4>
+                    <div className="p-4 rounded-xl border border-gray-100 bg-gray-50/55 space-y-2">
+                      <div className="grid grid-cols-2 gap-3 text-xs">
+                        <div>
+                          <span className="text-gray-400 block text-[10px] uppercase">Service Type</span>
+                          <span className="font-semibold text-gray-800">{task.serviceCategory}</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-400 block text-[10px] uppercase">Origin</span>
+                          <span className="capitalize font-semibold text-gray-800">{taskOrigin}</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-400 block text-[10px] uppercase">Assigned Technician</span>
+                          <span className="font-bold text-gray-800">{task.technician || "Pending Assignment"}</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-400 block text-[10px] uppercase">Schedule Date</span>
+                          <span className="font-semibold text-gray-800">
+                            {task.scheduledDate ? new Date(task.scheduledDate).toLocaleDateString(undefined, {
+                              weekday: "short",
+                              year: "numeric",
+                              month: "short",
+                              day: "numeric",
+                            }) : "N/A"}
+                          </span>
+                        </div>
+                        {isBooking && (
+                          <>
+                            <div>
+                              <span className="text-gray-400 block text-[10px] uppercase">Time Slot</span>
+                              <span className="font-semibold text-gray-800">{meta.preferredTime ?? "N/A"}</span>
+                            </div>
+                            <div>
+                              <span className="text-gray-400 block text-[10px] uppercase">Booking ID</span>
+                              <span className="font-mono font-semibold text-gray-800">{meta._bookingId ?? "N/A"}</span>
+                            </div>
+                            {meta.packageName && (
+                              <div className="col-span-2">
+                                <span className="text-gray-400 block text-[10px] uppercase">Associated Package</span>
+                                <span className="font-semibold text-[#66B2B2]">{meta.packageName}</span>
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Notes / Remarks Card */}
+                  <div className="space-y-2">
+                    <h4 className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Additional Notes / Remarks</h4>
+                    <div className="p-4 rounded-xl border border-gray-100 bg-gray-50/55 text-xs">
+                      <p className="text-gray-700 whitespace-pre-wrap leading-relaxed">
+                        {isBooking ? (meta.notes || "No additional notes from client.") : (task.description && !task.description.startsWith("{") ? task.description : "No description provided.")}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-6 border-t border-gray-100 bg-gray-50/50 flex justify-end">
+                  <Button
+                    onClick={() => setViewTaskDetails(null)}
+                    className="h-10 px-5 bg-gray-900 hover:bg-[#66B2B2] text-white font-bold text-xs rounded-xl transition-all"
+                  >
+                    Close Details
+                  </Button>
+                </div>
+              </>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
+
       {/* Service Report View Modal */}
       <Dialog open={!!showReport} onOpenChange={() => setShowReport(null)}>
         <DialogContent className="bg-white border-gray-200 max-w-4xl max-h-[95vh] overflow-auto scrollbar-hide rounded-2xl">
@@ -2664,6 +2867,7 @@ export default function Services() {
               equipment={equipment.find((eqItem) => eqItem.id === showReport.equipmentId)}
               client={liveClients.find((c) => c.id === showReport.clientId)}
               photos={servicePhotos.filter((p) => p.serviceRecordId === showReport.id)}
+              viewerRole="admin"
             />
           )}
         </DialogContent>
