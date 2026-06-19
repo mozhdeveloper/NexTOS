@@ -1452,6 +1452,7 @@ export default function Services() {
                       let pmsMeta: any = {};
                       try { pmsMeta = JSON.parse(task.description ?? "{}"); } catch { }
                       const isPmsTask = pmsMeta._src === "pms";
+                      const isBookingTask = pmsMeta._origin === "booking";
                       const pmsSeedEq = isPmsTask
                         ? liveEquipment.find((s) => s.id === pmsMeta._seedEqId) ?? null
                         : null;

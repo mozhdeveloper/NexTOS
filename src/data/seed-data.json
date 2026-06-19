@@ -1676,6 +1676,26 @@
             "equipmentStatusAtService": null,
             "resetMetricsOnComplete": false,
             "estimatedArrival": null
+        },
+        {
+            "id": 1781849371151,
+            "seedEquipmentId": "EQ-002",
+            "pmsConfigIndex": 0,
+            "equipmentId": "EQ-002",
+            "clientId": 2,
+            "serviceCategory": "Heavy Equipment PMS",
+            "status": "scheduled",
+            "scheduledDate": "2026-06-18T16:00:00.000Z",
+            "technician": "James Rodriguez",
+            "description": "{\"_src\":\"booking\",\"_origin\":\"booking\",\"_bookingId\":\"BK-1781849371151\",\"_priority\":\"medium\",\"_seedEqId\":\"EQ-002\",\"label\":\"Heavy Equipment PMS for Boom Truck X500\",\"_serviceType\":\"pms\",\"_dueDate\":\"2026-06-19\",\"preferredTime\":\"12:00-16:00\",\"notes\":\"\",\"technician\":\"James Rodriguez\",\"packageName\":\"One-time Service\"}",
+            "findings": "",
+            "workDone": "",
+            "recommendation": "",
+            "partsUsed": "Pending",
+            "cost": 0,
+            "hoursAtService": 0,
+            "priority": "medium",
+            "taskOrigin": "booking"
         }
     ],
     "bookings": [
