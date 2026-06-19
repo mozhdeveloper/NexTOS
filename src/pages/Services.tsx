@@ -1483,8 +1483,6 @@ export default function Services() {
                         : (manualMetricUnit ?? null);
 
                       const taskPriority: string = pmsMeta._priority ?? (isPmsTask ? "medium" : "");
-                      const taskOrigin: "auto" | "manual" = pmsMeta._origin === "manual" ? "manual" : "auto";
-
                       const taskOrigin = pmsMeta._origin === "manual" ? "manual" : (pmsMeta._origin === "booking" ? "booking" : "auto");
 
                       const handleRowClick = () => draftExecutions[task.id]?.travelStartTime ? setExecutionTask(task) : setConfirmTask(task);
@@ -1527,8 +1525,8 @@ export default function Services() {
                           <td className="px-3 py-3 whitespace-nowrap">
                             <span className="font-mono-tech text-xs text-gray-700">{serviceIntervalDisplay ?? "—"}</span>
                           </td>
-                          {isTech && (
-                            <td className="px-3 py-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                          <td className="px-3 py-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                            {isTech ? (
                               <Button
                                 className="h-8 px-3 text-xs bg-gray-900 hover:bg-[#66B2B2] text-white font-bold transition-all"
                                 onClick={handleRowClick}
@@ -1539,15 +1537,15 @@ export default function Services() {
                                   <><CheckCircle2 className="w-3 h-3 mr-1.5" /> Continue Execution</>
                                 )}
                               </Button>
-                              ) : (
+                            ) : (
                               <Button
                                 className="h-8 px-3 text-xs bg-[#66B2B2] hover:bg-[#5A9E9E] text-white font-bold transition-all"
                                 onClick={() => setViewTaskDetails(task)}
                               >
                                 View Details
                               </Button>
-                          )}
-                            </td>
+                            )}
+                          </td>
                       </tr>
                       );
                     })}
