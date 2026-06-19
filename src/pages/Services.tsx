@@ -22,6 +22,7 @@ import {
   CheckCircle2,
   AlertTriangle,
   Package,
+  Box,
   ChevronDown,
   PenTool,
   Plus,
@@ -64,8 +65,9 @@ import {
 import { useInventoryStore } from "@/stores/useInventoryStore";
 import { ServiceReportView } from "@/components/ServiceReportView";
 import { DashboardTab } from "@/components/services/DashboardTab";
+import InventoryPage from "@/pages/Inventory";
 
-type TabType = "dashboard" | "tasks" | "equipment" | "reports" | "new" | "scheduled-maintenance";
+type TabType = "dashboard" | "tasks" | "equipment" | "reports" | "new" | "scheduled-maintenance" | "inventory";
 
 type ScheduledMaintenanceEntry = {
   id: string;
@@ -188,8 +190,8 @@ export default function Services() {
 
   const isTech = user?.role === "tech";
   const allowedTabs = isTech
-    ? (["dashboard", "tasks", "equipment", "scheduled-maintenance", "reports", "new"] as TabType[])
-    : (["dashboard", "tasks", "equipment", "scheduled-maintenance", "reports"] as TabType[]);
+    ? (["dashboard", "tasks", "equipment", "scheduled-maintenance", "reports", "new", "inventory"] as TabType[])
+    : (["dashboard", "tasks", "equipment", "scheduled-maintenance", "reports", "inventory"] as TabType[]);
   useEffect(() => {
     if (!allowedTabs.includes(activeTab)) {
       setActiveTab("dashboard");
@@ -1376,6 +1378,7 @@ export default function Services() {
           { id: "scheduled-maintenance" as TabType, label: "Scheduled Maintenance", icon: CalendarClock },
           { id: "reports" as TabType, label: "Service Reports", icon: FileText },
           { id: "new" as TabType, label: "Manual Log", icon: PenTool },
+          { id: "inventory" as TabType, label: "Inventory", icon: Box },
         ].filter((tab) => allowedTabs.includes(tab.id)).map((tab) => (
           <button
             key={tab.id}
@@ -2575,6 +2578,11 @@ export default function Services() {
               </Button>
             </div>
           </div>
+        )}
+
+        {/* Inventory Tab */}
+        {activeTab === "inventory" && (
+          <InventoryPage />
         )}
       </div>
 

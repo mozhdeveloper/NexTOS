@@ -245,6 +245,7 @@ export default function CRM() {
   const addDealMutation = trpc.deals.add.useMutation();
   const updateDealMutation = trpc.deals.update.useMutation();
   const deleteDealMutation = trpc.deals.delete.useMutation();
+  const deleteClientMutation = trpc.clients.delete.useMutation();
   const createTaskMutation = trpc.tasks.create.useMutation();
   const updateTaskMutation = trpc.tasks.update.useMutation();
   const deleteTaskMutation = trpc.tasks.delete.useMutation();
@@ -626,9 +627,9 @@ export default function CRM() {
               {(
                 [
                   { id: "dashboard" as TabType, label: "Dashboard", icon: LayoutDashboard },
-                  { id: "pipeline" as TabType, label: "Pipeline", icon: TrendingUp },
-                  { id: "clients" as TabType, label: "Clients", icon: Building2 },
                   { id: "leads" as TabType, label: "Leads", icon: ArrowRightLeft },
+                  { id: "clients" as TabType, label: "Clients", icon: Building2 },
+                  { id: "pipeline" as TabType, label: "Pipeline", icon: TrendingUp },
                   { id: "tasks" as TabType, label: user?.role === "sales" ? "My Tasks" : "Tasks", icon: Clock },
                 ] as const
               ).map((tab) => (
@@ -835,6 +836,13 @@ export default function CRM() {
                           setEditClientContractValue(client.contractValue.toString());
                           setEditClientLastContact(client.lastContact);
                           setEditClientOpen(true);
+                        }}
+                        onDelete={() => {
+                          useCRMStore.getState().deleteClient(client.id);
+                          deleteClientMutation.mutate({ id: client.id }, {
+                            onSuccess: () => trpcUtils.clients.list.invalidate(),
+                            onError: (err) => console.error("clients.delete failed", err),
+                          });
                         }}
                       />
                     ))}
@@ -2546,7 +2554,7 @@ function DealCard({
   );
 }
 
-function ClientRow({ client, onClick, onEdit }: { client: Client; onClick: () => void; onEdit: () => void }) {
+function ClientRow({ client, onClick, onEdit, onDelete }: { client: Client; onClick: () => void; onEdit: () => void; onDelete: () => void }) {
   const [menuOpen, setMenuOpen] = useState(false);
 
   const statusColors = {
@@ -2612,7 +2620,7 @@ function ClientRow({ client, onClick, onEdit }: { client: Client; onClick: () =>
                 <button
                   type="button"
                   className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-[#EF4444] hover:bg-[#EF4444]/10 transition-colors"
-                  onClick={(e) => { e.stopPropagation(); setMenuOpen(false); useCRMStore.getState().deleteClient(client.id); }}
+                  onClick={(e) => { e.stopPropagation(); setMenuOpen(false); onDelete(); }}
                 >
                   <Trash2 className="w-3 h-3" />
                   Delete

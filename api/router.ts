@@ -934,6 +934,18 @@ export const appRouter = createRouter({
       const parsed = await readSeedData();
       return { clients: Array.isArray((parsed as any).clients) ? (parsed as any).clients : [] };
     }),
+
+    delete: publicQuery
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        const parsed = await readSeedData();
+        const clients: any[] = Array.isArray((parsed as any).clients) ? (parsed as any).clients : [];
+        (parsed as any).clients = clients.filter(
+          (c: any) => Number(String(c.id).replace("CL-", "")) !== input.id
+        );
+        await writeSeedData(parsed);
+        return { ok: true };
+      }),
   }),
 
   deals: createRouter({
