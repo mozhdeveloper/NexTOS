@@ -1094,6 +1094,7 @@ export default function ClientPortal() {
               equipment={equipment.find((eqItem) => eqItem.id === showReport.equipmentId)}
               client={client}
               photos={servicePhotos.filter((p) => p.serviceRecordId === showReport.id)}
+              viewerRole="client"
             />
           )}
         </DialogContent>

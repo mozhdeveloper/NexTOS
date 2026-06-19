@@ -41,6 +41,7 @@ import {
   Star
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { TechnicianLeaderboard } from "@/components/TechnicianLeaderboard";
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -374,60 +375,7 @@ export default function Dashboard() {
             </div>
          </div>
 
-         {/* Top Notcher Spotlight - NEW */}
-         <div className="data-card p-4 relative overflow-hidden bg-gradient-to-br from-amber-500/5 to-transparent border-amber-200">
-            <div className="absolute top-2 right-2">
-               <Trophy className="w-12 h-12 text-amber-500/10 -rotate-12" />
-            </div>
-            <div className="flex items-center justify-between mb-4">
-               <div className="flex items-center gap-2">
-                  <Medal className="w-4 h-4 text-amber-600" />
-                  <h3 className="text-base font-semibold text-gray-900">Top Notcher</h3>
-               </div>
-               <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[9px] font-black uppercase tracking-tighter">Elite Performer</span>
-            </div>
-            
-            {topTech ? (
-               <div className="space-y-4">
-                  <div className="flex items-center gap-3">
-                     <div className="w-12 h-12 rounded-2xl bg-amber-500 flex items-center justify-center text-white font-bold text-xl shadow-lg shadow-amber-500/20">
-                        {topTech.name.charAt(0)}
-                     </div>
-                     <div>
-                        <div className="text-sm font-black text-gray-900">{topTech.name}</div>
-                        <div className="flex items-center gap-1 text-[10px] text-amber-600 font-bold uppercase tracking-widest">
-                           <Star className="w-2.5 h-2.5 fill-amber-500" />
-                           Top Performer
-                        </div>
-                     </div>
-                  </div>
-                  
-                  <div className="grid grid-cols-2 gap-2">
-                     <div className="p-2 rounded-lg bg-white border border-gray-100">
-                        <div className="text-[9px] text-gray-400 uppercase font-bold">Power Score</div>
-                        <div className="text-sm font-black text-gray-900">{topTech.powerScore.toFixed(0)}</div>
-                     </div>
-                     <div className="p-2 rounded-lg bg-white border border-gray-100">
-                        <div className="text-[9px] text-gray-400 uppercase font-bold">Safety</div>
-                        <div className="text-sm font-black text-green-600">{topTech.avgSafety.toFixed(0)}%</div>
-                     </div>
-                  </div>
-                  
-                  <div className="flex items-center justify-between pt-2 border-t border-gray-100">
-                     <div className="text-[10px] text-gray-400 font-bold uppercase">{topTech.jobs} Jobs Completed</div>
-                     <div className="flex items-center gap-1">
-                        {[1, 2, 3, 4, 5].map(i => (
-                           <Star key={i} className={`w-2 h-2 ${i <= 5 ? 'text-amber-500 fill-amber-500' : 'text-gray-200'}`} />
-                        ))}
-                     </div>
-                  </div>
-               </div>
-            ) : (
-               <div className="py-12 text-center text-gray-400 italic text-xs">
-                  Awaiting performance data...
-               </div>
-            )}
-         </div>
+         <TechnicianLeaderboard />
 
          {/* Sales Pipeline Funnel */}
          <div className="data-card p-4">

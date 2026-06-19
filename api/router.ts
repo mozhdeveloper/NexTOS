@@ -1407,6 +1407,39 @@ export const appRouter = createRouter({
         });
       }),
   }),
+
+  seedRatings: createRouter({
+    list: publicQuery.query(async () => {
+      const parsed = await readSeedData();
+      return { ratings: Array.isArray(parsed.ratings) ? parsed.ratings : [] };
+    }),
+
+    add: publicQuery
+      .input(
+        z.object({
+          serviceRecordId: z.number(),
+          clientId: z.union([z.number(), z.string()]),
+          technician: z.string(),
+          rating: z.number().min(1).max(5),
+          comments: z.string(),
+          suggestions: z.string().optional(),
+        })
+      )
+      .mutation(async ({ input }) => {
+        const parsed = await readSeedData();
+        const ratings = Array.isArray(parsed.ratings) ? parsed.ratings : [];
+        const filtered = ratings.filter((r: any) => r.serviceRecordId !== input.serviceRecordId);
+        const newRating = {
+          id: Date.now(),
+          ...input,
+          createdAt: new Date().toISOString(),
+        };
+        parsed.ratings = [...filtered, newRating];
+        await writeSeedData(parsed);
+        return { ok: true, rating: newRating };
+      }),
+  }),
 });
 
 export type AppRouter = typeof appRouter;
+

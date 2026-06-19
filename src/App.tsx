@@ -4,6 +4,7 @@ import ClientPortalShell from '@/components/ClientPortalShell'
 import Login from '@/pages/Login'
 import Dashboard from '@/pages/Dashboard'
 import TechnicianDashboard from '@/pages/technician/TechnicianDashboard'
+import TechnicianProfile from '@/pages/TechnicianProfile'
 import TechnicianReports from '@/pages/technician/TechnicianReports'
 import CRM from '@/pages/CRM'
 import Services from '@/pages/Services'
@@ -33,15 +34,15 @@ function ClientPortalRoutes() {
   return (
     <ClientPortalShell>
       <Routes>
-        <Route path="/"                    element={<Navigate to="/client" replace />} />
-        <Route path="/client"              element={<ClientDashboard />} />
-        <Route path="/client/equipment"    element={<ClientEquipment />} />
-        <Route path="/client/history"      element={<ClientServiceHistory />} />
-        <Route path="/client/bookings"     element={<ClientBookings />} />
-        <Route path="/client/packages"     element={<ClientPackages />} />
-        <Route path="/client/billing"      element={<ClientBilling />} />
-        <Route path="/client/reports"      element={<ClientReports />} />
-        <Route path="*"                    element={<Navigate to="/client" replace />} />
+        <Route path="/" element={<Navigate to="/client" replace />} />
+        <Route path="/client" element={<ClientDashboard />} />
+        <Route path="/client/equipment" element={<ClientEquipment />} />
+        <Route path="/client/history" element={<ClientServiceHistory />} />
+        <Route path="/client/bookings" element={<ClientBookings />} />
+        <Route path="/client/packages" element={<ClientPackages />} />
+        <Route path="/client/billing" element={<ClientBilling />} />
+        <Route path="/client/reports" element={<ClientReports />} />
+        <Route path="*" element={<Navigate to="/client" replace />} />
       </Routes>
     </ClientPortalShell>
   )
@@ -74,6 +75,7 @@ function TechnicianRoutes() {
       <Routes>
         <Route path="/" element={<TechnicianDashboard />} />
         <Route path="/crm" element={<CRM />} />
+        <Route path="/profile" element={<TechnicianProfile />} />
         <Route path="/services" element={<Services />} />
         <Route path="/inventory" element={<Inventory />} />
         <Route path="/fleet" element={<Fleet />} />
@@ -102,9 +104,9 @@ export default function App() {
           path="/*"
           element={
             !isAuthenticated ? <Login /> :
-            user?.role === 'client' ? <ClientPortalRoutes /> :
-            user?.role === 'tech' ? <TechnicianRoutes /> :
-            <AuthenticatedRoutes />
+              user?.role === 'client' ? <ClientPortalRoutes /> :
+                user?.role === 'tech' ? <TechnicianRoutes /> :
+                  <AuthenticatedRoutes />
           }
         />
       </Routes>

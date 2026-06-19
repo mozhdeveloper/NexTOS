@@ -22,6 +22,8 @@ import {
   splitDetailText,
 } from "./formatters";
 import type { ServiceHistoryRecord } from "./types";
+import { TechnicianRatingForm } from "@/components/TechnicianRatingForm";
+import { useAuthStore } from "@/stores/useAuthStore";
 
 const changeStatusColor = (status: string) => {
   switch (status) {
@@ -55,6 +57,7 @@ export function ServiceRecordDetailsModal({
     0
   );
   const description = getReadableDescription(record.description);
+  const { user } = useAuthStore();
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -253,6 +256,17 @@ export function ServiceRecordDetailsModal({
             value={record.technicianAddress ?? "-"}
           />
         </section>
+
+        {record.status === "completed" && record.technician && record.technician !== "Unassigned" && record.technician !== "Pending Assignment" && (
+          <div className="mt-4 border-t border-gray-200 pt-6">
+            <TechnicianRatingForm
+              serviceRecordId={record.id}
+              clientId={user?.id || ""}
+              technician={record.technician}
+              canRate={true}
+            />
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );

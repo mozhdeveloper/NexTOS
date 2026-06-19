@@ -296,7 +296,7 @@ export const useOperationsStore = create<OperationsState>()(
       },
 
       addBooking: (booking) => {
-        const newBooking: Booking = { ...booking, id: `BK-${Date.now()}` };
+        const newBooking: Booking = { ...booking, id: booking.id || `BK-${Date.now()}` };
         set((state) => ({ bookings: [...state.bookings, newBooking] }));
       },
 

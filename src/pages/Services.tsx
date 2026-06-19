@@ -128,8 +128,8 @@ function formatServiceInterval(interval: number, unit: string): string {
   if (u === "km") return `${interval} km`;
   const totalDays = Math.round(
     u === "weeks" ? interval * 7 :
-    u === "months" ? interval * 30.44 :
-    u === "years" ? interval * 365.25 : 0
+      u === "months" ? interval * 30.44 :
+        u === "years" ? interval * 365.25 : 0
   );
   const abbr = u === "weeks" ? "w" : u === "months" ? "mo" : "yr";
   return `${interval}${abbr} (${totalDays}d)`;
@@ -177,12 +177,12 @@ export default function Services() {
     catch { return "dashboard"; }
   });
   const setActiveTab = (tab: TabType) => {
-    try { sessionStorage.setItem("nextos-services-tab", tab); } catch {}
+    try { sessionStorage.setItem("nextos-services-tab", tab); } catch { }
     setActiveTabRaw(tab);
   };
   useEffect(() => {
     const onStorage = () => {
-      try { setAutoAssignTask(window.localStorage.getItem("nextos-auto-assign-task") !== "false"); } catch {}
+      try { setAutoAssignTask(window.localStorage.getItem("nextos-auto-assign-task") !== "false"); } catch { }
     };
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
@@ -214,7 +214,7 @@ export default function Services() {
   const [manualSerial, setManualSerial] = useState("");
   const [highlightedEquipment, setHighlightedEquipment] = useState<string | null>(null);
   const [scannerError, setScannerError] = useState<string | null>(null);
-  
+
   // Refs
   const equipmentRefs = useRef<Map<string, HTMLTableRowElement>>(new Map());
   const scannerRef = useRef<Html5Qrcode | null>(null);
@@ -223,6 +223,7 @@ export default function Services() {
   // Modal State
   const [executionTask, setExecutionTask] = useState<ServiceRecord | null>(null);
   const [confirmTask, setConfirmTask] = useState<ServiceRecord | null>(null);
+  const [viewTaskDetails, setViewTaskDetails] = useState<ServiceRecord | null>(null);
   const [svcTaskModalOpen, setSvcTaskModalOpen] = useState(false);
   const [svcTaskEquipmentId, setSvcTaskEquipmentId] = useState<string>("");
   const [svcTaskDueDate, setSvcTaskDueDate] = useState("");
@@ -305,8 +306,8 @@ export default function Services() {
       prevSeedEquipmentRef.current = seedData.equipment;
       void trpcUtils.seedEquipment.list.invalidate();
     }
-  // seedData.equipment is a module-level reference; it changes identity on HMR reload
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // seedData.equipment is a module-level reference; it changes identity on HMR reload
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seedData.equipment]);
 
   // processingPmsRef removed — deterministic task IDs are used for dedup instead.
@@ -322,7 +323,7 @@ export default function Services() {
       try {
         const ms = Number(window.localStorage.getItem("nextos-gps001-total-hours-ms") ?? "0") || 0;
         setGps001CacheMs((prev) => (prev !== ms ? ms : prev));
-      } catch {}
+      } catch { }
     };
     const id = setInterval(refresh, 30_000);
     window.addEventListener("storage", refresh);
@@ -355,7 +356,7 @@ export default function Services() {
           const days = Object.entries(parsed).sort((a, b) => b[0].localeCompare(a[0]))[0]?.[1] || null;
           setGps001WorkingDays((prev) => (prev !== days ? days : prev));
         }
-      } catch {}
+      } catch { }
     };
     const id = setInterval(refresh, 30_000);
     window.addEventListener("storage", refresh);
@@ -370,11 +371,11 @@ export default function Services() {
   const toggleResetOnCompletion = () => {
     setResetOnCompletion((prev) => {
       const next = !prev;
-      try { window.localStorage.setItem(RESET_ON_COMPLETION_KEY, String(next)); } catch {}
+      try { window.localStorage.setItem(RESET_ON_COMPLETION_KEY, String(next)); } catch { }
       // Turning OFF: immediately clear the GPS hours offset so EQ-001 shows real accumulated hours.
       if (!next) {
         setGps001HoursOffsetMs(0);
-        try { window.localStorage.removeItem(GPS001_HOURS_OFFSET_KEY); } catch {}
+        try { window.localStorage.removeItem(GPS001_HOURS_OFFSET_KEY); } catch { }
       }
       return next;
     });
@@ -434,7 +435,7 @@ export default function Services() {
         // Set offset = current GPS ms so effective displayed hours become 0.
         const offsetMs = gps001CacheMs;
         setGps001HoursOffsetMs(offsetMs);
-        try { window.localStorage.setItem(GPS001_HOURS_OFFSET_KEY, String(offsetMs)); } catch {}
+        try { window.localStorage.setItem(GPS001_HOURS_OFFSET_KEY, String(offsetMs)); } catch { }
       }
       // KM for EQ-001 is tracked separately via GPS; skip for now
     } else {
@@ -449,13 +450,13 @@ export default function Services() {
         next.set(seedEqId, { ...(next.get(seedEqId) ?? {}), ...newOverride });
         try {
           window.localStorage.setItem(METRICS_OVERRIDES_KEY, JSON.stringify(Array.from(next.entries())));
-        } catch {}
+        } catch { }
         return next;
       });
       // No separate server mutation needed — the complete mutation already reset the
       // seed-data.json entry atomically via resetMetricsOnComplete: true.
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gps001CacheMs]);
 
   // Auto-clear stale metricsOverrides when live data diverges upward.
@@ -493,9 +494,9 @@ export default function Services() {
     }
     if (anyCleared) {
       setMetricsOverrides(next);
-      try { window.localStorage.setItem(METRICS_OVERRIDES_KEY, JSON.stringify(Array.from(next.entries()))); } catch {}
+      try { window.localStorage.setItem(METRICS_OVERRIDES_KEY, JSON.stringify(Array.from(next.entries()))); } catch { }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seedEquipmentQueryData]);
 
   const location = useLocation();
@@ -537,15 +538,15 @@ export default function Services() {
       setScannerError("Camera failed to start. Please try again or use manual entry.");
       setScanning(false);
       if (scannerRef.current) {
-          try {
-            // stop/clear may be sync or async depending on runtime; call safely
-            // without relying on Promise chaining to satisfy TS types.
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            (scannerRef.current as any).stop?.();
-            (scannerRef.current as any).clear?.();
-          } catch (e) {}
-          scannerRef.current = null;
-        }
+        try {
+          // stop/clear may be sync or async depending on runtime; call safely
+          // without relying on Promise chaining to satisfy TS types.
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (scannerRef.current as any).stop?.();
+          (scannerRef.current as any).clear?.();
+        } catch (e) { }
+        scannerRef.current = null;
+      }
     }, 5000);
 
     setTimeout(async () => {
@@ -560,17 +561,17 @@ export default function Services() {
               { facingMode: "environment" },
               { fps: 10, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0 },
               (decodedText) => handleScanSuccess(decodedText),
-              () => {}
+              () => { }
             );
           } catch (envCameraError) {
             await scannerRef.current.start(
               {},
               { fps: 10, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0 },
               (decodedText) => handleScanSuccess(decodedText),
-              () => {}
+              () => { }
             );
           }
-          
+
           if (initTimeoutRef.current) {
             clearTimeout(initTimeoutRef.current);
             initTimeoutRef.current = null;
@@ -594,10 +595,10 @@ export default function Services() {
       try {
         await scannerRef.current.stop();
         await scannerRef.current.clear();
-      } catch (error) {}
+      } catch (error) { }
       scannerRef.current = null;
     }
-    
+
     setScanning(false);
     setShowScanner(false);
     setScannerError(null);
@@ -622,7 +623,7 @@ export default function Services() {
 
   const findAndHighlightEquipment = (scannedValue: string) => {
     let serialToFind = scannedValue.trim();
-    
+
     // Check if scanned value is JSON (from Client Portal tags)
     try {
       const parsed = JSON.parse(scannedValue);
@@ -635,25 +636,25 @@ export default function Services() {
 
     // Find in liveEquipment (the ones displayed in the table)
     const seedEq = liveEquipment.find(eq => eq.serialNumber === serialToFind);
-    
+
     if (seedEq) {
       // Also find corresponding store equipment for highlighting/selection
       const storeEq = equipment.find(eq => eq.serialNumber === serialToFind);
-      
+
       // Expand the row in the table
       setSelectedSeedId(seedEq.id);
-      
+
       if (storeEq) {
         setSelectedEquipment(storeEq.id);
         setHighlightedEquipment(storeEq.id);
-        
+
         // Scroll to the element
         const element = equipmentRefs.current.get(storeEq.id);
         if (element) {
           element.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
       }
-      
+
       setActiveTab("equipment");
       setTimeout(() => setHighlightedEquipment(null), 3000);
       toast.success(`Found asset: ${seedEq.name || seedEq.unitId}`);
@@ -729,9 +730,9 @@ export default function Services() {
         const base = eq.installDate ?? eq.createdAt;
         days = base ? (Date.now() - new Date(base).getTime()) / (1000 * 60 * 60 * 24) : 0;
       }
-      if (unit === "weeks")       usage = days / 7;
+      if (unit === "weeks") usage = days / 7;
       else if (unit === "months") usage = days / 30.44;
-      else if (unit === "years")  usage = days / 365.25;
+      else if (unit === "years") usage = days / 365.25;
     }
 
     if (usage === null || !Number.isFinite(usage) || usage < 0) return "—";
@@ -783,9 +784,9 @@ export default function Services() {
         const base = eq.installDate ?? eq.createdAt;
         days = base ? (Date.now() - new Date(base).getTime()) / (1000 * 60 * 60 * 24) : 0;
       }
-      if (unit === "weeks")       usage = days / 7;
+      if (unit === "weeks") usage = days / 7;
       else if (unit === "months") usage = days / 30.44;
-      else if (unit === "years")  usage = days / 365.25;
+      else if (unit === "years") usage = days / 365.25;
     }
 
     if (usage === null || !Number.isFinite(usage) || usage < 0) return "—";
@@ -857,8 +858,8 @@ export default function Services() {
     });
 
     return entries;
-  // seedEquipmentQueryData in deps so the memo recomputes whenever live equipment refreshes
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // seedEquipmentQueryData in deps so the memo recomputes whenever live equipment refreshes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gps001CacheMs, gps001HoursOffsetMs, metricsOverrides, seedEquipmentQueryData, seedServiceRecordsData]);
 
   // Merge seed entries (overridden by user edits) with any optimistic entries not yet in seed.
@@ -945,13 +946,13 @@ export default function Services() {
           hoursAtService: record.hoursAtService ?? 0,
           createdAt: new Date().toISOString(),
         };
-          return {
-            serviceRecords: [
-              ...state.serviceRecords,
-              seeded,
-            ],
-          } as Partial<any>;
-        });
+        return {
+          serviceRecords: [
+            ...state.serviceRecords,
+            seeded,
+          ],
+        } as Partial<any>;
+      });
     }
   }, [seedServiceRecordsData]);
 
@@ -980,7 +981,7 @@ export default function Services() {
       },
       // onError: leave in queue — will retry next session
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seedServiceRecordsData]);
 
   // Tracks which PMS task IDs have already triggered a toast — persisted across sessions.
@@ -990,8 +991,8 @@ export default function Services() {
     try {
       const stored: number[] = JSON.parse(window.localStorage.getItem(TOASTED_PMS_KEY) ?? "[]");
       toastedPmsTasksRef.current = new Set(stored);
-    } catch {}
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    } catch { }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Auto-create a scheduled task for every Overdue PMS entry.
@@ -1116,13 +1117,13 @@ export default function Services() {
         toastedPmsTasksRef.current.add(taskId);
         try {
           window.localStorage.setItem(TOASTED_PMS_KEY, JSON.stringify([...toastedPmsTasksRef.current]));
-        } catch {}
+        } catch { }
         toast.info("PMS Task Auto-Created", {
           description: `${entry.equipmentName} — ${entry.serviceType} is overdue.`,
         });
       }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allScheduledMaintenance, seedServiceRecordsData]);
 
   const handleDeleteEntry = async (entry: ScheduledMaintenanceEntry) => {
@@ -1356,12 +1357,10 @@ export default function Services() {
           title={resetOnCompletion ? "Reset Hours on Completion: ON" : "Reset Hours on Completion: OFF"}
         >
           {/* Toggle pill */}
-          <div className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors duration-200 ${
-            resetOnCompletion ? "bg-[#66B2B2]" : "bg-gray-300"
-          }`}>
-            <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform duration-200 ${
-              resetOnCompletion ? "translate-x-4" : "translate-x-0.5"
-            }`} />
+          <div className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors duration-200 ${resetOnCompletion ? "bg-[#66B2B2]" : "bg-gray-300"
+            }`}>
+            <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform duration-200 ${resetOnCompletion ? "translate-x-4" : "translate-x-0.5"
+              }`} />
           </div>
           <span className="text-[11px] font-bold text-gray-700 whitespace-nowrap">
             Reset Hours on Completion
@@ -1383,11 +1382,10 @@ export default function Services() {
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium transition-all border-b-2 ${
-              activeTab === tab.id
+            className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium transition-all border-b-2 ${activeTab === tab.id
                 ? "border-[#66B2B2] text-[#66B2B2] bg-[#66B2B2]/5"
                 : "border-transparent text-gray-600 hover:text-black"
-            }`}
+              }`}
           >
             <tab.icon className="w-3.5 h-3.5" />
             {tab.label}
@@ -1428,131 +1426,135 @@ export default function Services() {
               </div>
             )}
             {activeTasks.length === 0 ? (
-            <div className="data-card py-20 text-center bg-gray-50/50 animate-in fade-in duration-300">
-              <ClipboardList className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-              <h3 className="text-gray-900 font-bold">No Active Tasks</h3>
-              <p className="text-xs text-gray-500 mt-1">New tasks will appear here automatically when equipment reaches service thresholds.</p>
-            </div>
-          ) : (
-            <div className="data-card animate-in fade-in duration-300 overflow-hidden">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-gray-100">
-                    {["Status", "ID", "Equipment", "Client", "Service", "Priority", "Metric at Service", "Service Interval", "Origin",
-                      ...(isTech ? ["Action"] : [])
-                    ].map((col) => (
-                      <th key={col} className="px-3 py-2.5 text-left text-[9px] font-bold uppercase tracking-wider text-gray-400 whitespace-nowrap">
-                        {col}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {activeTasks.map(task => {
-                    const eq = equipment.find(e => e.id === task.equipmentId);
-                    const client = liveClients.find(c => c.id === task.clientId);
-                    const isDraft = !!draftExecutions[task.id];
+              <div className="data-card py-20 text-center bg-gray-50/50 animate-in fade-in duration-300">
+                <ClipboardList className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                <h3 className="text-gray-900 font-bold">No Active Tasks</h3>
+                <p className="text-xs text-gray-500 mt-1">New tasks will appear here automatically when equipment reaches service thresholds.</p>
+              </div>
+            ) : (
+              <div className="data-card animate-in fade-in duration-300 overflow-hidden">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-gray-100">
+                      {["Status", "ID", "Equipment", "Client", "Service", "Priority", "Metric at Service", "Service Interval", "Origin", "Origin", "Action"].map((col) => (
+                        <th key={col} className="px-3 py-2.5 text-left text-[9px] font-bold uppercase tracking-wider text-gray-400 whitespace-nowrap">
+                          {col}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {activeTasks.map(task => {
+                      const eq = equipment.find(e => e.id === task.equipmentId);
+                      const client = liveClients.find(c => c.id === task.clientId);
+                      const isDraft = !!draftExecutions[task.id];
 
-                    let pmsMeta: any = {};
-                    try { pmsMeta = JSON.parse(task.description ?? "{}"); } catch {}
-                    const isPmsTask = pmsMeta._src === "pms";
-                    // Resolve seed equipment for any task that has _seedEqId (PMS or manual)
-                    const pmsSeedEq = pmsMeta._seedEqId
-                      ? liveEquipment.find((s) => s.id === pmsMeta._seedEqId) ?? null
-                      : null;
-                    const pmsCfg = pmsSeedEq && pmsMeta._pmsIdx !== undefined
-                      ? (Array.isArray(pmsSeedEq.pmsConfiguration) ? pmsSeedEq.pmsConfiguration[pmsMeta._pmsIdx] : null)
-                      : null;
-                    const pmsSeedClient = pmsSeedEq
-                      ? liveClients.find((c) => c.id === pmsSeedEq.clientId) ?? null
-                      : null;
+                      let pmsMeta: any = {};
+                      try { pmsMeta = JSON.parse(task.description ?? "{}"); } catch { }
+                      const isPmsTask = pmsMeta._src === "pms";
+                      const pmsSeedEq = isPmsTask
+                        ? liveEquipment.find((s) => s.id === pmsMeta._seedEqId) ?? null
+                        : null;
+                      const pmsCfg = pmsSeedEq && pmsMeta._pmsIdx !== undefined
+                        ? (Array.isArray(pmsSeedEq.pmsConfiguration) ? pmsSeedEq.pmsConfiguration[pmsMeta._pmsIdx] : null)
+                        : null;
+                      const pmsSeedClient = pmsSeedEq
+                        ? liveClients.find((c) => c.id === pmsSeedEq.clientId) ?? null
+                        : null;
 
-                    const displayName = pmsSeedEq?.name ?? eq?.name ?? (isPmsTask ? "Unknown Equipment" : "No unit selected");
-                    const displayClient = pmsSeedClient?.companyName ?? client?.companyName ?? "Unknown Client";
-                    const metricUnit = pmsCfg?.serviceIntervalUnit ?? "Hours";
-                    const manualMetricUnit: string | null = !isPmsTask ? (pmsMeta._serviceIntervalUnit ?? null) : null;
-                    const metricValue = isPmsTask
-                      ? getPmsMetricValue(pmsSeedEq, metricUnit, gps001CacheMs, gps001HoursOffsetMs)
-                      : (manualMetricUnit && pmsSeedEq
-                          ? getPmsMetricValue(pmsSeedEq, manualMetricUnit, gps001CacheMs, gps001HoursOffsetMs)
-                          : "—");
-                    const serviceIntervalDisplay = isPmsTask && pmsCfg
-                      ? formatServiceInterval(pmsCfg.serviceInterval, pmsCfg.serviceIntervalUnit)
-                      : (manualMetricUnit ?? null);
+                      const displayName = isPmsTask
+                        ? (pmsSeedEq?.name ?? eq?.name ?? "Unknown Equipment")
+                        : (eq?.name ?? "No unit selected");
+                      const displaySub = isPmsTask ? null : (eq ? eq.equipmentType : null);
+                      const displayClient = isPmsTask
+                        ? (pmsSeedClient?.companyName ?? client?.companyName ?? "Unknown Client")
+                        : (client?.companyName ?? "Unknown Client");
+                      const metricUnit = pmsCfg?.serviceIntervalUnit ?? "Hours";
+                      const manualMetricUnit: string | null = !isPmsTask ? (pmsMeta._serviceIntervalUnit ?? null) : null;
+                      const metricValue = isPmsTask
+                        ? getPmsMetricValue(pmsSeedEq, metricUnit, gps001CacheMs, gps001HoursOffsetMs)
+                        : isBookingTask
+                          ? (pmsSeedEq ? getPmsMetricValue(pmsSeedEq, "Hours", gps001CacheMs, gps001HoursOffsetMs) : "—")
+                          : (manualMetricUnit && pmsSeedEq
+                            ? getPmsMetricValue(pmsSeedEq, manualMetricUnit, gps001CacheMs, gps001HoursOffsetMs)
+                            : "—");
+                      const serviceIntervalDisplay = isPmsTask && pmsCfg
+                        ? formatServiceInterval(pmsCfg.serviceInterval, pmsCfg.serviceIntervalUnit)
+                        : (manualMetricUnit ?? null);
 
-                    const taskPriority: string = pmsMeta._priority ?? (isPmsTask ? "medium" : "");
-                    const taskOrigin: "auto" | "manual" = pmsMeta._origin === "manual" ? "manual" : "auto";
+                      const taskPriority: string = pmsMeta._priority ?? (isPmsTask ? "medium" : "");
+                      const taskOrigin: "auto" | "manual" = pmsMeta._origin === "manual" ? "manual" : "auto";
 
-                    const handleRowClick = () => draftExecutions[task.id]?.travelStartTime ? setExecutionTask(task) : setConfirmTask(task);
+                      const taskOrigin = pmsMeta._origin === "manual" ? "manual" : (pmsMeta._origin === "booking" ? "booking" : "auto");
 
-                    return (
-                      <tr
-                        key={task.id}
-                        className={`border-b border-gray-50 last:border-0 transition-colors ${
-                          isTech ? "hover:bg-gray-50/60 cursor-pointer" : "cursor-default"
-                        }`}
-                        onClick={isTech ? handleRowClick : undefined}
-                      >
-                        <td className="px-3 py-3 whitespace-nowrap">
-                          {task.status === "scheduled" && !isDraft ? (
-                            <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase bg-gray-100 text-gray-500">Scheduled</span>
-                          ) : (
-                            <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase bg-amber-100 text-amber-700">Pending</span>
-                          )}
-                        </td>
-                        <td className="px-3 py-3 whitespace-nowrap">
-                          <span className="font-mono-tech text-[10px] text-gray-500">#{task.id}</span>
-                        </td>
-                        <td className="px-3 py-3">
-                          <div className="text-xs font-bold text-gray-900">{displayName}</div>
-                        </td>
-                        <td className="px-3 py-3 text-xs text-gray-700 whitespace-nowrap">{displayClient}</td>
-                        <td className="px-3 py-3 text-xs text-gray-700 whitespace-nowrap">{task.serviceCategory}</td>
-                        <td className="px-3 py-3 whitespace-nowrap">
-                          {taskPriority === "high" ? (
-                            <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase bg-red-100 text-red-700">High</span>
-                          ) : taskPriority === "medium" ? (
-                            <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase bg-amber-100 text-amber-700">Medium</span>
-                          ) : taskPriority === "low" ? (
-                            <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase bg-gray-100 text-gray-500">Low</span>
-                          ) : (
-                            <span className="text-gray-400 text-xs">—</span>
-                          )}
-                        </td>
-                        <td className="px-3 py-3 whitespace-nowrap">
-                          <span className="font-mono-tech text-xs text-gray-700">{metricValue}</span>
-                        </td>
-                        <td className="px-3 py-3 whitespace-nowrap">
-                          <span className="font-mono-tech text-xs text-gray-700">{serviceIntervalDisplay ?? "—"}</span>
-                        </td>
-                        <td className="px-3 py-3 whitespace-nowrap">
-                          {taskOrigin === "manual" ? (
-                            <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase bg-[#66B2B2]/10 text-[#0F766E]">Manual</span>
-                          ) : (
-                            <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase bg-gray-100 text-gray-500">Auto</span>
-                          )}
-                        </td>
-                        {isTech && (
-                          <td className="px-3 py-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                            <Button
-                              className="h-8 px-3 text-xs bg-gray-900 hover:bg-[#66B2B2] text-white font-bold transition-all"
-                              onClick={handleRowClick}
-                            >
-                              {task.status === "scheduled" && !isDraft ? (
-                                <><Play className="w-3 h-3 mr-1.5" /> Start Service</>
-                              ) : (
-                                <><CheckCircle2 className="w-3 h-3 mr-1.5" /> Continue Execution</>
-                              )}
-                            </Button>
+                      const handleRowClick = () => draftExecutions[task.id]?.travelStartTime ? setExecutionTask(task) : setConfirmTask(task);
+
+                      return (
+                        <tr
+                          key={task.id}
+                          className="border-b border-gray-50 last:border-0 transition-colors hover:bg-gray-50/60 cursor-pointer"
+                          onClick={isTech ? handleRowClick : () => setViewTaskDetails(task)}
+                        >
+                          <td className="px-3 py-3 whitespace-nowrap">
+                            {task.status === "scheduled" && !isDraft ? (
+                              <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase bg-gray-100 text-gray-500">Scheduled</span>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase bg-amber-100 text-amber-700">Pending</span>
+                            )}
                           </td>
-                        )}
+                          <td className="px-3 py-3 whitespace-nowrap">
+                            <span className="font-mono-tech text-[10px] text-gray-500">#{task.id}</span>
+                          </td>
+                          <td className="px-3 py-3">
+                            <div className="text-xs font-bold text-gray-900">{displayName}</div>
+                          </td>
+                          <td className="px-3 py-3 text-xs text-gray-700 whitespace-nowrap">{displayClient}</td>
+                          <td className="px-3 py-3 text-xs text-gray-700 whitespace-nowrap">{task.serviceCategory}</td>
+                          <td className="px-3 py-3 whitespace-nowrap">
+                            {taskPriority === "high" ? (
+                              <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase bg-red-100 text-red-700">High</span>
+                            ) : taskPriority === "medium" ? (
+                              <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase bg-amber-100 text-amber-700">Medium</span>
+                            ) : taskPriority === "low" ? (
+                              <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase bg-gray-100 text-gray-500">Low</span>
+                            ) : (
+                              <span className="text-gray-400 text-xs">—</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-3 whitespace-nowrap">
+                            <span className="font-mono-tech text-xs text-gray-700">{metricValue}</span>
+                          </td>
+                          <td className="px-3 py-3 whitespace-nowrap">
+                            <span className="font-mono-tech text-xs text-gray-700">{serviceIntervalDisplay ?? "—"}</span>
+                          </td>
+                          {isTech && (
+                            <td className="px-3 py-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                              <Button
+                                className="h-8 px-3 text-xs bg-gray-900 hover:bg-[#66B2B2] text-white font-bold transition-all"
+                                onClick={handleRowClick}
+                              >
+                                {task.status === "scheduled" && !isDraft ? (
+                                  <><Play className="w-3 h-3 mr-1.5" /> Start Service</>
+                                ) : (
+                                  <><CheckCircle2 className="w-3 h-3 mr-1.5" /> Continue Execution</>
+                                )}
+                              </Button>
+                              ) : (
+                              <Button
+                                className="h-8 px-3 text-xs bg-[#66B2B2] hover:bg-[#5A9E9E] text-white font-bold transition-all"
+                                onClick={() => setViewTaskDetails(task)}
+                              >
+                                View Details
+                              </Button>
+                          )}
+                            </td>
                       </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )
             }
           </>
         )}
@@ -1652,9 +1654,8 @@ export default function Services() {
                               else equipmentRefs.current.delete(storeId);
                             }
                           }}
-                          className={`grid-table-row border-b border-gray-100 cursor-pointer hover:bg-[#66B2B2]/5 transition-all ${
-                            isSelected || isHighlighted ? 'bg-[#66B2B2]/10 border-[#66B2B2]/30' : ''
-                          }`}
+                          className={`grid-table-row border-b border-gray-100 cursor-pointer hover:bg-[#66B2B2]/5 transition-all ${isSelected || isHighlighted ? 'bg-[#66B2B2]/10 border-[#66B2B2]/30' : ''
+                            }`}
                           onClick={() => {
                             if (selectedSeedId === seedEq.id) {
                               setSelectedSeedId(null);
@@ -1674,7 +1675,7 @@ export default function Services() {
                               )}
                             </div>
                           </td>
-                          
+
                           <td className="py-3 px-3 text-black font-medium">{seedEq.name ?? "—"}</td>
                           <td className="py-3 px-3 text-black">{seedClient?.companyName ?? "—"}</td>
                           <td className="py-3 px-3 text-gray-600 font-mono-tech">{seedEq.serialNumber ?? "—"}</td>
@@ -1913,85 +1914,85 @@ export default function Services() {
                   {(() => {
                     const completedRecs = (seedServiceRecordsData?.records ?? []).filter(r => r.status === "completed");
                     return allScheduledMaintenance.map((entry) => {
-                    const _seedEq = liveEquipment.find((e) => e.id === entry.equipmentId);
-                    const pmsCfgArg = { serviceInterval: entry.serviceInterval, serviceIntervalUnit: entry.serviceIntervalUnit };
-                    const nextService = _seedEq ? computeNextService(pmsCfgArg, _seedEq, completedRecs) : "—";
-                    const liveStatus = _seedEq ? computeEntryStatus(pmsCfgArg, _seedEq, completedRecs) : "—";
-                    const statusDef = seedData.pmsStatuses.find(s => s.value === liveStatus);
-                    return (
-                    <tr key={entry.id} className="border-b border-gray-200 hover:bg-gray-50">
-                      <td className="py-2.5 px-3 text-black font-medium">{entry.equipmentName}</td>
-                      <td className="py-2.5 px-3 text-gray-700">{entry.clientName}</td>
-                      <td className="py-2.5 px-3 text-gray-600 font-mono">{entry.serialNumber}</td>
-                      <td className="py-2.5 px-3 text-black">{entry.serviceType}</td>
-                      <td className="py-2.5 px-3 text-black font-mono">{entry.serviceInterval}</td>
-                      <td className="py-2.5 px-3 text-gray-600">{entry.serviceIntervalUnit}</td>
-                      <td className="py-2.5 px-3 text-black">
-                        {entry.estimatedCost > 0
-                          ? `₱${entry.estimatedCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                          : "—"}
-                      </td>
-                      <td className="py-2.5 px-3">
-                        {statusDef ? (
-                          <span
-                            className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase"
-                            style={{ backgroundColor: `${statusDef.color}33`, color: statusDef.color }}
-                          >
-                            {statusDef.label}
-                          </span>
-                        ) : (
-                          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-gray-100 text-gray-500 uppercase">—</span>
-                        )}
-                      </td>
-                      <td className="py-2.5 px-3 font-mono-tech text-xs text-gray-700">{nextService}</td>
-                      <td className="py-2.5 px-3">
-                        <div className="relative inline-flex items-center">
-                          <button
-                            type="button"
-                            className="p-2 text-gray-400 hover:text-[#66B2B2] transition-colors"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setScheduleActionMenuOpenFor((current) => (current === entry.id ? null : entry.id));
-                            }}
-                            aria-label="Open action menu"
-                          >
-                            <MoreVertical className="w-4 h-4" />
-                          </button>
+                      const _seedEq = liveEquipment.find((e) => e.id === entry.equipmentId);
+                      const pmsCfgArg = { serviceInterval: entry.serviceInterval, serviceIntervalUnit: entry.serviceIntervalUnit };
+                      const nextService = _seedEq ? computeNextService(pmsCfgArg, _seedEq, completedRecs) : "—";
+                      const liveStatus = _seedEq ? computeEntryStatus(pmsCfgArg, _seedEq, completedRecs) : "—";
+                      const statusDef = seedData.pmsStatuses.find(s => s.value === liveStatus);
+                      return (
+                        <tr key={entry.id} className="border-b border-gray-200 hover:bg-gray-50">
+                          <td className="py-2.5 px-3 text-black font-medium">{entry.equipmentName}</td>
+                          <td className="py-2.5 px-3 text-gray-700">{entry.clientName}</td>
+                          <td className="py-2.5 px-3 text-gray-600 font-mono">{entry.serialNumber}</td>
+                          <td className="py-2.5 px-3 text-black">{entry.serviceType}</td>
+                          <td className="py-2.5 px-3 text-black font-mono">{entry.serviceInterval}</td>
+                          <td className="py-2.5 px-3 text-gray-600">{entry.serviceIntervalUnit}</td>
+                          <td className="py-2.5 px-3 text-black">
+                            {entry.estimatedCost > 0
+                              ? `₱${entry.estimatedCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                              : "—"}
+                          </td>
+                          <td className="py-2.5 px-3">
+                            {statusDef ? (
+                              <span
+                                className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase"
+                                style={{ backgroundColor: `${statusDef.color}33`, color: statusDef.color }}
+                              >
+                                {statusDef.label}
+                              </span>
+                            ) : (
+                              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-gray-100 text-gray-500 uppercase">—</span>
+                            )}
+                          </td>
+                          <td className="py-2.5 px-3 font-mono-tech text-xs text-gray-700">{nextService}</td>
+                          <td className="py-2.5 px-3">
+                            <div className="relative inline-flex items-center">
+                              <button
+                                type="button"
+                                className="p-2 text-gray-400 hover:text-[#66B2B2] transition-colors"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setScheduleActionMenuOpenFor((current) => (current === entry.id ? null : entry.id));
+                                }}
+                                aria-label="Open action menu"
+                              >
+                                <MoreVertical className="w-4 h-4" />
+                              </button>
 
-                          {scheduleActionMenuOpenFor === entry.id && (
-                            <div className="absolute right-0 top-10 z-50 min-w-[130px] rounded-xl border border-gray-200 bg-white py-1 shadow-lg">
-                              <button
-                                type="button"
-                                className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-gray-700 hover:bg-gray-100 transition-colors"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setScheduleActionMenuOpenFor(null);
-                                  openEditModal(entry);
-                                }}
-                              >
-                                <Pencil className="w-3 h-3" />
-                                Edit
-                              </button>
-                              <button
-                                type="button"
-                                className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-[#EF4444] hover:bg-[#EF4444]/10 transition-colors"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setScheduleActionMenuOpenFor(null);
-                                  handleDeleteEntry(entry);
-                                }}
-                                disabled={deletePmsConfigurationMutation.status === 'pending'}
-                              >
-                                <Trash2 className="w-3 h-3" />
-                                Delete
-                              </button>
+                              {scheduleActionMenuOpenFor === entry.id && (
+                                <div className="absolute right-0 top-10 z-50 min-w-[130px] rounded-xl border border-gray-200 bg-white py-1 shadow-lg">
+                                  <button
+                                    type="button"
+                                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-gray-700 hover:bg-gray-100 transition-colors"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setScheduleActionMenuOpenFor(null);
+                                      openEditModal(entry);
+                                    }}
+                                  >
+                                    <Pencil className="w-3 h-3" />
+                                    Edit
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-[#EF4444] hover:bg-[#EF4444]/10 transition-colors"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setScheduleActionMenuOpenFor(null);
+                                      handleDeleteEntry(entry);
+                                    }}
+                                    disabled={deletePmsConfigurationMutation.status === 'pending'}
+                                  >
+                                    <Trash2 className="w-3 h-3" />
+                                    Delete
+                                  </button>
+                                </div>
+                              )}
                             </div>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                  });
+                          </td>
+                        </tr>
+                      );
+                    });
                   })()}
                   {allScheduledMaintenance.length === 0 && (
                     <tr>
@@ -2164,108 +2165,108 @@ export default function Services() {
             .sort((a, b) => new Date(a.completedDate ?? 0).getTime() - new Date(b.completedDate ?? 0).getTime());
 
           return (
-          <div className="space-y-3 animate-in fade-in duration-300">
-            <div className="data-card overflow-auto">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="bg-gray-50 border-b border-gray-200">
-                    <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider whitespace-nowrap">Equipment</th>
-                    <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider whitespace-nowrap">Client</th>
-                    <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider whitespace-nowrap">Serial Number</th>
-                    <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider whitespace-nowrap">Equipment Type</th>
-                    <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider whitespace-nowrap">Service Type</th>
-                    <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider whitespace-nowrap">Cost</th>
-                    <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider whitespace-nowrap">Technician</th>
-                    <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider whitespace-nowrap">Completed Date</th>
-                    <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider whitespace-nowrap">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {allCompleted.map((record) => {
-                    // Resolve display values: rich fields on seed records first, then seed JSON lookups,
-                    // then store lookups as a last resort.
-                    const r = record as any;
-                    const storeEq = equipment.find(e => String(e.id) === String(record.equipmentId));
+            <div className="space-y-3 animate-in fade-in duration-300">
+              <div className="data-card overflow-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-200">
+                      <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider whitespace-nowrap">Equipment</th>
+                      <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider whitespace-nowrap">Client</th>
+                      <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider whitespace-nowrap">Serial Number</th>
+                      <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider whitespace-nowrap">Equipment Type</th>
+                      <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider whitespace-nowrap">Service Type</th>
+                      <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider whitespace-nowrap">Cost</th>
+                      <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider whitespace-nowrap">Technician</th>
+                      <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider whitespace-nowrap">Completed Date</th>
+                      <th className="text-left py-2.5 px-3 text-gray-600 font-bold uppercase tracking-wider whitespace-nowrap">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {allCompleted.map((record) => {
+                      // Resolve display values: rich fields on seed records first, then seed JSON lookups,
+                      // then store lookups as a last resort.
+                      const r = record as any;
+                      const storeEq = equipment.find(e => String(e.id) === String(record.equipmentId));
 
-                    // Parse PMS meta from the task description — store-completed records don't
-                    // carry seedEquipmentId directly, but it's always in the description JSON.
-                    const descMeta = (() => { try { return JSON.parse(r.description ?? "{}"); } catch { return {}; } })();
+                      // Parse PMS meta from the task description — store-completed records don't
+                      // carry seedEquipmentId directly, but it's always in the description JSON.
+                      const descMeta = (() => { try { return JSON.parse(r.description ?? "{}"); } catch { return {}; } })();
 
-                    // Priority: explicit seedEquipmentId field → _seedEqId in description → serial match
-                    const seedEqRow: any = r.seedEquipmentId
-                      ? liveEquipment.find(s => s.id === r.seedEquipmentId)
-                      : descMeta._seedEqId
-                        ? liveEquipment.find(s => s.id === descMeta._seedEqId)
-                        : storeEq
-                          ? liveEquipment.find(s => s.serialNumber === storeEq.serialNumber)
-                          : null;
+                      // Priority: explicit seedEquipmentId field → _seedEqId in description → serial match
+                      const seedEqRow: any = r.seedEquipmentId
+                        ? liveEquipment.find(s => s.id === r.seedEquipmentId)
+                        : descMeta._seedEqId
+                          ? liveEquipment.find(s => s.id === descMeta._seedEqId)
+                          : storeEq
+                            ? liveEquipment.find(s => s.serialNumber === storeEq.serialNumber)
+                            : null;
 
-                    // PMS config for interval / service type fallback
-                    const seedPmsCfg: any = seedEqRow && descMeta._pmsIdx !== undefined
-                      ? (Array.isArray(seedEqRow.pmsConfiguration) ? seedEqRow.pmsConfiguration[descMeta._pmsIdx] : null) ?? null
-                      : null;
+                      // PMS config for interval / service type fallback
+                      const seedPmsCfg: any = seedEqRow && descMeta._pmsIdx !== undefined
+                        ? (Array.isArray(seedEqRow.pmsConfiguration) ? seedEqRow.pmsConfiguration[descMeta._pmsIdx] : null) ?? null
+                        : null;
 
-                    const storeClient = liveClients?.find((c: any) => String(c.id) === String(record.clientId));
-                    const seedClientRow: any = seedEqRow?.clientId
-                      ? liveClients.find(c => c.id === seedEqRow.clientId)
-                      : null;
+                      const storeClient = liveClients?.find((c: any) => String(c.id) === String(record.clientId));
+                      const seedClientRow: any = seedEqRow?.clientId
+                        ? liveClients.find(c => c.id === seedEqRow.clientId)
+                        : null;
 
-                    const rowEqName = r.equipmentName || seedEqRow?.name || storeEq?.name || "—";
-                    const rowClientName = r.clientName || seedClientRow?.companyName || storeClient?.companyName || "—";
-                    const rowSerial = r.serialNumber || seedEqRow?.serialNumber || storeEq?.serialNumber || "—";
-                    const rowEqType = r.equipmentType || seedEqRow?.equipmentType || "—";
-                    const rowSvcType = r.serviceType || seedPmsCfg?.serviceType || record.serviceCategory || "—";
-                    const recordCost = r.finalCost ?? record.cost ?? 0;
-                    const rowCost = recordCost > 0
-                      ? `₱${Number(recordCost).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                      : "—";
+                      const rowEqName = r.equipmentName || seedEqRow?.name || storeEq?.name || "—";
+                      const rowClientName = r.clientName || seedClientRow?.companyName || storeClient?.companyName || "—";
+                      const rowSerial = r.serialNumber || seedEqRow?.serialNumber || storeEq?.serialNumber || "—";
+                      const rowEqType = r.equipmentType || seedEqRow?.equipmentType || "—";
+                      const rowSvcType = r.serviceType || seedPmsCfg?.serviceType || record.serviceCategory || "—";
+                      const recordCost = r.finalCost ?? record.cost ?? 0;
+                      const rowCost = recordCost > 0
+                        ? `₱${Number(recordCost).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                        : "—";
 
-                    return (
-                      <tr key={record.id} className="grid-table-row border-b border-gray-100 hover:bg-gray-50 transition-all">
-                        <td className="py-3 px-3 font-bold text-gray-900 whitespace-nowrap">{rowEqName}</td>
-                        <td className="py-3 px-3 text-gray-700 whitespace-nowrap">{rowClientName}</td>
-                        <td className="py-3 px-3 text-gray-500 font-mono-tech whitespace-nowrap">{rowSerial}</td>
-                        <td className="py-3 px-3 text-gray-600 whitespace-nowrap">{rowEqType}</td>
-                        <td className="py-3 px-3 text-gray-700 whitespace-nowrap">{rowSvcType}</td>
-                        <td className="py-3 px-3 text-gray-700 font-mono-tech whitespace-nowrap">{rowCost}</td>
-                        <td className="py-3 px-3 text-gray-700 whitespace-nowrap">{record.technician}</td>
-                        <td className="py-3 px-3 text-gray-500 font-mono-tech whitespace-nowrap">
-                          {record.completedDate ? new Date(record.completedDate).toLocaleDateString() : "—"}
-                        </td>
-                        <td className="py-3 px-3">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setShowReport({
-                              ...record,
-                              equipmentName: rowEqName,
-                              clientName: rowClientName,
-                              serialNumber: rowSerial,
-                              equipmentType: rowEqType,
-                              serviceType: rowSvcType,
-                              invoiceId: (record as any).invoiceId ?? null,
-                              createdAt: (record as any).createdAt ?? new Date().toISOString(),
-                            } as any)}
-                            className="h-7 text-[10px] border-gray-200 hover:bg-[#66B2B2] hover:text-white transition-all whitespace-nowrap"
-                          >
-                            <FileText className="w-3 h-3 mr-1" />
-                            View Report
-                          </Button>
+                      return (
+                        <tr key={record.id} className="grid-table-row border-b border-gray-100 hover:bg-gray-50 transition-all">
+                          <td className="py-3 px-3 font-bold text-gray-900 whitespace-nowrap">{rowEqName}</td>
+                          <td className="py-3 px-3 text-gray-700 whitespace-nowrap">{rowClientName}</td>
+                          <td className="py-3 px-3 text-gray-500 font-mono-tech whitespace-nowrap">{rowSerial}</td>
+                          <td className="py-3 px-3 text-gray-600 whitespace-nowrap">{rowEqType}</td>
+                          <td className="py-3 px-3 text-gray-700 whitespace-nowrap">{rowSvcType}</td>
+                          <td className="py-3 px-3 text-gray-700 font-mono-tech whitespace-nowrap">{rowCost}</td>
+                          <td className="py-3 px-3 text-gray-700 whitespace-nowrap">{record.technician}</td>
+                          <td className="py-3 px-3 text-gray-500 font-mono-tech whitespace-nowrap">
+                            {record.completedDate ? new Date(record.completedDate).toLocaleDateString() : "—"}
+                          </td>
+                          <td className="py-3 px-3">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setShowReport({
+                                ...record,
+                                equipmentName: rowEqName,
+                                clientName: rowClientName,
+                                serialNumber: rowSerial,
+                                equipmentType: rowEqType,
+                                serviceType: rowSvcType,
+                                invoiceId: (record as any).invoiceId ?? null,
+                                createdAt: (record as any).createdAt ?? new Date().toISOString(),
+                              } as any)}
+                              className="h-7 text-[10px] border-gray-200 hover:bg-[#66B2B2] hover:text-white transition-all whitespace-nowrap"
+                            >
+                              <FileText className="w-3 h-3 mr-1" />
+                              View Report
+                            </Button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {allCompleted.length === 0 && (
+                      <tr>
+                        <td colSpan={11} className="py-12 text-center text-gray-400 text-xs font-bold uppercase tracking-widest">
+                          No completed service records found
                         </td>
                       </tr>
-                    );
-                  })}
-                  {allCompleted.length === 0 && (
-                    <tr>
-                      <td colSpan={11} className="py-12 text-center text-gray-400 text-xs font-bold uppercase tracking-widest">
-                        No completed service records found
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </div>
           );
         })()}
 
@@ -2275,20 +2276,20 @@ export default function Services() {
             <div className="data-card p-8 space-y-8 bg-white shadow-xl border border-gray-200 rounded-2xl">
               {/* Header */}
               <div className="flex items-center gap-4 mb-2">
-                 <div className="w-12 h-12 rounded-2xl bg-[#66B2B2]/10 flex items-center justify-center shadow-inner">
-                    <PenTool className="w-6 h-6 text-[#66B2B2]" />
-                 </div>
-                 <div>
-                    <h3 className="text-xl font-black text-gray-900 tracking-tight">Manual Service Documentation</h3>
-                    <p className="text-sm text-gray-500 font-medium">Generate a comprehensive service report for ad-hoc maintenance.</p>
-                 </div>
+                <div className="w-12 h-12 rounded-2xl bg-[#66B2B2]/10 flex items-center justify-center shadow-inner">
+                  <PenTool className="w-6 h-6 text-[#66B2B2]" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-black text-gray-900 tracking-tight">Manual Service Documentation</h3>
+                  <p className="text-sm text-gray-500 font-medium">Generate a comprehensive service report for ad-hoc maintenance.</p>
+                </div>
               </div>
 
               {/* Step 1: Core Info */}
               <div className="space-y-6">
                 <div className="flex items-center gap-2 border-b border-gray-100 pb-2">
-                   <Package className="w-4 h-4 text-[#66B2B2]" />
-                   <span className="text-xs font-black uppercase tracking-widest text-gray-400">Asset & Assignment</span>
+                  <Package className="w-4 h-4 text-[#66B2B2]" />
+                  <span className="text-xs font-black uppercase tracking-widest text-gray-400">Asset & Assignment</span>
                 </div>
                 <div className="grid grid-cols-2 gap-6">
                   <div className="space-y-4">
@@ -2348,138 +2349,138 @@ export default function Services() {
 
               {/* Step 2: Visual Evidence */}
               <div className="space-y-6">
-                 <div className="flex items-center gap-2 border-b border-gray-100 pb-2">
-                    <Camera className="w-4 h-4 text-[#66B2B2]" />
-                    <span className="text-xs font-black uppercase tracking-widest text-gray-400">Visual Evidence Documentation</span>
-                 </div>
-                 <div className="grid grid-cols-2 gap-6">
-                    <div className="space-y-3">
-                       <label className="text-[10px] text-gray-500 uppercase font-black block tracking-widest ml-1">Pre-Service State (Before)</label>
-                       <div className="relative aspect-video rounded-2xl bg-gray-50 border-2 border-dashed border-gray-200 overflow-hidden group hover:border-[#66B2B2]/50 transition-colors">
-                          {formBeforePhoto ? (
-                             <>
-                                <img src={formBeforePhoto} className="w-full h-full object-cover" alt="Before" />
-                                <button onClick={() => setFormBeforePhoto(null)} className="absolute top-2 right-2 bg-red-500 p-1.5 rounded-full text-white shadow-xl opacity-0 group-hover:opacity-100 transition-opacity">
-                                   <X className="w-4 h-4" />
-                                </button>
-                             </>
-                          ) : (
-                             <label className="absolute inset-0 flex flex-col items-center justify-center cursor-pointer hover:bg-[#66B2B2]/5 transition-colors">
-                                <Upload className="w-8 h-8 text-gray-300 mb-2" />
-                                <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Upload Photo</span>
-                                <input type="file" accept="image/*" className="hidden" onChange={(e) => {
-                                   const file = e.target.files?.[0];
-                                   if (file) {
-                                      const reader = new FileReader();
-                                      reader.onload = (ev) => setFormBeforePhoto(ev.target?.result as string);
-                                      reader.readAsDataURL(file);
-                                   }
-                                }} />
-                             </label>
-                          )}
-                       </div>
+                <div className="flex items-center gap-2 border-b border-gray-100 pb-2">
+                  <Camera className="w-4 h-4 text-[#66B2B2]" />
+                  <span className="text-xs font-black uppercase tracking-widest text-gray-400">Visual Evidence Documentation</span>
+                </div>
+                <div className="grid grid-cols-2 gap-6">
+                  <div className="space-y-3">
+                    <label className="text-[10px] text-gray-500 uppercase font-black block tracking-widest ml-1">Pre-Service State (Before)</label>
+                    <div className="relative aspect-video rounded-2xl bg-gray-50 border-2 border-dashed border-gray-200 overflow-hidden group hover:border-[#66B2B2]/50 transition-colors">
+                      {formBeforePhoto ? (
+                        <>
+                          <img src={formBeforePhoto} className="w-full h-full object-cover" alt="Before" />
+                          <button onClick={() => setFormBeforePhoto(null)} className="absolute top-2 right-2 bg-red-500 p-1.5 rounded-full text-white shadow-xl opacity-0 group-hover:opacity-100 transition-opacity">
+                            <X className="w-4 h-4" />
+                          </button>
+                        </>
+                      ) : (
+                        <label className="absolute inset-0 flex flex-col items-center justify-center cursor-pointer hover:bg-[#66B2B2]/5 transition-colors">
+                          <Upload className="w-8 h-8 text-gray-300 mb-2" />
+                          <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Upload Photo</span>
+                          <input type="file" accept="image/*" className="hidden" onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              const reader = new FileReader();
+                              reader.onload = (ev) => setFormBeforePhoto(ev.target?.result as string);
+                              reader.readAsDataURL(file);
+                            }
+                          }} />
+                        </label>
+                      )}
                     </div>
-                    <div className="space-y-3">
-                       <label className="text-[10px] text-gray-500 uppercase font-black block tracking-widest ml-1">Post-Service State (After)</label>
-                       <div className="relative aspect-video rounded-2xl bg-gray-50 border-2 border-dashed border-gray-200 overflow-hidden group hover:border-[#66B2B2]/50 transition-colors">
-                          {formAfterPhoto ? (
-                             <>
-                                <img src={formAfterPhoto} className="w-full h-full object-cover" alt="After" />
-                                <button onClick={() => setFormAfterPhoto(null)} className="absolute top-2 right-2 bg-red-500 p-1.5 rounded-full text-white shadow-xl opacity-0 group-hover:opacity-100 transition-opacity">
-                                   <X className="w-4 h-4" />
-                                </button>
-                             </>
-                          ) : (
-                             <label className="absolute inset-0 flex flex-col items-center justify-center cursor-pointer hover:bg-[#66B2B2]/5 transition-colors">
-                                <Upload className="w-8 h-8 text-gray-300 mb-2" />
-                                <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Upload Photo</span>
-                                <input type="file" accept="image/*" className="hidden" onChange={(e) => {
-                                   const file = e.target.files?.[0];
-                                   if (file) {
-                                      const reader = new FileReader();
-                                      reader.onload = (ev) => setFormAfterPhoto(ev.target?.result as string);
-                                      reader.readAsDataURL(file);
-                                   }
-                                }} />
-                             </label>
-                          )}
-                       </div>
+                  </div>
+                  <div className="space-y-3">
+                    <label className="text-[10px] text-gray-500 uppercase font-black block tracking-widest ml-1">Post-Service State (After)</label>
+                    <div className="relative aspect-video rounded-2xl bg-gray-50 border-2 border-dashed border-gray-200 overflow-hidden group hover:border-[#66B2B2]/50 transition-colors">
+                      {formAfterPhoto ? (
+                        <>
+                          <img src={formAfterPhoto} className="w-full h-full object-cover" alt="After" />
+                          <button onClick={() => setFormAfterPhoto(null)} className="absolute top-2 right-2 bg-red-500 p-1.5 rounded-full text-white shadow-xl opacity-0 group-hover:opacity-100 transition-opacity">
+                            <X className="w-4 h-4" />
+                          </button>
+                        </>
+                      ) : (
+                        <label className="absolute inset-0 flex flex-col items-center justify-center cursor-pointer hover:bg-[#66B2B2]/5 transition-colors">
+                          <Upload className="w-8 h-8 text-gray-300 mb-2" />
+                          <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Upload Photo</span>
+                          <input type="file" accept="image/*" className="hidden" onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              const reader = new FileReader();
+                              reader.onload = (ev) => setFormAfterPhoto(ev.target?.result as string);
+                              reader.readAsDataURL(file);
+                            }
+                          }} />
+                        </label>
+                      )}
                     </div>
-                 </div>
+                  </div>
+                </div>
               </div>
 
               {/* Step 3: Technical Details */}
               <div className="space-y-6">
-                 <div className="flex items-center gap-2 border-b border-gray-100 pb-2">
-                    <FileText className="w-4 h-4 text-[#66B2B2]" />
-                    <span className="text-xs font-black uppercase tracking-widest text-gray-400">Technical Report Details</span>
-                 </div>
-                 <div className="grid gap-6">
-                    <div>
-                      <label className="text-[10px] text-gray-500 uppercase font-black mb-1.5 block tracking-widest ml-1">Initial Findings & Diagnosed Faults</label>
-                      <textarea 
-                        className="w-full p-4 rounded-xl border border-gray-200 text-sm text-gray-900 focus:border-[#66B2B2] focus:ring-2 focus:ring-[#66B2B2]/10 outline-none transition-all resize-none bg-gray-50/50" 
-                        rows={2}
-                        value={formFindings}
-                        onChange={(e) => setFormFindings(e.target.value)}
-                        placeholder="Detail any damage, leaks, or identified issues before work started..."
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[10px] text-gray-500 uppercase font-black mb-1.5 block tracking-widest ml-1">Technical Work & Operations Performed</label>
-                      <textarea 
-                        className="w-full p-4 rounded-xl border border-gray-200 text-sm text-gray-900 focus:border-[#66B2B2] focus:ring-2 focus:ring-[#66B2B2]/10 outline-none transition-all resize-none bg-gray-50/50" 
-                        rows={3}
-                        value={formWorkDone}
-                        onChange={(e) => setFormWorkDone(e.target.value)}
-                        placeholder="Detail all repairs, parts replaced, adjustments, and testing performed..."
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[10px] text-gray-500 uppercase font-black mb-1.5 block tracking-widest ml-1">Strategic Maintenance Recommendations</label>
-                      <textarea 
-                        className="w-full p-4 rounded-xl border border-gray-200 text-sm text-gray-900 focus:border-[#66B2B2] focus:ring-2 focus:ring-[#66B2B2]/10 outline-none transition-all resize-none bg-gray-50/50" 
-                        rows={2}
-                        value={formRecommendation}
-                        onChange={(e) => setFormRecommendation(e.target.value)}
-                        placeholder="Next suggested service, preventative actions, or pending parts..."
-                      />
-                    </div>
-                 </div>
+                <div className="flex items-center gap-2 border-b border-gray-100 pb-2">
+                  <FileText className="w-4 h-4 text-[#66B2B2]" />
+                  <span className="text-xs font-black uppercase tracking-widest text-gray-400">Technical Report Details</span>
+                </div>
+                <div className="grid gap-6">
+                  <div>
+                    <label className="text-[10px] text-gray-500 uppercase font-black mb-1.5 block tracking-widest ml-1">Initial Findings & Diagnosed Faults</label>
+                    <textarea
+                      className="w-full p-4 rounded-xl border border-gray-200 text-sm text-gray-900 focus:border-[#66B2B2] focus:ring-2 focus:ring-[#66B2B2]/10 outline-none transition-all resize-none bg-gray-50/50"
+                      rows={2}
+                      value={formFindings}
+                      onChange={(e) => setFormFindings(e.target.value)}
+                      placeholder="Detail any damage, leaks, or identified issues before work started..."
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-gray-500 uppercase font-black mb-1.5 block tracking-widest ml-1">Technical Work & Operations Performed</label>
+                    <textarea
+                      className="w-full p-4 rounded-xl border border-gray-200 text-sm text-gray-900 focus:border-[#66B2B2] focus:ring-2 focus:ring-[#66B2B2]/10 outline-none transition-all resize-none bg-gray-50/50"
+                      rows={3}
+                      value={formWorkDone}
+                      onChange={(e) => setFormWorkDone(e.target.value)}
+                      placeholder="Detail all repairs, parts replaced, adjustments, and testing performed..."
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-gray-500 uppercase font-black mb-1.5 block tracking-widest ml-1">Strategic Maintenance Recommendations</label>
+                    <textarea
+                      className="w-full p-4 rounded-xl border border-gray-200 text-sm text-gray-900 focus:border-[#66B2B2] focus:ring-2 focus:ring-[#66B2B2]/10 outline-none transition-all resize-none bg-gray-50/50"
+                      rows={2}
+                      value={formRecommendation}
+                      onChange={(e) => setFormRecommendation(e.target.value)}
+                      placeholder="Next suggested service, preventative actions, or pending parts..."
+                    />
+                  </div>
+                </div>
               </div>
 
               {/* Step 4: Verification */}
               <div className="space-y-6">
-                 <div className="flex items-center gap-2 border-b border-gray-100 pb-2">
-                    <UserCheck className="w-4 h-4 text-[#66B2B2]" />
-                    <span className="text-xs font-black uppercase tracking-widest text-gray-400">Digital Seal & Verification</span>
-                 </div>
-                 <div className="grid grid-cols-2 gap-8">
-                    <SignaturePad 
-                       label="Technician Verification"
-                       value={formTechSign}
-                       onChange={setFormTechSign}
-                       caption="Technician's digital seal of work completion."
-                    />
-                    <SignaturePad 
-                       label="Client Representative Acceptance"
-                       value={formClientSign}
-                       onChange={setFormClientSign}
-                       caption="Customer's acknowledgment of service delivery."
-                    />
-                 </div>
+                <div className="flex items-center gap-2 border-b border-gray-100 pb-2">
+                  <UserCheck className="w-4 h-4 text-[#66B2B2]" />
+                  <span className="text-xs font-black uppercase tracking-widest text-gray-400">Digital Seal & Verification</span>
+                </div>
+                <div className="grid grid-cols-2 gap-8">
+                  <SignaturePad
+                    label="Technician Verification"
+                    value={formTechSign}
+                    onChange={setFormTechSign}
+                    caption="Technician's digital seal of work completion."
+                  />
+                  <SignaturePad
+                    label="Client Representative Acceptance"
+                    value={formClientSign}
+                    onChange={setFormClientSign}
+                    caption="Customer's acknowledgment of service delivery."
+                  />
+                </div>
               </div>
 
               <div className="bg-[#66B2B2]/5 border border-[#66B2B2]/20 p-5 rounded-2xl flex gap-4">
-                 <div className="w-10 h-10 rounded-xl bg-[#66B2B2]/10 flex items-center justify-center flex-shrink-0 shadow-sm border border-[#66B2B2]/20">
-                    <AlertTriangle className="w-5 h-5 text-[#66B2B2]" />
-                 </div>
-                 <p className="text-[11px] text-gray-700 leading-relaxed font-medium">
-                   <strong className="text-gray-900">Legal Compliance Notice:</strong> By submitting this manual log, you certify that all technical work listed was performed to NexTOS safety standards and has been visually verified. This record will be permanently sealed into the asset's maintenance history and available for client review.
-                 </p>
+                <div className="w-10 h-10 rounded-xl bg-[#66B2B2]/10 flex items-center justify-center flex-shrink-0 shadow-sm border border-[#66B2B2]/20">
+                  <AlertTriangle className="w-5 h-5 text-[#66B2B2]" />
+                </div>
+                <p className="text-[11px] text-gray-700 leading-relaxed font-medium">
+                  <strong className="text-gray-900">Legal Compliance Notice:</strong> By submitting this manual log, you certify that all technical work listed was performed to NexTOS safety standards and has been visually verified. This record will be permanently sealed into the asset's maintenance history and available for client review.
+                </p>
               </div>
 
-              <Button 
+              <Button
                 className="w-full h-14 bg-[#66B2B2] text-white font-black hover:bg-[#5A9E9E] rounded-2xl shadow-xl shadow-[#66B2B2]/20 transition-all active:scale-[0.98] text-base uppercase tracking-widest"
                 onClick={() => {
                   if (!formClientId || !formEquipmentId || !formWorkDone) {
@@ -2487,8 +2488,8 @@ export default function Services() {
                     return;
                   }
                   if (!formTechSign || !formClientSign) {
-                     toast.error("Signatures Required", { description: "Both Technician and Client signatures must be captured." });
-                     return;
+                    toast.error("Signatures Required", { description: "Both Technician and Client signatures must be captured." });
+                    return;
                   }
 
                   const recordId = 8_000_000 + Date.now() % 1_000_000;
@@ -2515,50 +2516,50 @@ export default function Services() {
                   });
 
                   if (formBeforePhoto) {
-                     addServicePhoto({ serviceRecordId: recordId, type: "before", url: formBeforePhoto, caption: "Manual Log: Before" });
+                    addServicePhoto({ serviceRecordId: recordId, type: "before", url: formBeforePhoto, caption: "Manual Log: Before" });
                   }
                   if (formAfterPhoto) {
-                     addServicePhoto({ serviceRecordId: recordId, type: "after", url: formAfterPhoto, caption: "Manual Log: After" });
+                    addServicePhoto({ serviceRecordId: recordId, type: "after", url: formAfterPhoto, caption: "Manual Log: After" });
                   }
 
                   // Persist to seed data
                   try {
-                     const seedEq = liveEquipment.find(s => s.serialNumber === targetEq?.serialNumber);
-                     const seedClient = liveClients.find(c => String(c.id) === formClientId);
-                     
-                     upsertSeedServiceRecord.mutate({
-                        id: recordId,
-                        seedEquipmentId: seedEq?.id || "",
-                        equipmentId: formEquipmentId as any,
-                        clientId: formClientId as any,
-                        serviceCategory: formType,
-                        status: "completed",
-                        scheduledDate: completedDate,
-                        completedDate,
-                        technician: formTechnician,
-                        description: formWorkDone,
-                        findings: formFindings,
-                        workDone: formWorkDone,
-                        recommendation: formRecommendation,
-                        partsUsed: "Manually Logged",
-                        cost: 0,
-                        hoursAtService: parseFloat(String(targetEq?.hoursTotal)) || 0,
-                        // Rich fields for PDF/View
-                        equipmentName: seedEq?.name || targetEq?.name || "",
-                        clientName: seedClient?.companyName || "",
-                        equipmentType: seedEq?.equipmentType || "",
-                        serialNumber: targetEq?.serialNumber || "",
-                        serviceType: formType,
-                        beforePhoto: formBeforePhoto,
-                        afterPhoto: formAfterPhoto,
-                        techSignature: formTechSign,
-                        clientSignature: formClientSign,
-                        completionTime: completedDate
-                     } as any);
-                  } catch (e) {}
+                    const seedEq = liveEquipment.find(s => s.serialNumber === targetEq?.serialNumber);
+                    const seedClient = liveClients.find(c => String(c.id) === formClientId);
+
+                    upsertSeedServiceRecord.mutate({
+                      id: recordId,
+                      seedEquipmentId: seedEq?.id || "",
+                      equipmentId: formEquipmentId as any,
+                      clientId: formClientId as any,
+                      serviceCategory: formType,
+                      status: "completed",
+                      scheduledDate: completedDate,
+                      completedDate,
+                      technician: formTechnician,
+                      description: formWorkDone,
+                      findings: formFindings,
+                      workDone: formWorkDone,
+                      recommendation: formRecommendation,
+                      partsUsed: "Manually Logged",
+                      cost: 0,
+                      hoursAtService: parseFloat(String(targetEq?.hoursTotal)) || 0,
+                      // Rich fields for PDF/View
+                      equipmentName: seedEq?.name || targetEq?.name || "",
+                      clientName: seedClient?.companyName || "",
+                      equipmentType: seedEq?.equipmentType || "",
+                      serialNumber: targetEq?.serialNumber || "",
+                      serviceType: formType,
+                      beforePhoto: formBeforePhoto,
+                      afterPhoto: formAfterPhoto,
+                      techSignature: formTechSign,
+                      clientSignature: formClientSign,
+                      completionTime: completedDate
+                    } as any);
+                  } catch (e) { }
 
                   toast.success("Manual Report Sealed", { description: "Service record has been officially added to history." });
-                  
+
                   // Reset form
                   setFormClientId("");
                   setFormEquipmentId("");
@@ -2573,8 +2574,8 @@ export default function Services() {
                   setActiveTab("reports");
                 }}
               >
-                 <CheckCircle2 className="w-5 h-5 mr-3" />
-                 Seal & Submit Service Report
+                <CheckCircle2 className="w-5 h-5 mr-3" />
+                Seal & Submit Service Report
               </Button>
             </div>
           </div>
@@ -2713,8 +2714,8 @@ export default function Services() {
                           try {
                             const m = JSON.parse(r.description ?? "{}");
                             return m._seedEqId === svcTaskEquipmentId &&
-                                   m._serviceIntervalUnit?.toLowerCase() === svcTaskMetricUnit.toLowerCase() &&
-                                   m._resetOnComplete === true;
+                              m._serviceIntervalUnit?.toLowerCase() === svcTaskMetricUnit.toLowerCase() &&
+                              m._resetOnComplete === true;
                           } catch { return false; }
                         });
                         if (hasDuplicate) {
@@ -2842,6 +2843,189 @@ export default function Services() {
         onMetricsReset={handleMetricsReset}
       />
 
+      {/* Task Details Modal */}
+      <Dialog open={!!viewTaskDetails} onOpenChange={(open) => !open && setViewTaskDetails(null)}>
+        <DialogContent className="max-w-xl bg-white border border-gray-200 rounded-2xl shadow-2xl p-0 overflow-hidden text-gray-900">
+          {viewTaskDetails && (() => {
+            const task = viewTaskDetails;
+            let meta: any = {};
+            try { meta = JSON.parse(task.description ?? "{}"); } catch { }
+
+            const isBooking = meta._src === "booking";
+            const isPms = meta._src === "pms";
+
+            const seedEq = (isPms || isBooking) && meta._seedEqId
+              ? liveEquipment.find((s) => s.id === meta._seedEqId) ?? null
+              : (liveEquipment.find((e) => e.id === task.equipmentId) ?? null);
+
+            const seedClient = liveClients.find((c) => String(c.id) === String(task.clientId) || String(c.id) === String(seedEq?.clientId));
+            const metricUnit = isPms && seedEq && seedEq.pmsConfiguration?.[meta._pmsIdx]?.serviceIntervalUnit || "Hours";
+            const metricValue = isPms
+              ? getPmsMetricValue(seedEq, metricUnit, gps001CacheMs, gps001HoursOffsetMs)
+              : isBooking
+                ? (seedEq ? getPmsMetricValue(seedEq, "Hours", gps001CacheMs, gps001HoursOffsetMs) : "—")
+                : (equipment.find(e => e.id === task.equipmentId)?.hoursTotal ?? "—");
+
+            const taskOrigin = meta._origin === "manual" ? "manual" : (meta._origin === "booking" ? "booking" : "auto");
+
+            return (
+              <>
+                <DialogHeader className="p-6 border-b border-gray-100 bg-gradient-to-br from-[#66B2B2]/5 to-transparent">
+                  <DialogTitle className="flex items-center justify-between text-gray-900 text-lg font-bold">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-9 h-9 rounded-xl bg-[#66B2B2]/10 flex items-center justify-center">
+                        <Wrench className="w-4.5 h-4.5 text-[#66B2B2]" />
+                      </div>
+                      <span>Task Details #{task.id}</span>
+                    </div>
+                    <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${task.status === "scheduled"
+                        ? "bg-gray-100 text-gray-500"
+                        : "bg-amber-100 text-amber-700"
+                      }`}>
+                      {task.status}
+                    </span>
+                  </DialogTitle>
+                  <DialogDescription className="text-xs text-gray-500 mt-1">
+                    Complete information for this maintenance and service task.
+                  </DialogDescription>
+                </DialogHeader>
+
+                <div className="p-6 space-y-5 max-h-[70vh] overflow-y-auto">
+                  {/* Client Info Card */}
+                  <div className="space-y-2">
+                    <h4 className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Client Information</h4>
+                    <div className="p-4 rounded-xl border border-gray-100 bg-gray-50/55 space-y-2">
+                      <div className="grid grid-cols-2 gap-3 text-xs">
+                        <div>
+                          <span className="text-gray-400 block text-[10px] uppercase">Company Name</span>
+                          <span className="font-bold text-gray-800">{seedClient?.companyName ?? "N/A"}</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-400 block text-[10px] uppercase">Industry</span>
+                          <span className="font-semibold text-gray-700">{seedClient?.industry ?? "N/A"}</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-400 block text-[10px] uppercase">Main Contact</span>
+                          <span className="font-semibold text-gray-700">{seedClient?.mainContact ?? seedClient?.contactName ?? "N/A"}</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-400 block text-[10px] uppercase">Phone</span>
+                          <span className="font-semibold text-gray-700">{seedClient?.phone ?? "N/A"}</span>
+                        </div>
+                        <div className="col-span-2">
+                          <span className="text-gray-400 block text-[10px] uppercase">Email</span>
+                          <span className="font-semibold text-gray-700">{seedClient?.email ?? "N/A"}</span>
+                        </div>
+                        <div className="col-span-2">
+                          <span className="text-gray-400 block text-[10px] uppercase">Address</span>
+                          <span className="font-semibold text-gray-700">{seedClient?.address ?? "N/A"}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Equipment Info Card */}
+                  <div className="space-y-2">
+                    <h4 className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Equipment Details</h4>
+                    <div className="p-4 rounded-xl border border-gray-100 bg-gray-50/55 space-y-2">
+                      <div className="grid grid-cols-2 gap-3 text-xs">
+                        <div>
+                          <span className="text-gray-400 block text-[10px] uppercase">Unit ID / Name</span>
+                          <span className="font-bold text-gray-800">{seedEq?.name ?? seedEq?.unitId ?? "N/A"}</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-400 block text-[10px] uppercase">Serial Number</span>
+                          <span className="font-mono text-gray-800">{seedEq?.serialNumber ?? "N/A"}</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-400 block text-[10px] uppercase">Manufacturer / Model</span>
+                          <span className="font-semibold text-gray-700">
+                            {seedEq?.manufacturer && seedEq?.model ? `${seedEq.manufacturer} ${seedEq.model}` : (seedEq?.manufacturer ?? seedEq?.model ?? "N/A")}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-gray-400 block text-[10px] uppercase">Current Reading</span>
+                          <span className="font-mono text-gray-800 font-semibold">{metricValue}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Service & Schedule Card */}
+                  <div className="space-y-2">
+                    <h4 className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Service &amp; Schedule</h4>
+                    <div className="p-4 rounded-xl border border-gray-100 bg-gray-50/55 space-y-2">
+                      <div className="grid grid-cols-2 gap-3 text-xs">
+                        <div>
+                          <span className="text-gray-400 block text-[10px] uppercase">Service Type</span>
+                          <span className="font-semibold text-gray-800">{task.serviceCategory}</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-400 block text-[10px] uppercase">Origin</span>
+                          <span className="capitalize font-semibold text-gray-800">{taskOrigin}</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-400 block text-[10px] uppercase">Assigned Technician</span>
+                          <span className="font-bold text-gray-800">{task.technician || "Pending Assignment"}</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-400 block text-[10px] uppercase">Schedule Date</span>
+                          <span className="font-semibold text-gray-800">
+                            {task.scheduledDate ? new Date(task.scheduledDate).toLocaleDateString(undefined, {
+                              weekday: "short",
+                              year: "numeric",
+                              month: "short",
+                              day: "numeric",
+                            }) : "N/A"}
+                          </span>
+                        </div>
+                        {isBooking && (
+                          <>
+                            <div>
+                              <span className="text-gray-400 block text-[10px] uppercase">Time Slot</span>
+                              <span className="font-semibold text-gray-800">{meta.preferredTime ?? "N/A"}</span>
+                            </div>
+                            <div>
+                              <span className="text-gray-400 block text-[10px] uppercase">Booking ID</span>
+                              <span className="font-mono font-semibold text-gray-800">{meta._bookingId ?? "N/A"}</span>
+                            </div>
+                            {meta.packageName && (
+                              <div className="col-span-2">
+                                <span className="text-gray-400 block text-[10px] uppercase">Associated Package</span>
+                                <span className="font-semibold text-[#66B2B2]">{meta.packageName}</span>
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Notes / Remarks Card */}
+                  <div className="space-y-2">
+                    <h4 className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Additional Notes / Remarks</h4>
+                    <div className="p-4 rounded-xl border border-gray-100 bg-gray-50/55 text-xs">
+                      <p className="text-gray-700 whitespace-pre-wrap leading-relaxed">
+                        {isBooking ? (meta.notes || "No additional notes from client.") : (task.description && !task.description.startsWith("{") ? task.description : "No description provided.")}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-6 border-t border-gray-100 bg-gray-50/50 flex justify-end">
+                  <Button
+                    onClick={() => setViewTaskDetails(null)}
+                    className="h-10 px-5 bg-gray-900 hover:bg-[#66B2B2] text-white font-bold text-xs rounded-xl transition-all"
+                  >
+                    Close Details
+                  </Button>
+                </div>
+              </>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
+
       {/* Service Report View Modal */}
       <Dialog open={!!showReport} onOpenChange={() => setShowReport(null)}>
         <DialogContent className="bg-white border-gray-200 max-w-4xl max-h-[95vh] overflow-auto scrollbar-hide rounded-2xl">
@@ -2855,6 +3039,7 @@ export default function Services() {
               equipment={equipment.find((eqItem) => eqItem.id === showReport.equipmentId)}
               client={liveClients.find((c) => c.id === showReport.clientId)}
               photos={servicePhotos.filter((p) => p.serviceRecordId === showReport.id)}
+              viewerRole="admin"
             />
           )}
         </DialogContent>
@@ -2872,7 +3057,7 @@ export default function Services() {
               Scan equipment QR code to identify and manage the asset in the field.
             </DialogDescription>
           </DialogHeader>
-          
+
           <div className="space-y-6 pt-2">
             {scannerError && (
               <div className="p-4 rounded-xl bg-red-50 border border-red-100 flex items-start gap-3">
@@ -2882,8 +3067,8 @@ export default function Services() {
             )}
 
             <div className="relative group">
-              <div 
-                id="qr-reader-admin" 
+              <div
+                id="qr-reader-admin"
                 className="w-full max-w-sm mx-auto rounded-2xl overflow-hidden bg-gray-900 border-4 border-gray-100 shadow-inner"
               ></div>
               {scanning && !scannerError && (
@@ -2926,13 +3111,13 @@ export default function Services() {
           </DialogHeader>
           <div className="flex flex-col items-center justify-center p-8 bg-white rounded-xl mt-4 border border-gray-50 shadow-inner">
             <div className="bg-white p-4 rounded-xl border-2 border-gray-900 shadow-xl">
-               <QRCodeSVG value={qrSerial} size={220} level="H" includeMargin={true} />
+              <QRCodeSVG value={qrSerial} size={220} level="H" includeMargin={true} />
             </div>
             <div className="mt-6 text-center space-y-1">
               <p className="text-xs text-gray-400 font-bold uppercase tracking-widest">Serial Number</p>
               <p className="text-lg font-bold text-gray-900 font-mono-tech">{qrSerial}</p>
               <div className="inline-flex items-center px-3 py-1 bg-[#66B2B2]/10 text-[#66B2B2] rounded-full text-[10px] font-bold mt-2">
-                 UNIT: {equipment.find((e) => e.serialNumber === qrSerial)?.name}
+                UNIT: {equipment.find((e) => e.serialNumber === qrSerial)?.name}
               </div>
             </div>
           </div>
@@ -3002,7 +3187,7 @@ function PreServiceConfirmModal({
   let equipmentAddress = "Not specified";
   if (task) {
     let meta: any = {};
-    try { meta = JSON.parse(task.description ?? "{}"); } catch {}
+    try { meta = JSON.parse(task.description ?? "{}"); } catch { }
     if (meta._src === "pms") {
       const seedEq = seedEquipment.find((s: any) => s.id === meta._seedEqId);
       if (seedEq?.lat != null && seedEq?.lng != null) {
@@ -3128,1085 +3313,1078 @@ function ExecutionModal({
   resetOnCompletion?: boolean;
   onMetricsReset?: (seedEqId: string, unit: string) => void;
 }) {
-    const {
-        equipment,
-        draftExecutions,
-        updateDraftExecution,
-        clearDraftExecution,
-        updateServiceRecord,
-        addServicePhoto,
-        queuePendingSubmission,
-    } = useOperationsStore();
-    const { user: execUser } = useAuthStore();
-    const { logPartUsage, items: inventoryItems } = useInventoryStore();
-    const { packages } = useBillingStore();
-    // const { clients } = useCRMStore();
-    const completeSeedServiceRecordMutation = trpc.seedServiceRecords.complete.useMutation();
-    const deductStockMutation = trpc.inventory.deductStock.useMutation();
-    const logUsageMutation = trpc.inventory.logUsage.useMutation();
-    const trpcUtils = trpc.useUtils();
-    
-    const draft = task ? draftExecutions[task.id] || { currentStep: 1, partsUsed: "Pending" } : null;
-    const currentStep = draft?.currentStep || 1;
+  const {
+    equipment,
+    draftExecutions,
+    updateDraftExecution,
+    clearDraftExecution,
+    updateServiceRecord,
+    addServicePhoto,
+    queuePendingSubmission,
+  } = useOperationsStore();
+  const { user: execUser } = useAuthStore();
+  const { logPartUsage, items: inventoryItems } = useInventoryStore();
+  const { packages } = useBillingStore();
+  // const { clients } = useCRMStore();
+  const completeSeedServiceRecordMutation = trpc.seedServiceRecords.complete.useMutation();
+  const deductStockMutation = trpc.inventory.deductStock.useMutation();
+  const logUsageMutation = trpc.inventory.logUsage.useMutation();
+  const trpcUtils = trpc.useUtils();
 
-    // QR Scanning states
-    const [isScanning, setIsScanning] = useState(false);
-    const [scannerError, setScannerError] = useState<string | null>(null);
-    const [isVerified, setIsVerified] = useState(false);
-    const scannerRef = useRef<Html5Qrcode | null>(null);
+  const draft = task ? draftExecutions[task.id] || { currentStep: 1, partsUsed: "Pending" } : null;
+  const currentStep = draft?.currentStep || 1;
 
-    const startScanning = async () => {
-        setIsScanning(true);
-        setScannerError(null);
-        
-        // Wait for DOM to update so element is available
-        setTimeout(async () => {
-            try {
-                const element = document.getElementById("qr-reader-modal");
-                if (!element) return;
-                
-                if (!scannerRef.current) {
-                    scannerRef.current = new Html5Qrcode("qr-reader-modal");
-                }
-                
-                await scannerRef.current.start(
-                    { facingMode: "environment" },
-                    { fps: 10, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0 },
-                    (decodedText) => handleScanSuccess(decodedText),
-                    () => {}
-                );
-            } catch (err) {
-                console.error("Scanner error:", err);
-                setScannerError("Failed to access camera. Please check permissions.");
-                setIsScanning(false);
-            }
-        }, 100);
-    };
+  // QR Scanning states
+  const [isScanning, setIsScanning] = useState(false);
+  const [scannerError, setScannerError] = useState<string | null>(null);
+  const [isVerified, setIsVerified] = useState(false);
+  const scannerRef = useRef<Html5Qrcode | null>(null);
 
-    const stopScanning = async () => {
-        if (scannerRef.current) {
-            try {
-                await scannerRef.current.stop();
-                await scannerRef.current.clear();
-            } catch (err) {}
-            scannerRef.current = null;
+  const startScanning = async () => {
+    setIsScanning(true);
+    setScannerError(null);
+
+    // Wait for DOM to update so element is available
+    setTimeout(async () => {
+      try {
+        const element = document.getElementById("qr-reader-modal");
+        if (!element) return;
+
+        if (!scannerRef.current) {
+          scannerRef.current = new Html5Qrcode("qr-reader-modal");
         }
+
+        await scannerRef.current.start(
+          { facingMode: "environment" },
+          { fps: 10, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0 },
+          (decodedText) => handleScanSuccess(decodedText),
+          () => { }
+        );
+      } catch (err) {
+        console.error("Scanner error:", err);
+        setScannerError("Failed to access camera. Please check permissions.");
         setIsScanning(false);
-    };
-
-    const handleScanSuccess = async (decodedText: string) => {
-        const currentEq = equipment.find(e => e.id === (draft?.equipmentId || task?.equipmentId));
-        // Use the seed serial for PMS tasks; fall back to store serial for sim/manual tasks
-        let _scanMeta: any = {};
-        try { _scanMeta = JSON.parse(task?.description ?? "{}"); } catch {}
-        const _scanSeedEq = _scanMeta._seedEqId
-          ? seedEquipment.find((s: any) => s.id === _scanMeta._seedEqId) ?? null
-          : null;
-        const expectedSerial = _scanSeedEq?.serialNumber ?? currentEq?.serialNumber ?? "";
-        if (decodedText.trim() === expectedSerial) {
-            await stopScanning();
-            setIsVerified(true);
-            toast.success("Asset Verified Successfully!");
-            // Capture arrival time when QR scan succeeds
-            if (task) {
-                updateDraftExecution(task.id, { arrivalTime: new Date().toISOString() });
-            }
-            // Auto-advance after a brief delay to show success state
-            setTimeout(() => {
-                if (currentEq) handleNext({ equipmentId: currentEq.id });
-                setIsVerified(false);
-            }, 1500);
-        } else {
-            toast.error("Serial Mismatch: " + decodedText);
-        }
-    };
-
-    const handleNext = (data: Partial<DraftExecution>) => {
-        if (!task) return;
-        updateDraftExecution(task.id, { ...data, currentStep: currentStep + 1 });
-    };
-
-    const handleBack = () => {
-        if (!task) return;
-        updateDraftExecution(task.id, { currentStep: Math.max(1, currentStep - 1) });
-    };
-
-    const submitFinalReport = () => {
-        if (!task || !draft) return;
-        if (!draft.techSignature || !draft.clientSignature) {
-            toast.error("Both signatures required");
-            return;
-        }
-
-        const completionTime = new Date().toISOString();
-        const completedDate = completionTime;
-        const effectiveEquipId = draft.equipmentId || task.equipmentId;
-        const storeEq = equipment.find(e => e.id === effectiveEquipId);
-
-        // Log Part Usage and Deduct Stock
-        if (draft.selectedParts && draft.selectedParts.length > 0) {
-            draft.selectedParts.forEach(part => {
-                logPartUsage({
-                    serviceRecordId: task.id,
-                    inventoryItemId: part.inventoryItemId,
-                    quantityUsed: part.quantity
-                });
-                const seedPartId = inventoryItems.find(i => i.id === part.inventoryItemId)?.partNumber ?? String(part.inventoryItemId);
-                deductStockMutation.mutate(
-                    { partId: seedPartId, quantityUsed: part.quantity },
-                    { onError: (err) => console.error("inventory.deductStock failed", err) }
-                );
-                logUsageMutation.mutate({
-                    inventoryItemId: part.inventoryItemId,
-                    serviceRecordId: task.id,
-                    quantityUsed: part.quantity,
-                    unitPriceAtTime: part.pricePerUnit,
-                    createdAt: new Date().toISOString(),
-                }, { onError: (err) => console.error("inventory.logUsage failed", err) });
-            });
-        }
-
-        updateServiceRecord(task.id, {
-            status: "completed",
-            technician: execUser?.name || "Technician",
-            findings: draft.findings,
-            workDone: draft.workDone,
-            recommendation: draft.recommendations,
-            partsUsed: draft.selectedParts?.map(p => `${p.name} (x${p.quantity})`).join(", ") || "None",
-            cost: draft.cost ?? task.cost ?? 0,
-            hoursAtService: (draft.hoursAtService ?? parseFloat(String(storeEq?.hoursTotal))) || 0,
-            techSignature: draft.techSignature,
-            clientSignature: draft.clientSignature,
-            clientRepresentativeName: draft.clientRepresentativeName ?? "",
-            safetyChecklist: draft.safetyChecklist,
-            completedDate,
-            equipmentId: effectiveEquipId,
-        });
-
-        if (draft.beforePhoto) {
-            addServicePhoto({ serviceRecordId: task.id, type: "before", url: draft.beforePhoto, caption: "Before Service" });
-        }
-        if (draft.afterPhoto) {
-            addServicePhoto({ serviceRecordId: task.id, type: "after", url: draft.afterPhoto, caption: "After Service" });
-        }
-
-        // Persist completed service record to seed-data.json (all tasks, not just PMS)
-        try {
-            let meta: any = {};
-            try { meta = JSON.parse(task.description ?? "{}"); } catch {}
-            const seedEq = meta._seedEqId
-                ? seedEquipment.find((s: any) => s.id === meta._seedEqId) ?? null
-                : null;
-            const pmsCfg = seedEq?.pmsConfiguration?.[meta._pmsIdx] ?? null;
-            const seedClient = seedEq?.clientId
-                ? seedClients.find((c: any) => c.id === seedEq.clientId) ?? null
-                : null;
-
-            // Prefer values snapshotted at task-creation time (embedded in description) over the
-            // current static import. This ensures that if the PMS config was edited after the
-            // task was triggered (e.g. 200 h → 2000 h), the completed record still shows the
-            // interval that was actually in effect when the equipment went Overdue.
-            const snapshotInterval: number | undefined =
-                meta._serviceInterval !== undefined ? Number(meta._serviceInterval) : pmsCfg?.serviceInterval;
-            const snapshotIntervalUnit: string | undefined =
-                meta._serviceIntervalUnit ?? pmsCfg?.serviceIntervalUnit;
-            const snapshotServiceType: string | undefined =
-                meta._serviceType ?? pmsCfg?.serviceType;
-
-            let metricAtService = "";
-            if (pmsCfg || (snapshotIntervalUnit !== undefined)) {
-                const unit: string = snapshotIntervalUnit ?? "Hours";
-                let gps001Ms = 0;
-                try { gps001Ms = Number(window.localStorage.getItem("nextos-gps001-total-hours-ms") ?? "0") || 0; } catch {}
-                metricAtService = getPmsMetricValue(seedEq, unit, gps001Ms);
-            }
-
-            // Decide whether the server should atomically reset this equipment's metrics.
-            // • Non-EQ-001 seed equipment: ALWAYS reset (hours/km only, not days).
-            //   These are static-JSON values, so the server must zero them so status = OK.
-            // • EQ-001 (Excavator CAT 320): only if the "Reset Hours on Completion" toggle is ON.
-            //   Its live hours come from GPS (localStorage), not seed-data.json; the server
-            //   resets the seed field so applyComputedServiceStatuses writes status = OK to disk.
-            const isEq001Task = meta._seedEqId === "EQ-001";
-            // Use snapshotted unit so a config change doesn't affect the reset decision either.
-            const pmsUnit = (snapshotIntervalUnit ?? "").toLowerCase();
-            const isHoursOrKmTask = pmsUnit === "hours" || pmsUnit === "km" || pmsUnit === "weeks" || pmsUnit === "months" || pmsUnit === "years";
-            const hasPmsConfig = !!pmsCfg
-                || (snapshotInterval !== undefined && snapshotIntervalUnit !== undefined)
-                || (meta._resetOnComplete === true && snapshotIntervalUnit !== undefined);
-            const shouldResetMetrics =
-                (meta._src === "pms" || meta._resetOnComplete === true) &&
-                !!meta._seedEqId &&
-                hasPmsConfig &&
-                isHoursOrKmTask &&
-                (!isEq001Task || resetOnCompletion); // non-EQ-001: always; EQ-001: only if toggle ON
-
-            // Compute equipment status fresh from live metrics so the service report
-            // reflects the true state at submission time, not a potentially stale cached value.
-            let computedEquipmentStatus: string | null = seedEq?.status ?? null;
-            if (seedEq && snapshotInterval && snapshotIntervalUnit) {
-                const _unit = snapshotIntervalUnit.toLowerCase();
-                let _usage: number | null = null;
-                if (_unit === "hours") {
-                    if (seedEq?.id === "EQ-001") {
-                        // EQ-001 hours live in GPS localStorage, not seedEq.hoursTotal.
-                        // Apply the same offset used everywhere else so the snapshot reflects
-                        // hours-since-last-service, not raw GPS lifetime hours.
-                        let _rawMs = 0;
-                        let _offsetMs = 0;
-                        try { _rawMs = Number(window.localStorage.getItem("nextos-gps001-total-hours-ms") ?? "0") || 0; } catch {}
-                        try { _offsetMs = Number(window.localStorage.getItem(GPS001_HOURS_OFFSET_KEY) ?? "0") || 0; } catch {}
-                        const _effectiveMs = Math.max(0, _rawMs - _offsetMs);
-                        _usage = _effectiveMs / (1000 * 60 * 60);
-                    } else {
-                        const _m = String(seedEq.hoursTotal ?? "").match(/(\d+)\s*h\s*(\d+)\s*m/i);
-                        if (_m) _usage = Number(_m[1]) + Number(_m[2]) / 60;
-                    }
-                } else if (_unit === "km") {
-                    const _raw = seedEq.kmTotal;
-                    const _p = typeof _raw === "number" ? _raw : parseFloat(String(_raw ?? "").replace(/[^\d.]/g, ""));
-                    if (Number.isFinite(_p) && _p >= 0) _usage = _p;
-                } else {
-                    const _days = typeof seedEq.days === "number" ? seedEq.days : parseFloat(String(seedEq.days ?? ""));
-                    if (Number.isFinite(_days) && _days >= 0) {
-                        if (_unit === "weeks") _usage = _days / 7;
-                        else if (_unit === "months") _usage = _days / 30.44;
-                        else if (_unit === "years") _usage = _days / 365.25;
-                    }
-                }
-                if (_usage !== null && Number.isFinite(_usage) && _usage >= 0) {
-                    const _pct = (_usage / snapshotInterval) * 100;
-                    computedEquipmentStatus = computePmsStatus(_pct, seedData.pmsStatuses) ?? "OK";
-                }
-            }
-
-            // Build the full payload object before calling mutate so we can
-            // save it verbatim to the retry queue if the write fails.
-            const submissionPayload = {
-                id: task.id,
-                completedDate,
-                technician: execUser?.name || "Technician",
-                // Core record fields (for upsert)
-                seedEquipmentId: meta._seedEqId ?? "",
-                pmsConfigIndex: meta._pmsIdx ?? 0,
-                equipmentId: effectiveEquipId,
-                clientId: task.clientId,
-                serviceCategory: task.serviceCategory,
-                scheduledDate: task.scheduledDate ?? completedDate,
-                description: task.description ?? "",
-                // Service work
-                findings: draft.findings ?? "",
-                workDone: draft.workDone ?? "",
-                recommendation: draft.recommendations ?? "",
-                partsUsed: draft.selectedParts?.map((p) => `${p.name} (x${p.quantity})`).join(", ") || "",
-                selectedParts: draft.selectedParts ?? [],
-                partsUsedDetails: (draft.selectedParts ?? []).map(p => ({ name: p.name, quantity: p.quantity, pricePerUnit: p.pricePerUnit })),
-                cost: draft.cost ?? pmsCfg?.estimatedCost ?? task.cost ?? 0,
-                hoursAtService: (draft.hoursAtService ?? parseFloat(String(storeEq?.hoursTotal))) || 0,
-                // Rich completion fields
-                equipmentName: seedEq?.name ?? storeEq?.name ?? "",
-                clientName: seedClient?.companyName ?? seedClients?.find(c => String(c.id) === String(task.clientId))?.companyName ?? "",
-                equipmentType: seedEq?.equipmentType ?? "",
-                serialNumber: seedEq?.serialNumber ?? storeEq?.serialNumber ?? "",
-                serviceType: snapshotServiceType ?? task.serviceCategory,
-                serviceInterval: snapshotInterval,
-                serviceIntervalUnit: snapshotIntervalUnit,
-                metricAtService,
-                safetyChecklist: draft.safetyChecklist,
-                beforePhoto: draft.beforePhoto,
-                beforeNotes: draft.beforeNotes,
-                afterPhoto: draft.afterPhoto,
-                afterNotes: draft.afterNotes,
-                techSignature: draft.techSignature,
-                clientSignature: draft.clientSignature,
-                clientRepresentativeName: draft.clientRepresentativeName ?? "",
-                startTime: draft.travelStartTime ?? null,
-                endTime: completionTime,
-                duration: null,
-                finalCost: draft.cost ?? null,
-                travelStartTime: draft.travelStartTime ?? null,
-                arrivalTime: draft.arrivalTime ?? null,
-                completionTime,
-                technicianAddress: draft.technicianAddress ?? null,
-                equipmentSiteAddress: draft.equipmentSiteAddress ?? null,
-                equipmentStatusAtService: computedEquipmentStatus,
-                // Tell the server to atomically zero out this equipment's metrics in the same
-                // file write (avoids the race condition of a separate chained mutation).
-                resetMetricsOnComplete: shouldResetMetrics,
-            } as any;
-
-            completeSeedServiceRecordMutation.mutate(submissionPayload, {
-                onSuccess: () => {
-                    trpcUtils.seedServiceRecords.list.invalidate();
-                    setTimeout(() => {
-                        trpcUtils.seedEquipment.list.invalidate();
-                    }, 400);
-                    if (shouldResetMetrics) {
-                        onMetricsReset?.(meta._seedEqId as string, snapshotIntervalUnit ?? "Hours");
-                    }
-                },
-                onError: () => {
-                    queuePendingSubmission({
-                        id: task.id,
-                        queuedAt: new Date().toISOString(),
-                        payload: submissionPayload,
-                    });
-                    toast.error("Couldn't write report to records — will retry automatically.");
-                },
-            });
-        } catch { /* silently skip — in-memory update already done */ }
-
-        clearDraftExecution(task.id);
-        toast.success("Final report sealed and submitted!");
-        setTimeout(() => onFinish(), 80);
-    };
-
-    // Cleanup scanner on unmount or close
-    useEffect(() => {
-        return () => {
-            if (scannerRef.current) {
-                try { const s = scannerRef.current.stop(); if (s && typeof (s as any).catch === "function") (s as any).catch(() => {}); } catch {}
-                try { const c = (scannerRef.current.clear as any)(); if (c && typeof c.catch === "function") c.catch(() => {}); } catch {}
-            }
-        };
-    }, []);
-
-    const currentEq = equipment.find(e => e.id === (draft?.equipmentId || task?.equipmentId));
-
-    // Resolve display values from seed data for any task with a _seedEqId (PMS or manual).
-    let _pmsMeta: any = {};
-    try { _pmsMeta = JSON.parse(task?.description ?? "{}"); } catch {}
-    const _isPmsTask = _pmsMeta._src === "pms";
-    const _pmsSeedEq = _pmsMeta._seedEqId
-      ? seedEquipment.find((s: any) => s.id === _pmsMeta._seedEqId) ?? null
-      : (currentEq?.serialNumber
-          ? seedEquipment.find((s: any) => s.serialNumber === currentEq.serialNumber) ?? null
-          : null);
-
-    // Serial number used for QR verification and display
-    const displaySerial = _pmsSeedEq?.serialNumber ?? currentEq?.serialNumber ?? "";
-    // Equipment name shown in the header and Step 1 card
-    const displayName = _pmsSeedEq?.name ?? currentEq?.name ?? `SIM-UNIT-${task?.id}`;
-    const displaySubtitle = _pmsSeedEq?.equipmentType ?? (currentEq ? `${currentEq.equipmentType} - ${currentEq.serialNumber}` : "");
-    const displayClient = _pmsSeedEq?.clientId
-      ? (seedClients.find((c: any) => c.id === _pmsSeedEq.clientId)?.companyName ?? null)
-      : null;
-    const _pmsCfg = _pmsSeedEq?.pmsConfiguration?.[_pmsMeta._pmsIdx] ?? null;
-    const _taskPriority: string | null = _pmsMeta._priority ?? null;
-    const _taskMetricUnit: string | null = _pmsMeta._serviceIntervalUnit ?? null;
-    const _taskServiceType: string | null = _pmsMeta._serviceType ?? null;
-    const _eqPmsStatus: string | null = _pmsSeedEq?.status ?? null;
-    // Operating time: GPS cache for EQ-001, seed hoursTotal otherwise
-    const displayOperatingTime = (() => {
-      if (_pmsSeedEq?.id === "EQ-001") {
-        try {
-          const ms = Number(window.localStorage.getItem("nextos-gps001-total-hours-ms") ?? "0") || 0;
-          const offsetMs = Number(window.localStorage.getItem(GPS001_HOURS_OFFSET_KEY) ?? "0") || 0;
-          const effectiveMs = Math.max(0, ms - offsetMs);
-          if (ms > 0) {
-            const totalMin = Math.floor(effectiveMs / (1000 * 60));
-            return `${Math.floor(totalMin / 60)}h ${totalMin % 60}m`;
-          }
-        } catch { /* fall through */ }
       }
-      return _pmsSeedEq?.hoursTotal ?? `${currentEq?.hoursTotal ?? 0}`;
-    })();
+    }, 100);
+  };
 
-    return (
-        <Dialog open={!!task} onOpenChange={(open) => !open && onClose()}>
-            <DialogContent className="max-w-2xl bg-white border-gray-200 max-h-[90vh] overflow-auto scrollbar-hide rounded-2xl shadow-2xl p-0">
-                {task && draft && (
-                    <div className="flex flex-col h-full">
-                        <DialogHeader className="p-6 border-b border-gray-50 bg-gray-50/30 rounded-t-2xl">
-                            <DialogTitle className="flex items-center gap-2 text-gray-900 text-lg font-bold">
-                                <div className="w-8 h-8 rounded bg-[#66B2B2]/10 flex items-center justify-center">
-                                    <ClipboardList className="w-4 h-4 text-[#66B2B2]" />
-                                </div>
-                                Service Execution: <span className="font-mono-tech">{displayName}</span>
-                            </DialogTitle>
-                            <DialogDescription className="text-xs text-gray-500 mt-1">
-                                Complete the following steps to document and finalize the service execution for this asset.
-                            </DialogDescription>
-                        </DialogHeader>
+  const stopScanning = async () => {
+    if (scannerRef.current) {
+      try {
+        await scannerRef.current.stop();
+        await scannerRef.current.clear();
+      } catch (err) { }
+      scannerRef.current = null;
+    }
+    setIsScanning(false);
+  };
 
-                        <div className="px-10 py-6 border-b border-gray-50">
-                            <div className="flex items-center justify-between relative">
-                                {[1, 2, 3, 4, 5, 6].map((step, i) => (
-                                    <div key={step} className="flex items-center flex-1 last:flex-none">
-                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold z-10 transition-all ${
-                                            currentStep === step ? 'bg-[#66B2B2] text-white ring-4 ring-[#66B2B2]/10 scale-110' :
-                                            currentStep > step ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-400'
-                                        }`}>
-                                            {currentStep > step ? <Check className="w-4 h-4" /> : step}
-                                        </div>
-                                        {i < 5 && (
-                                            <div className={`h-1 flex-1 mx-2 rounded-full ${currentStep > step ? 'bg-green-500' : 'bg-gray-100'}`} />
-                                        )}
-                                    </div>
-                                ))}
-                            </div>
-                            <div className="flex justify-between mt-3 px-1">
-                                {["Scan", "Safety", "Before", "Findings", "After", "Sign"].map((label, i) => (
-                                    <span key={label} className={`text-[9px] font-bold uppercase tracking-wider ${currentStep === i + 1 ? 'text-[#66B2B2]' : 'text-gray-400'}`}>
-                                        {label}
-                                    </span>
-                                ))}
-                            </div>
-                        </div>
+  const handleScanSuccess = async (decodedText: string) => {
+    const currentEq = equipment.find(e => e.id === (draft?.equipmentId || task?.equipmentId));
+    // Use the seed serial for PMS tasks; fall back to store serial for sim/manual tasks
+    let _scanMeta: any = {};
+    try { _scanMeta = JSON.parse(task?.description ?? "{}"); } catch { }
+    const _scanSeedEq = _scanMeta._seedEqId
+      ? seedEquipment.find((s: any) => s.id === _scanMeta._seedEqId) ?? null
+      : null;
+    const expectedSerial = _scanSeedEq?.serialNumber ?? currentEq?.serialNumber ?? "";
+    if (decodedText.trim() === expectedSerial) {
+      await stopScanning();
+      setIsVerified(true);
+      toast.success("Asset Verified Successfully!");
+      // Capture arrival time when QR scan succeeds
+      if (task) {
+        updateDraftExecution(task.id, { arrivalTime: new Date().toISOString() });
+      }
+      // Auto-advance after a brief delay to show success state
+      setTimeout(() => {
+        if (currentEq) handleNext({ equipmentId: currentEq.id });
+        setIsVerified(false);
+      }, 1500);
+    } else {
+      toast.error("Serial Mismatch: " + decodedText);
+    }
+  };
 
-                        <div className="p-8 flex-1">
-                            {/* STEP 1: ASSET VERIFICATION */}
-                            {currentStep === 1 && (
-                                <div className="space-y-6 animate-in fade-in duration-300">
-                                    <div className="text-center pb-2">
-                                        <h4 className="text-lg font-bold text-gray-900">Asset Verification</h4>
-                                        <p className="text-sm text-gray-500">Confirm you are at the correct unit before beginning documentation.</p>
-                                    </div>
-                                    
-                                    {currentEq ? (
-                                        <div className="p-6 rounded-2xl bg-gray-900 text-white shadow-2xl space-y-6 border border-gray-800">
-                                            {isScanning ? (
-                                                <div className="space-y-4">
-                                                    <div className="text-center">
-                                                        <div className="inline-flex items-center gap-2 px-3 py-1 bg-[#66B2B2]/20 text-[#66B2B2] rounded-full text-[10px] font-black uppercase tracking-[0.1em] mb-4">
-                                                            <div className="w-2 h-2 rounded-full bg-[#66B2B2] animate-ping" /> Scanning Mode Active
-                                                        </div>
-                                                    </div>
-                                                    <div className="relative aspect-square max-w-[280px] mx-auto rounded-2xl overflow-hidden border-4 border-white/10 bg-black">
-                                                        <div id="qr-reader-modal" className="w-full h-full"></div>
-                                                        <div className="absolute inset-0 border-[40px] border-black/40 pointer-events-none">
-                                                            <div className="w-full h-full border-2 border-[#66B2B2]/50 rounded-lg relative">
-                                                                <div className="absolute top-0 left-0 w-4 h-4 border-t-4 border-l-4 border-[#66B2B2]" />
-                                                                <div className="absolute top-0 right-0 w-4 h-4 border-t-4 border-r-4 border-[#66B2B2]" />
-                                                                <div className="absolute bottom-0 left-0 w-4 h-4 border-b-4 border-l-4 border-[#66B2B2]" />
-                                                                <div className="absolute bottom-0 right-0 w-4 h-4 border-b-4 border-r-4 border-[#66B2B2]" />
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                    <Button 
-                                                        variant="ghost" 
-                                                        className="w-full text-gray-400 hover:text-white"
-                                                        onClick={stopScanning}
-                                                    >
-                                                        Cancel Scanning
-                                                    </Button>
-                                                </div>
-                                            ) : isVerified ? (
-                                                <div className="py-12 text-center space-y-4 animate-in zoom-in-95 duration-500">
-                                                    <div className="w-20 h-20 rounded-full bg-green-500/20 flex items-center justify-center mx-auto border-2 border-green-500/50">
-                                                        <Check className="w-10 h-10 text-green-500" />
-                                                    </div>
-                                                    <div>
-                                                        <h5 className="text-xl font-bold text-white">Asset Verified!</h5>
-                                                        <p className="text-sm text-gray-400">Lock-on confirmed. Initializing service report...</p>
-                                                    </div>
-                                                </div>
-                                            ) : (
-                                                <>
-                                                    <div className="flex items-start justify-between">
-                                                        <div>
-                                                            <div className="text-[10px] text-[#66B2B2] font-black uppercase tracking-[0.2em] mb-1">Target Asset</div>
-                                                            <div className="text-2xl font-black tracking-tight">{displayName}</div>
-                                                            {displayClient && <div className="text-xs text-[#66B2B2] font-semibold mt-0.5">{displayClient}</div>}
-                                                            <div className="text-sm text-gray-400 font-bold">{displaySubtitle}</div>
-                                                        </div>
-                                                        <div className="w-12 h-12 rounded-xl bg-white/5 flex items-center justify-center border border-white/10">
-                                                            <Package className="w-6 h-6 text-[#66B2B2]" />
-                                                        </div>
-                                                    </div>
+  const handleNext = (data: Partial<DraftExecution>) => {
+    if (!task) return;
+    updateDraftExecution(task.id, { ...data, currentStep: currentStep + 1 });
+  };
 
-                                                    <div className="grid grid-cols-2 gap-6 py-6 border-y border-white/5">
-                                                        <div className="space-y-1">
-                                                            <div className="text-[9px] text-gray-400 uppercase font-black tracking-widest">Serial Number</div>
-                                                            <div className="text-sm font-mono-tech font-bold text-[#66B2B2]">{displaySerial}</div>
-                                                        </div>
-                                                        <div className="space-y-1 text-right">
-                                                            <div className="text-[9px] text-gray-400 uppercase font-black tracking-widest">Operating Time</div>
-                                                            <div className="text-sm font-bold text-white">{displayOperatingTime}</div>
-                                                        </div>
-                                                    </div>
+  const handleBack = () => {
+    if (!task) return;
+    updateDraftExecution(task.id, { currentStep: Math.max(1, currentStep - 1) });
+  };
 
-                                                    <div className="space-y-4">
-                                                        <Button 
-                                                            className="w-full h-14 bg-[#66B2B2] hover:bg-[#5A9E9E] text-white font-black rounded-xl shadow-xl transition-all active:scale-[0.98] text-sm uppercase tracking-widest"
-                                                            onClick={startScanning}
-                                                        >
-                                                            <QrCode className="w-5 h-5 mr-3" />
-                                                            Scan QR to Unlock Service
-                                                        </Button>
+  const submitFinalReport = () => {
+    if (!task || !draft) return;
+    if (!draft.techSignature || !draft.clientSignature) {
+      toast.error("Both signatures required");
+      return;
+    }
 
-                                                        {scannerError && (
-                                                            <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-center">
-                                                                <p className="text-[10px] text-red-400 font-bold uppercase tracking-tight">{scannerError}</p>
-                                                            </div>
-                                                        )}
+    const completionTime = new Date().toISOString();
+    const completedDate = completionTime;
+    const effectiveEquipId = draft.equipmentId || task.equipmentId;
+    const storeEq = equipment.find(e => e.id === effectiveEquipId);
 
-                                                        <div className="text-center">
-                                                            <button 
-                                                                onClick={() => handleNext({ equipmentId: currentEq.id })}
-                                                                className="text-[10px] font-black text-gray-500 hover:text-gray-300 uppercase tracking-widest transition-colors"
-                                                            >
-                                                                Tag Damaged? Verify Manually
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                </>
-                                            )}
-                                        </div>
-                                    ) : (
-                                        <div className="p-10 text-center bg-gray-50 rounded-2xl border border-dashed">
-                                            <AlertTriangle className="w-10 h-10 text-amber-500 mx-auto mb-3" />
-                                            <p className="text-sm text-gray-500 font-bold">Error: Asset data not found for this task.</p>
-                                        </div>
-                                    )}
-                                </div>
-                            )}
+    // Log Part Usage and Deduct Stock
+    if (draft.selectedParts && draft.selectedParts.length > 0) {
+      draft.selectedParts.forEach(part => {
+        logPartUsage({
+          serviceRecordId: task.id,
+          inventoryItemId: part.inventoryItemId,
+          quantityUsed: part.quantity
+        });
+        const seedPartId = inventoryItems.find(i => i.id === part.inventoryItemId)?.partNumber ?? String(part.inventoryItemId);
+        deductStockMutation.mutate(
+          { partId: seedPartId, quantityUsed: part.quantity },
+          { onError: (err) => console.error("inventory.deductStock failed", err) }
+        );
+        logUsageMutation.mutate({
+          inventoryItemId: part.inventoryItemId,
+          serviceRecordId: task.id,
+          quantityUsed: part.quantity,
+          unitPriceAtTime: part.pricePerUnit,
+          createdAt: new Date().toISOString(),
+        }, { onError: (err) => console.error("inventory.logUsage failed", err) });
+      });
+    }
 
-                            {/* STEP 2: SAFETY PROTOCOL */}
-                            {currentStep === 2 && (
-                                <SafetyProtocol 
-                                    checklist={draft.safetyChecklist || { ppeChecked: false, engineOff: false, areaSecured: false, lotoApplied: false }}
-                                    onSave={(checklist) => handleNext({ safetyChecklist: checklist })}
-                                    onBack={handleBack}
-                                />
-                            )}
+    updateServiceRecord(task.id, {
+      status: "completed",
+      technician: execUser?.name || "Technician",
+      findings: draft.findings,
+      workDone: draft.workDone,
+      recommendation: draft.recommendations,
+      partsUsed: draft.selectedParts?.map(p => `${p.name} (x${p.quantity})`).join(", ") || "None",
+      cost: draft.cost ?? task.cost ?? 0,
+      hoursAtService: (draft.hoursAtService ?? parseFloat(String(storeEq?.hoursTotal))) || 0,
+      techSignature: draft.techSignature,
+      clientSignature: draft.clientSignature,
+      clientRepresentativeName: draft.clientRepresentativeName ?? "",
+      safetyChecklist: draft.safetyChecklist,
+      completedDate,
+      equipmentId: effectiveEquipId,
+    });
 
-                            {/* STEP 3: BEFORE PHOTO */}
-                            {currentStep === 3 && (
-                                <div className="space-y-6 animate-in fade-in duration-300">
-                                    <div className="text-center">
-                                        <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-3">
-                                            <Camera className="w-8 h-8 text-gray-400" />
-                                        </div>
-                                        <h4 className="text-lg font-bold text-gray-900">Pre-Service Documentation</h4>
-                                        <p className="text-sm text-gray-500">Capture the initial condition of the asset.</p>
-                                    </div>
-                                    <VisualEvidence 
-                                        label="BEFORE" 
-                                        photo={draft.beforePhoto} 
-                                        notes={draft.beforeNotes}
-                                        onSave={(photo, notes) => handleNext({ beforePhoto: photo, beforeNotes: notes })}
-                                        onBack={handleBack}
-                                    />
-                                </div>
-                            )}
+    if (draft.beforePhoto) {
+      addServicePhoto({ serviceRecordId: task.id, type: "before", url: draft.beforePhoto, caption: "Before Service" });
+    }
+    if (draft.afterPhoto) {
+      addServicePhoto({ serviceRecordId: task.id, type: "after", url: draft.afterPhoto, caption: "After Service" });
+    }
 
-                            {currentStep === 4 && (
-                                <TechnicalWorkForm
-                                    draft={draft}
-                                    equipment={currentEq}
-                                    client={seedClients?.find((c: any) => String(c.id) === String(task.clientId))}
-                                    packages={packages}
-                                    seedEquipment={_pmsSeedEq}
-                                    seedClients={seedClients}
-                                    pmsConfig={_pmsCfg}
-                                    taskPriority={_taskPriority}
-                                    taskMetricUnit={_taskMetricUnit}
-                                    taskServiceType={_taskServiceType}
-                                    eqPmsStatus={_isPmsTask ? _eqPmsStatus : null}
-                                    onSave={(data) => handleNext(data)}
-                                    onBack={handleBack}
-                                />
-                            )}
+    // Persist completed service record to seed-data.json (all tasks, not just PMS)
+    try {
+      let meta: any = {};
+      try { meta = JSON.parse(task.description ?? "{}"); } catch { }
+      const seedEq = meta._seedEqId
+        ? seedEquipment.find((s: any) => s.id === meta._seedEqId) ?? null
+        : null;
+      const pmsCfg = seedEq?.pmsConfiguration?.[meta._pmsIdx] ?? null;
+      const seedClient = seedEq?.clientId
+        ? seedClients.find((c: any) => c.id === seedEq.clientId) ?? null
+        : null;
 
-                            {currentStep === 5 && (
-                                <div className="space-y-6 animate-in fade-in duration-300">
-                                    <div className="text-center">
-                                        <div className="w-16 h-16 rounded-full bg-green-50 flex items-center justify-center mx-auto mb-3">
-                                            <CheckCircle2 className="w-8 h-8 text-[#10B981]" />
-                                        </div>
-                                        <h4 className="text-lg font-bold text-gray-900">Post-Service Documentation</h4>
-                                        <p className="text-sm text-gray-500">Capture the asset state after service completion.</p>
-                                    </div>
-                                    <VisualEvidence 
-                                        label="AFTER" 
-                                        photo={draft.afterPhoto} 
-                                        notes={draft.afterNotes}
-                                        onSave={(photo, notes) => handleNext({ afterPhoto: photo, afterNotes: notes })}
-                                        onBack={handleBack}
-                                    />
-                                </div>
-                            )}
+      // Prefer values snapshotted at task-creation time (embedded in description) over the
+      // current static import. This ensures that if the PMS config was edited after the
+      // task was triggered (e.g. 200 h → 2000 h), the completed record still shows the
+      // interval that was actually in effect when the equipment went Overdue.
+      const snapshotInterval: number | undefined =
+        meta._serviceInterval !== undefined ? Number(meta._serviceInterval) : pmsCfg?.serviceInterval;
+      const snapshotIntervalUnit: string | undefined =
+        meta._serviceIntervalUnit ?? pmsCfg?.serviceIntervalUnit;
+      const snapshotServiceType: string | undefined =
+        meta._serviceType ?? pmsCfg?.serviceType;
 
-                            {currentStep === 6 && (
-                                <div className="space-y-8 animate-in fade-in duration-300">
-                                    <SignaturePad
-                                        label="Technician Verification"
-                                        value={draft.techSignature}
-                                        onChange={(sig) => updateDraftExecution(task.id, { techSignature: sig })}
-                                        caption="I certify that the listed work has been completed to specification."
-                                    />
-                                    <div className="space-y-2">
-                                        <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-1">
-                                            Client Representative Name
-                                        </label>
-                                        <input
-                                            type="text"
-                                            placeholder="Name of person signing on behalf of client"
-                                            value={draft.clientRepresentativeName ?? ""}
-                                            onChange={(e) => updateDraftExecution(task.id, { clientRepresentativeName: e.target.value })}
-                                            className="w-full h-10 px-3 rounded-xl border border-gray-200 text-sm focus:border-[#66B2B2] focus:ring-2 focus:ring-[#66B2B2]/10 outline-none"
-                                        />
-                                    </div>
-                                    <SignaturePad
-                                        label="Client Acceptance"
-                                        value={draft.clientSignature}
-                                        onChange={(sig) => updateDraftExecution(task.id, { clientSignature: sig })}
-                                        caption="Client representative acknowledgment of work completion."
-                                    />
-                                    <div className="flex gap-3">
-                                        <Button variant="outline" className="flex-1 h-12 rounded-xl font-bold" onClick={handleBack}>Previous</Button>
-                                        <Button 
-                                            className="flex-[2] h-12 bg-gray-900 text-white font-bold rounded-xl shadow-xl hover:bg-black"
-                                            onClick={submitFinalReport}
-                                        >
-                                            Seal & Submit Final Report
-                                        </Button>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
+      let metricAtService = "";
+      if (pmsCfg || (snapshotIntervalUnit !== undefined)) {
+        const unit: string = snapshotIntervalUnit ?? "Hours";
+        let gps001Ms = 0;
+        try { gps001Ms = Number(window.localStorage.getItem("nextos-gps001-total-hours-ms") ?? "0") || 0; } catch { }
+        metricAtService = getPmsMetricValue(seedEq, unit, gps001Ms);
+      }
+
+      // Decide whether the server should atomically reset this equipment's metrics.
+      // • Non-EQ-001 seed equipment: ALWAYS reset (hours/km only, not days).
+      //   These are static-JSON values, so the server must zero them so status = OK.
+      // • EQ-001 (Excavator CAT 320): only if the "Reset Hours on Completion" toggle is ON.
+      //   Its live hours come from GPS (localStorage), not seed-data.json; the server
+      //   resets the seed field so applyComputedServiceStatuses writes status = OK to disk.
+      const isEq001Task = meta._seedEqId === "EQ-001";
+      // Use snapshotted unit so a config change doesn't affect the reset decision either.
+      const pmsUnit = (snapshotIntervalUnit ?? "").toLowerCase();
+      const isHoursOrKmTask = pmsUnit === "hours" || pmsUnit === "km" || pmsUnit === "weeks" || pmsUnit === "months" || pmsUnit === "years";
+      const hasPmsConfig = !!pmsCfg
+        || (snapshotInterval !== undefined && snapshotIntervalUnit !== undefined)
+        || (meta._resetOnComplete === true && snapshotIntervalUnit !== undefined);
+      const shouldResetMetrics =
+        (meta._src === "pms" || meta._resetOnComplete === true) &&
+        !!meta._seedEqId &&
+        hasPmsConfig &&
+        isHoursOrKmTask &&
+        (!isEq001Task || resetOnCompletion); // non-EQ-001: always; EQ-001: only if toggle ON
+
+      // Compute equipment status fresh from live metrics so the service report
+      // reflects the true state at submission time, not a potentially stale cached value.
+      let computedEquipmentStatus: string | null = seedEq?.status ?? null;
+      if (seedEq && snapshotInterval && snapshotIntervalUnit) {
+        const _unit = snapshotIntervalUnit.toLowerCase();
+        let _usage: number | null = null;
+        if (_unit === "hours") {
+          if (seedEq?.id === "EQ-001") {
+            // EQ-001 hours live in GPS localStorage, not seedEq.hoursTotal.
+            // Apply the same offset used everywhere else so the snapshot reflects
+            // hours-since-last-service, not raw GPS lifetime hours.
+            let _rawMs = 0;
+            let _offsetMs = 0;
+            try { _rawMs = Number(window.localStorage.getItem("nextos-gps001-total-hours-ms") ?? "0") || 0; } catch { }
+            try { _offsetMs = Number(window.localStorage.getItem(GPS001_HOURS_OFFSET_KEY) ?? "0") || 0; } catch { }
+            const _effectiveMs = Math.max(0, _rawMs - _offsetMs);
+            _usage = _effectiveMs / (1000 * 60 * 60);
+          } else {
+            const _m = String(seedEq.hoursTotal ?? "").match(/(\d+)\s*h\s*(\d+)\s*m/i);
+            if (_m) _usage = Number(_m[1]) + Number(_m[2]) / 60;
+          }
+        } else if (_unit === "km") {
+          const _raw = seedEq.kmTotal;
+          const _p = typeof _raw === "number" ? _raw : parseFloat(String(_raw ?? "").replace(/[^\d.]/g, ""));
+          if (Number.isFinite(_p) && _p >= 0) _usage = _p;
+        } else {
+          const _days = typeof seedEq.days === "number" ? seedEq.days : parseFloat(String(seedEq.days ?? ""));
+          if (Number.isFinite(_days) && _days >= 0) {
+            if (_unit === "weeks") _usage = _days / 7;
+            else if (_unit === "months") _usage = _days / 30.44;
+            else if (_unit === "years") _usage = _days / 365.25;
+          }
+        }
+        if (_usage !== null && Number.isFinite(_usage) && _usage >= 0) {
+          const _pct = (_usage / snapshotInterval) * 100;
+          computedEquipmentStatus = computePmsStatus(_pct, seedData.pmsStatuses) ?? "OK";
+        }
+      }
+
+      // Build the full payload object before calling mutate so we can
+      // save it verbatim to the retry queue if the write fails.
+      const submissionPayload = {
+        id: task.id,
+        completedDate,
+        technician: execUser?.name || "Technician",
+        // Core record fields (for upsert)
+        seedEquipmentId: meta._seedEqId ?? "",
+        pmsConfigIndex: meta._pmsIdx ?? 0,
+        equipmentId: effectiveEquipId,
+        clientId: task.clientId,
+        serviceCategory: task.serviceCategory,
+        scheduledDate: task.scheduledDate ?? completedDate,
+        description: task.description ?? "",
+        // Service work
+        findings: draft.findings ?? "",
+        workDone: draft.workDone ?? "",
+        recommendation: draft.recommendations ?? "",
+        partsUsed: draft.selectedParts?.map((p) => `${p.name} (x${p.quantity})`).join(", ") || "",
+        selectedParts: draft.selectedParts ?? [],
+        partsUsedDetails: (draft.selectedParts ?? []).map(p => ({ name: p.name, quantity: p.quantity, pricePerUnit: p.pricePerUnit })),
+        cost: draft.cost ?? pmsCfg?.estimatedCost ?? task.cost ?? 0,
+        hoursAtService: (draft.hoursAtService ?? parseFloat(String(storeEq?.hoursTotal))) || 0,
+        // Rich completion fields
+        equipmentName: seedEq?.name ?? storeEq?.name ?? "",
+        clientName: seedClient?.companyName ?? seedClients?.find(c => String(c.id) === String(task.clientId))?.companyName ?? "",
+        equipmentType: seedEq?.equipmentType ?? "",
+        serialNumber: seedEq?.serialNumber ?? storeEq?.serialNumber ?? "",
+        serviceType: snapshotServiceType ?? task.serviceCategory,
+        serviceInterval: snapshotInterval,
+        serviceIntervalUnit: snapshotIntervalUnit,
+        metricAtService,
+        safetyChecklist: draft.safetyChecklist,
+        beforePhoto: draft.beforePhoto,
+        beforeNotes: draft.beforeNotes,
+        afterPhoto: draft.afterPhoto,
+        afterNotes: draft.afterNotes,
+        techSignature: draft.techSignature,
+        clientSignature: draft.clientSignature,
+        clientRepresentativeName: draft.clientRepresentativeName ?? "",
+        startTime: draft.travelStartTime ?? null,
+        endTime: completionTime,
+        duration: null,
+        finalCost: draft.cost ?? null,
+        travelStartTime: draft.travelStartTime ?? null,
+        arrivalTime: draft.arrivalTime ?? null,
+        completionTime,
+        technicianAddress: draft.technicianAddress ?? null,
+        equipmentSiteAddress: draft.equipmentSiteAddress ?? null,
+        equipmentStatusAtService: computedEquipmentStatus,
+        // Tell the server to atomically zero out this equipment's metrics in the same
+        // file write (avoids the race condition of a separate chained mutation).
+        resetMetricsOnComplete: shouldResetMetrics,
+      } as any;
+
+      completeSeedServiceRecordMutation.mutate(submissionPayload, {
+        onSuccess: () => {
+          trpcUtils.seedServiceRecords.list.invalidate();
+          setTimeout(() => {
+            trpcUtils.seedEquipment.list.invalidate();
+          }, 400);
+          if (shouldResetMetrics) {
+            onMetricsReset?.(meta._seedEqId as string, snapshotIntervalUnit ?? "Hours");
+          }
+        },
+        onError: () => {
+          queuePendingSubmission({
+            id: task.id,
+            queuedAt: new Date().toISOString(),
+            payload: submissionPayload,
+          });
+          toast.error("Couldn't write report to records — will retry automatically.");
+        },
+      });
+    } catch { /* silently skip — in-memory update already done */ }
+
+    clearDraftExecution(task.id);
+    toast.success("Final report sealed and submitted!");
+    setTimeout(() => onFinish(), 80);
+  };
+
+  // Cleanup scanner on unmount or close
+  useEffect(() => {
+    return () => {
+      if (scannerRef.current) {
+        try { const s = scannerRef.current.stop(); if (s && typeof (s as any).catch === "function") (s as any).catch(() => { }); } catch { }
+        try { const c = (scannerRef.current.clear as any)(); if (c && typeof c.catch === "function") c.catch(() => { }); } catch { }
+      }
+    };
+  }, []);
+
+  const currentEq = equipment.find(e => e.id === (draft?.equipmentId || task?.equipmentId));
+
+  // Resolve display values from seed data for any task with a _seedEqId (PMS or manual).
+  let _pmsMeta: any = {};
+  try { _pmsMeta = JSON.parse(task?.description ?? "{}"); } catch { }
+  const _isPmsTask = _pmsMeta._src === "pms";
+  const _pmsSeedEq = _pmsMeta._seedEqId
+    ? seedEquipment.find((s: any) => s.id === _pmsMeta._seedEqId) ?? null
+    : (currentEq?.serialNumber
+      ? seedEquipment.find((s: any) => s.serialNumber === currentEq.serialNumber) ?? null
+      : null);
+
+  // Serial number used for QR verification and display
+  const displaySerial = _pmsSeedEq?.serialNumber ?? currentEq?.serialNumber ?? "";
+  // Equipment name shown in the header and Step 1 card
+  const displayName = _pmsSeedEq?.name ?? currentEq?.name ?? `SIM-UNIT-${task?.id}`;
+  const displaySubtitle = _pmsSeedEq?.equipmentType ?? (currentEq ? `${currentEq.equipmentType} - ${currentEq.serialNumber}` : "");
+  const displayClient = _pmsSeedEq?.clientId
+    ? (seedClients.find((c: any) => c.id === _pmsSeedEq.clientId)?.companyName ?? null)
+    : null;
+  const _pmsCfg = _pmsSeedEq?.pmsConfiguration?.[_pmsMeta._pmsIdx] ?? null;
+  const _taskPriority: string | null = _pmsMeta._priority ?? null;
+  const _taskMetricUnit: string | null = _pmsMeta._serviceIntervalUnit ?? null;
+  const _taskServiceType: string | null = _pmsMeta._serviceType ?? null;
+  const _eqPmsStatus: string | null = _pmsSeedEq?.status ?? null;
+  // Operating time: GPS cache for EQ-001, seed hoursTotal otherwise
+  const displayOperatingTime = (() => {
+    if (_pmsSeedEq?.id === "EQ-001") {
+      try {
+        const ms = Number(window.localStorage.getItem("nextos-gps001-total-hours-ms") ?? "0") || 0;
+        const offsetMs = Number(window.localStorage.getItem(GPS001_HOURS_OFFSET_KEY) ?? "0") || 0;
+        const effectiveMs = Math.max(0, ms - offsetMs);
+        if (ms > 0) {
+          const totalMin = Math.floor(effectiveMs / (1000 * 60));
+          return `${Math.floor(totalMin / 60)}h ${totalMin % 60}m`;
+        }
+      } catch { /* fall through */ }
+    }
+    return _pmsSeedEq?.hoursTotal ?? `${currentEq?.hoursTotal ?? 0}`;
+  })();
+
+  return (
+    <Dialog open={!!task} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-2xl bg-white border-gray-200 max-h-[90vh] overflow-auto scrollbar-hide rounded-2xl shadow-2xl p-0">
+        {task && draft && (
+          <div className="flex flex-col h-full">
+            <DialogHeader className="p-6 border-b border-gray-50 bg-gray-50/30 rounded-t-2xl">
+              <DialogTitle className="flex items-center gap-2 text-gray-900 text-lg font-bold">
+                <div className="w-8 h-8 rounded bg-[#66B2B2]/10 flex items-center justify-center">
+                  <ClipboardList className="w-4 h-4 text-[#66B2B2]" />
+                </div>
+                Service Execution: <span className="font-mono-tech">{displayName}</span>
+              </DialogTitle>
+              <DialogDescription className="text-xs text-gray-500 mt-1">
+                Complete the following steps to document and finalize the service execution for this asset.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="px-10 py-6 border-b border-gray-50">
+              <div className="flex items-center justify-between relative">
+                {[1, 2, 3, 4, 5, 6].map((step, i) => (
+                  <div key={step} className="flex items-center flex-1 last:flex-none">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold z-10 transition-all ${currentStep === step ? 'bg-[#66B2B2] text-white ring-4 ring-[#66B2B2]/10 scale-110' :
+                        currentStep > step ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-400'
+                      }`}>
+                      {currentStep > step ? <Check className="w-4 h-4" /> : step}
                     </div>
-                )}
-            </DialogContent>
-        </Dialog>
-    );
+                    {i < 5 && (
+                      <div className={`h-1 flex-1 mx-2 rounded-full ${currentStep > step ? 'bg-green-500' : 'bg-gray-100'}`} />
+                    )}
+                  </div>
+                ))}
+              </div>
+              <div className="flex justify-between mt-3 px-1">
+                {["Scan", "Safety", "Before", "Findings", "After", "Sign"].map((label, i) => (
+                  <span key={label} className={`text-[9px] font-bold uppercase tracking-wider ${currentStep === i + 1 ? 'text-[#66B2B2]' : 'text-gray-400'}`}>
+                    {label}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <div className="p-8 flex-1">
+              {/* STEP 1: ASSET VERIFICATION */}
+              {currentStep === 1 && (
+                <div className="space-y-6 animate-in fade-in duration-300">
+                  <div className="text-center pb-2">
+                    <h4 className="text-lg font-bold text-gray-900">Asset Verification</h4>
+                    <p className="text-sm text-gray-500">Confirm you are at the correct unit before beginning documentation.</p>
+                  </div>
+
+                  {currentEq ? (
+                    <div className="p-6 rounded-2xl bg-gray-900 text-white shadow-2xl space-y-6 border border-gray-800">
+                      {isScanning ? (
+                        <div className="space-y-4">
+                          <div className="text-center">
+                            <div className="inline-flex items-center gap-2 px-3 py-1 bg-[#66B2B2]/20 text-[#66B2B2] rounded-full text-[10px] font-black uppercase tracking-[0.1em] mb-4">
+                              <div className="w-2 h-2 rounded-full bg-[#66B2B2] animate-ping" /> Scanning Mode Active
+                            </div>
+                          </div>
+                          <div className="relative aspect-square max-w-[280px] mx-auto rounded-2xl overflow-hidden border-4 border-white/10 bg-black">
+                            <div id="qr-reader-modal" className="w-full h-full"></div>
+                            <div className="absolute inset-0 border-[40px] border-black/40 pointer-events-none">
+                              <div className="w-full h-full border-2 border-[#66B2B2]/50 rounded-lg relative">
+                                <div className="absolute top-0 left-0 w-4 h-4 border-t-4 border-l-4 border-[#66B2B2]" />
+                                <div className="absolute top-0 right-0 w-4 h-4 border-t-4 border-r-4 border-[#66B2B2]" />
+                                <div className="absolute bottom-0 left-0 w-4 h-4 border-b-4 border-l-4 border-[#66B2B2]" />
+                                <div className="absolute bottom-0 right-0 w-4 h-4 border-b-4 border-r-4 border-[#66B2B2]" />
+                              </div>
+                            </div>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            className="w-full text-gray-400 hover:text-white"
+                            onClick={stopScanning}
+                          >
+                            Cancel Scanning
+                          </Button>
+                        </div>
+                      ) : isVerified ? (
+                        <div className="py-12 text-center space-y-4 animate-in zoom-in-95 duration-500">
+                          <div className="w-20 h-20 rounded-full bg-green-500/20 flex items-center justify-center mx-auto border-2 border-green-500/50">
+                            <Check className="w-10 h-10 text-green-500" />
+                          </div>
+                          <div>
+                            <h5 className="text-xl font-bold text-white">Asset Verified!</h5>
+                            <p className="text-sm text-gray-400">Lock-on confirmed. Initializing service report...</p>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="flex items-start justify-between">
+                            <div>
+                              <div className="text-[10px] text-[#66B2B2] font-black uppercase tracking-[0.2em] mb-1">Target Asset</div>
+                              <div className="text-2xl font-black tracking-tight">{displayName}</div>
+                              {displayClient && <div className="text-xs text-[#66B2B2] font-semibold mt-0.5">{displayClient}</div>}
+                              <div className="text-sm text-gray-400 font-bold">{displaySubtitle}</div>
+                            </div>
+                            <div className="w-12 h-12 rounded-xl bg-white/5 flex items-center justify-center border border-white/10">
+                              <Package className="w-6 h-6 text-[#66B2B2]" />
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-6 py-6 border-y border-white/5">
+                            <div className="space-y-1">
+                              <div className="text-[9px] text-gray-400 uppercase font-black tracking-widest">Serial Number</div>
+                              <div className="text-sm font-mono-tech font-bold text-[#66B2B2]">{displaySerial}</div>
+                            </div>
+                            <div className="space-y-1 text-right">
+                              <div className="text-[9px] text-gray-400 uppercase font-black tracking-widest">Operating Time</div>
+                              <div className="text-sm font-bold text-white">{displayOperatingTime}</div>
+                            </div>
+                          </div>
+
+                          <div className="space-y-4">
+                            <Button
+                              className="w-full h-14 bg-[#66B2B2] hover:bg-[#5A9E9E] text-white font-black rounded-xl shadow-xl transition-all active:scale-[0.98] text-sm uppercase tracking-widest"
+                              onClick={startScanning}
+                            >
+                              <QrCode className="w-5 h-5 mr-3" />
+                              Scan QR to Unlock Service
+                            </Button>
+
+                            {scannerError && (
+                              <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-center">
+                                <p className="text-[10px] text-red-400 font-bold uppercase tracking-tight">{scannerError}</p>
+                              </div>
+                            )}
+
+                            <div className="text-center">
+                              <button
+                                onClick={() => handleNext({ equipmentId: currentEq.id })}
+                                className="text-[10px] font-black text-gray-500 hover:text-gray-300 uppercase tracking-widest transition-colors"
+                              >
+                                Tag Damaged? Verify Manually
+                              </button>
+                            </div>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="p-10 text-center bg-gray-50 rounded-2xl border border-dashed">
+                      <AlertTriangle className="w-10 h-10 text-amber-500 mx-auto mb-3" />
+                      <p className="text-sm text-gray-500 font-bold">Error: Asset data not found for this task.</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* STEP 2: SAFETY PROTOCOL */}
+              {currentStep === 2 && (
+                <SafetyProtocol
+                  checklist={draft.safetyChecklist || { ppeChecked: false, engineOff: false, areaSecured: false, lotoApplied: false }}
+                  onSave={(checklist) => handleNext({ safetyChecklist: checklist })}
+                  onBack={handleBack}
+                />
+              )}
+
+              {/* STEP 3: BEFORE PHOTO */}
+              {currentStep === 3 && (
+                <div className="space-y-6 animate-in fade-in duration-300">
+                  <div className="text-center">
+                    <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-3">
+                      <Camera className="w-8 h-8 text-gray-400" />
+                    </div>
+                    <h4 className="text-lg font-bold text-gray-900">Pre-Service Documentation</h4>
+                    <p className="text-sm text-gray-500">Capture the initial condition of the asset.</p>
+                  </div>
+                  <VisualEvidence
+                    label="BEFORE"
+                    photo={draft.beforePhoto}
+                    notes={draft.beforeNotes}
+                    onSave={(photo, notes) => handleNext({ beforePhoto: photo, beforeNotes: notes })}
+                    onBack={handleBack}
+                  />
+                </div>
+              )}
+
+              {currentStep === 4 && (
+                <TechnicalWorkForm
+                  draft={draft}
+                  equipment={currentEq}
+                  client={seedClients?.find((c: any) => String(c.id) === String(task.clientId))}
+                  packages={packages}
+                  seedEquipment={_pmsSeedEq}
+                  seedClients={seedClients}
+                  pmsConfig={_pmsCfg}
+                  taskPriority={_taskPriority}
+                  taskMetricUnit={_taskMetricUnit}
+                  taskServiceType={_taskServiceType}
+                  eqPmsStatus={_isPmsTask ? _eqPmsStatus : null}
+                  onSave={(data) => handleNext(data)}
+                  onBack={handleBack}
+                />
+              )}
+
+              {currentStep === 5 && (
+                <div className="space-y-6 animate-in fade-in duration-300">
+                  <div className="text-center">
+                    <div className="w-16 h-16 rounded-full bg-green-50 flex items-center justify-center mx-auto mb-3">
+                      <CheckCircle2 className="w-8 h-8 text-[#10B981]" />
+                    </div>
+                    <h4 className="text-lg font-bold text-gray-900">Post-Service Documentation</h4>
+                    <p className="text-sm text-gray-500">Capture the asset state after service completion.</p>
+                  </div>
+                  <VisualEvidence
+                    label="AFTER"
+                    photo={draft.afterPhoto}
+                    notes={draft.afterNotes}
+                    onSave={(photo, notes) => handleNext({ afterPhoto: photo, afterNotes: notes })}
+                    onBack={handleBack}
+                  />
+                </div>
+              )}
+
+              {currentStep === 6 && (
+                <div className="space-y-8 animate-in fade-in duration-300">
+                  <SignaturePad
+                    label="Technician Verification"
+                    value={draft.techSignature}
+                    onChange={(sig) => updateDraftExecution(task.id, { techSignature: sig })}
+                    caption="I certify that the listed work has been completed to specification."
+                  />
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-1">
+                      Client Representative Name
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Name of person signing on behalf of client"
+                      value={draft.clientRepresentativeName ?? ""}
+                      onChange={(e) => updateDraftExecution(task.id, { clientRepresentativeName: e.target.value })}
+                      className="w-full h-10 px-3 rounded-xl border border-gray-200 text-sm focus:border-[#66B2B2] focus:ring-2 focus:ring-[#66B2B2]/10 outline-none"
+                    />
+                  </div>
+                  <SignaturePad
+                    label="Client Acceptance"
+                    value={draft.clientSignature}
+                    onChange={(sig) => updateDraftExecution(task.id, { clientSignature: sig })}
+                    caption="Client representative acknowledgment of work completion."
+                  />
+                  <div className="flex gap-3">
+                    <Button variant="outline" className="flex-1 h-12 rounded-xl font-bold" onClick={handleBack}>Previous</Button>
+                    <Button
+                      className="flex-[2] h-12 bg-gray-900 text-white font-bold rounded-xl shadow-xl hover:bg-black"
+                      onClick={submitFinalReport}
+                    >
+                      Seal & Submit Final Report
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 function SafetyProtocol({ checklist, onSave, onBack }: { checklist: any, onSave: (c: any) => void, onBack: () => void }) {
-    const [localChecklist, setLocalChecklist] = useState(checklist);
+  const [localChecklist, setLocalChecklist] = useState(checklist);
 
-    const items = [
-        { id: 'ppeChecked', label: 'PPE Verified', desc: 'Helmet, Gloves, and High-Vis vest are worn.', icon: UserCheck },
-        { id: 'engineOff', label: 'Engine Isolated', desc: 'Engine is OFF and key is removed from ignition.', icon: Clock },
-        { id: 'areaSecured', label: 'Work Area Secured', desc: 'Area is cordoned off and bystanders are clear.', icon: AlertTriangle },
-        { id: 'lotoApplied', label: 'LOTO Applied', desc: 'Lockout/Tagout procedures are physically applied.', icon: Settings },
-    ];
+  const items = [
+    { id: 'ppeChecked', label: 'PPE Verified', desc: 'Helmet, Gloves, and High-Vis vest are worn.', icon: UserCheck },
+    { id: 'engineOff', label: 'Engine Isolated', desc: 'Engine is OFF and key is removed from ignition.', icon: Clock },
+    { id: 'areaSecured', label: 'Work Area Secured', desc: 'Area is cordoned off and bystanders are clear.', icon: AlertTriangle },
+    { id: 'lotoApplied', label: 'LOTO Applied', desc: 'Lockout/Tagout procedures are physically applied.', icon: Settings },
+  ];
 
-    const allChecked = Object.values(localChecklist).every(v => v === true);
+  const allChecked = Object.values(localChecklist).every(v => v === true);
 
-    return (
-        <div className="space-y-6 animate-in fade-in duration-300">
-            <div className="text-center">
-                <div className="w-16 h-16 rounded-full bg-amber-50 flex items-center justify-center mx-auto mb-3">
-                    <AlertTriangle className="w-8 h-8 text-amber-600" />
-                </div>
-                <h4 className="text-lg font-bold text-gray-900">Safety First Protocol</h4>
-                <p className="text-sm text-gray-500 px-10">Perform these mandatory checks before touching the machine.</p>
-            </div>
-
-            <div className="space-y-3">
-                {items.map((item) => (
-                    <button
-                        key={item.id}
-                        onClick={() => setLocalChecklist({ ...localChecklist, [item.id]: !localChecklist[item.id] })}
-                        className={`w-full flex items-center gap-4 p-4 rounded-2xl border-2 transition-all text-left ${
-                            localChecklist[item.id] 
-                                ? 'bg-green-50 border-green-500 shadow-sm' 
-                                : 'bg-white border-gray-100 hover:border-gray-200'
-                        }`}
-                    >
-                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${
-                            localChecklist[item.id] ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-400'
-                        }`}>
-                            <item.icon className="w-5 h-5" />
-                        </div>
-                        <div className="flex-1">
-                            <div className={`text-sm font-bold ${localChecklist[item.id] ? 'text-green-700' : 'text-gray-900'}`}>{item.label}</div>
-                            <div className="text-[10px] text-gray-400 font-medium uppercase tracking-tighter">{item.desc}</div>
-                        </div>
-                        <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${
-                            localChecklist[item.id] ? 'bg-green-500 border-green-500' : 'bg-white border-gray-200'
-                        }`}>
-                            {localChecklist[item.id] && <Check className="w-4 h-4 text-white" />}
-                        </div>
-                    </button>
-                ))}
-            </div>
-
-            <div className="flex gap-3 pt-2">
-                <Button variant="ghost" className="flex-1 h-12 rounded-xl text-gray-400 font-bold" onClick={onBack}>Previous</Button>
-                <Button 
-                    className={`flex-[2] h-12 font-bold rounded-xl transition-all ${
-                        allChecked 
-                            ? 'bg-[#66B2B2] text-white hover:bg-[#5A9E9E] shadow-lg shadow-[#66B2B2]/20' 
-                            : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                    }`}
-                    disabled={!allChecked}
-                    onClick={() => onSave(localChecklist)}
-                >
-                    {allChecked ? 'Proceed to Documentation' : 'Complete Checklist to Unlock'}
-                </Button>
-            </div>
+  return (
+    <div className="space-y-6 animate-in fade-in duration-300">
+      <div className="text-center">
+        <div className="w-16 h-16 rounded-full bg-amber-50 flex items-center justify-center mx-auto mb-3">
+          <AlertTriangle className="w-8 h-8 text-amber-600" />
         </div>
-    );
+        <h4 className="text-lg font-bold text-gray-900">Safety First Protocol</h4>
+        <p className="text-sm text-gray-500 px-10">Perform these mandatory checks before touching the machine.</p>
+      </div>
+
+      <div className="space-y-3">
+        {items.map((item) => (
+          <button
+            key={item.id}
+            onClick={() => setLocalChecklist({ ...localChecklist, [item.id]: !localChecklist[item.id] })}
+            className={`w-full flex items-center gap-4 p-4 rounded-2xl border-2 transition-all text-left ${localChecklist[item.id]
+                ? 'bg-green-50 border-green-500 shadow-sm'
+                : 'bg-white border-gray-100 hover:border-gray-200'
+              }`}
+          >
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${localChecklist[item.id] ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-400'
+              }`}>
+              <item.icon className="w-5 h-5" />
+            </div>
+            <div className="flex-1">
+              <div className={`text-sm font-bold ${localChecklist[item.id] ? 'text-green-700' : 'text-gray-900'}`}>{item.label}</div>
+              <div className="text-[10px] text-gray-400 font-medium uppercase tracking-tighter">{item.desc}</div>
+            </div>
+            <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${localChecklist[item.id] ? 'bg-green-500 border-green-500' : 'bg-white border-gray-200'
+              }`}>
+              {localChecklist[item.id] && <Check className="w-4 h-4 text-white" />}
+            </div>
+          </button>
+        ))}
+      </div>
+
+      <div className="flex gap-3 pt-2">
+        <Button variant="ghost" className="flex-1 h-12 rounded-xl text-gray-400 font-bold" onClick={onBack}>Previous</Button>
+        <Button
+          className={`flex-[2] h-12 font-bold rounded-xl transition-all ${allChecked
+              ? 'bg-[#66B2B2] text-white hover:bg-[#5A9E9E] shadow-lg shadow-[#66B2B2]/20'
+              : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+            }`}
+          disabled={!allChecked}
+          onClick={() => onSave(localChecklist)}
+        >
+          {allChecked ? 'Proceed to Documentation' : 'Complete Checklist to Unlock'}
+        </Button>
+      </div>
+    </div>
+  );
 }
 
 function VisualEvidence({ label, photo, notes, onSave, onBack }: { label: string, photo?: string, notes?: string, onSave: (p: string, n: string) => void, onBack: () => void }) {
-    const [localPhoto, setLocalPhoto] = useState(photo || "");
-    const [localNotes, setLocalNotes] = useState(notes || "");
+  const [localPhoto, setLocalPhoto] = useState(photo || "");
+  const [localNotes, setLocalNotes] = useState(notes || "");
 
-    const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (file) {
-            const reader = new FileReader();
-            reader.onload = (ev) => setLocalPhoto(ev.target?.result as string);
-            reader.readAsDataURL(file);
-        }
-    };
+  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (ev) => setLocalPhoto(ev.target?.result as string);
+      reader.readAsDataURL(file);
+    }
+  };
 
-    return (
-        <div className="space-y-5">
-            <div className="relative aspect-video rounded-2xl bg-gray-50 border-2 border-dashed border-gray-200 overflow-hidden group">
-                {localPhoto ? (
-                    <>
-                        <img src={localPhoto} className="w-full h-full object-cover" alt="Evidence" />
-                        <button onClick={() => setLocalPhoto("")} className="absolute top-2 right-2 bg-red-500 p-1.5 rounded-full text-white shadow-xl opacity-0 group-hover:opacity-100 transition-opacity">
-                            <X className="w-4 h-4" />
-                        </button>
-                    </>
-                ) : (
-                    <label className="absolute inset-0 flex flex-col items-center justify-center cursor-pointer hover:bg-gray-100 transition-colors">
-                        <Camera className="w-10 h-10 text-gray-300 mb-2" />
-                        <span className="text-xs font-bold text-gray-500 uppercase tracking-widest">Capture {label} State</span>
-                        <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFile} />
-                    </label>
-                )}
-            </div>
-            <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-1">Condition Notes</label>
-                <textarea 
-                    className="w-full p-4 rounded-xl border border-gray-200 text-sm focus:border-[#66B2B2] focus:ring-2 focus:ring-[#66B2B2]/10 outline-none transition-all resize-none"
-                    placeholder={`Describe ${label.toLowerCase()} condition...`}
-                    rows={2}
-                    value={localNotes}
-                    onChange={(e) => setLocalNotes(e.target.value)}
-                />
-            </div>
-            <div className="flex gap-3">
-                <Button variant="ghost" className="flex-1 h-12 rounded-xl text-gray-400 font-bold" onClick={onBack}>Previous</Button>
-                <Button 
-                    className="flex-[2] h-12 bg-[#66B2B2] text-white font-bold rounded-xl hover:bg-[#5A9E9E]"
-                    disabled={!localPhoto}
-                    onClick={() => onSave(localPhoto, localNotes)}
-                >
-                    Save & Proceed
-                </Button>
-            </div>
-        </div>
-    );
+  return (
+    <div className="space-y-5">
+      <div className="relative aspect-video rounded-2xl bg-gray-50 border-2 border-dashed border-gray-200 overflow-hidden group">
+        {localPhoto ? (
+          <>
+            <img src={localPhoto} className="w-full h-full object-cover" alt="Evidence" />
+            <button onClick={() => setLocalPhoto("")} className="absolute top-2 right-2 bg-red-500 p-1.5 rounded-full text-white shadow-xl opacity-0 group-hover:opacity-100 transition-opacity">
+              <X className="w-4 h-4" />
+            </button>
+          </>
+        ) : (
+          <label className="absolute inset-0 flex flex-col items-center justify-center cursor-pointer hover:bg-gray-100 transition-colors">
+            <Camera className="w-10 h-10 text-gray-300 mb-2" />
+            <span className="text-xs font-bold text-gray-500 uppercase tracking-widest">Capture {label} State</span>
+            <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFile} />
+          </label>
+        )}
+      </div>
+      <div className="space-y-1.5">
+        <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-1">Condition Notes</label>
+        <textarea
+          className="w-full p-4 rounded-xl border border-gray-200 text-sm focus:border-[#66B2B2] focus:ring-2 focus:ring-[#66B2B2]/10 outline-none transition-all resize-none"
+          placeholder={`Describe ${label.toLowerCase()} condition...`}
+          rows={2}
+          value={localNotes}
+          onChange={(e) => setLocalNotes(e.target.value)}
+        />
+      </div>
+      <div className="flex gap-3">
+        <Button variant="ghost" className="flex-1 h-12 rounded-xl text-gray-400 font-bold" onClick={onBack}>Previous</Button>
+        <Button
+          className="flex-[2] h-12 bg-[#66B2B2] text-white font-bold rounded-xl hover:bg-[#5A9E9E]"
+          disabled={!localPhoto}
+          onClick={() => onSave(localPhoto, localNotes)}
+        >
+          Save & Proceed
+        </Button>
+      </div>
+    </div>
+  );
 }
 
 function TechnicalWorkForm({ draft, equipment, client, packages, seedEquipment, seedClients, pmsConfig, taskPriority, taskMetricUnit, taskServiceType, eqPmsStatus, onSave, onBack }: { draft: DraftExecution, equipment?: Equipment, client?: Client, packages: any[], seedEquipment?: any, seedClients?: any[], pmsConfig?: any, taskPriority?: string | null, taskMetricUnit?: string | null, taskServiceType?: string | null, eqPmsStatus?: string | null, onSave: (d: Partial<DraftExecution>) => void, onBack: () => void }) {
   void packages;
-    const { items: inventoryItems } = useInventoryStore();
-    const [fields, setFields] = useState({
-        findings: draft.findings || "",
-        workDone: draft.workDone || "",
-        selectedParts: draft.selectedParts || [],
-        recommendations: draft.recommendations || "",
-        hoursAtService: draft.hoursAtService || parseFloat(String(equipment?.hoursTotal)) || 0,
-        cost: draft.cost ?? 0,
-    });
-    const [selectedPartId, setSelectedPartId] = useState<number | "">("");
-    const [partQty, setPartQty] = useState<string>("1");
-    const partsTotal = (fields.selectedParts ?? []).reduce(
-        (sum, p) => sum + p.quantity * p.pricePerUnit,
-        0
-    );
+  const { items: inventoryItems } = useInventoryStore();
+  const [fields, setFields] = useState({
+    findings: draft.findings || "",
+    workDone: draft.workDone || "",
+    selectedParts: draft.selectedParts || [],
+    recommendations: draft.recommendations || "",
+    hoursAtService: draft.hoursAtService || parseFloat(String(equipment?.hoursTotal)) || 0,
+    cost: draft.cost ?? 0,
+  });
+  const [selectedPartId, setSelectedPartId] = useState<number | "">("");
+  const [partQty, setPartQty] = useState<string>("1");
+  const partsTotal = (fields.selectedParts ?? []).reduce(
+    (sum, p) => sum + p.quantity * p.pricePerUnit,
+    0
+  );
 
-    // Current metric value for the service context card
-    const currentMetric = useMemo(() => {
-        if (!seedEquipment) return null;
-        const unit: string | null = pmsConfig?.serviceIntervalUnit ?? taskMetricUnit ?? null;
-        if (!unit) return null;
-        let gps001CacheMs = 0;
-        try { gps001CacheMs = Number(window.localStorage.getItem("nextos-gps001-total-hours-ms") ?? "0") || 0; } catch {}
-        return getPmsMetricValue(seedEquipment, unit, gps001CacheMs);
-    }, [seedEquipment, pmsConfig, taskMetricUnit]);
+  // Current metric value for the service context card
+  const currentMetric = useMemo(() => {
+    if (!seedEquipment) return null;
+    const unit: string | null = pmsConfig?.serviceIntervalUnit ?? taskMetricUnit ?? null;
+    if (!unit) return null;
+    let gps001CacheMs = 0;
+    try { gps001CacheMs = Number(window.localStorage.getItem("nextos-gps001-total-hours-ms") ?? "0") || 0; } catch { }
+    return getPmsMetricValue(seedEquipment, unit, gps001CacheMs);
+  }, [seedEquipment, pmsConfig, taskMetricUnit]);
 
-    // PMS interval display; for manual metric-tracking tasks just show the unit name
-    const intervalDisplay = useMemo(() => {
-        if (pmsConfig) {
-            const n = pmsConfig.serviceInterval;
-            const u: string = (pmsConfig.serviceIntervalUnit ?? "").toLowerCase();
-            const suffix = u === "hours" ? "h" : u === "km" ? "km" : u === "weeks" ? "w" : u === "days" ? "d" : u === "months" ? "mo" : u;
-            return `${n}${suffix}`;
-        }
-        return taskMetricUnit ?? null;
-    }, [pmsConfig, taskMetricUnit]);
+  // PMS interval display; for manual metric-tracking tasks just show the unit name
+  const intervalDisplay = useMemo(() => {
+    if (pmsConfig) {
+      const n = pmsConfig.serviceInterval;
+      const u: string = (pmsConfig.serviceIntervalUnit ?? "").toLowerCase();
+      const suffix = u === "hours" ? "h" : u === "km" ? "km" : u === "weeks" ? "w" : u === "days" ? "d" : u === "months" ? "mo" : u;
+      return `${n}${suffix}`;
+    }
+    return taskMetricUnit ?? null;
+  }, [pmsConfig, taskMetricUnit]);
 
-    // Client name: prefer seed client lookup, fall back to CRM client
-    const clientName = useMemo(() => {
-        if (seedEquipment?.clientId) {
-            const sc = (seedClients ?? []).find((c: any) => c.id === seedEquipment.clientId);
-            if (sc?.companyName) return sc.companyName;
-        }
-        return client?.companyName ?? "—";
-    }, [seedEquipment, seedClients, client]);
+  // Client name: prefer seed client lookup, fall back to CRM client
+  const clientName = useMemo(() => {
+    if (seedEquipment?.clientId) {
+      const sc = (seedClients ?? []).find((c: any) => c.id === seedEquipment.clientId);
+      if (sc?.companyName) return sc.companyName;
+    }
+    return client?.companyName ?? "—";
+  }, [seedEquipment, seedClients, client]);
 
-    const eqName = seedEquipment?.name ?? equipment?.name ?? "—";
-    const rawEqType = seedEquipment?.equipmentType ?? equipment?.equipmentType ?? "—";
-    const eqType = String(rawEqType).split(" - ")[0].trim();
+  const eqName = seedEquipment?.name ?? equipment?.name ?? "—";
+  const rawEqType = seedEquipment?.equipmentType ?? equipment?.equipmentType ?? "—";
+  const eqType = String(rawEqType).split(" - ")[0].trim();
 
-    return (
-        <div className="space-y-6 animate-in fade-in duration-300">
-            <div className="grid grid-cols-1 gap-4">
-                <div className="p-4 rounded-xl bg-gray-50 border border-gray-100"> 
-                    <div className="text-[10px] text-gray-500 uppercase font-bold tracking-widest mb-2">Equipment Unit</div>
-                    <div className="text-xs text-gray-500 mt-1"><span className="font-semibold text-gray-600">Equipment Name:</span> {eqName}</div>
-                    <div className="text-xs text-gray-500 mt-1"><span className="font-semibold text-gray-600">Equipment Type:</span> {eqType}</div>
-                    <div className="text-xs text-gray-500 mt-0.5"><span className="font-semibold text-gray-600">Client:</span> {clientName}</div>
-                    <div className="text-xs text-gray-500 mt-0.5">
-                        <span className="font-semibold text-gray-600">Status:</span>{" "}
-                        {eqPmsStatus ? (
-                            <span className={`font-bold ${
-                                eqPmsStatus === "Overdue"   ? "text-red-500"
-                                : eqPmsStatus === "Due"    ? "text-amber-500"
-                                : eqPmsStatus === "Due Soon" ? "text-[#66B2B2]"
-                                : "text-green-600"
-                            }`}>{eqPmsStatus}</span>
-                        ) : (
-                            <span className="text-gray-400">—</span>
-                        )}
-                    </div>
-                </div>
-                <div className="p-4 rounded-xl bg-gray-50 border border-gray-100">
-                    <div className="text-[10px] text-gray-500 uppercase font-bold tracking-widest mb-2">Service Context</div>
-                    <div className="space-y-1">
-                        {(pmsConfig?.serviceType || taskServiceType) && (
-                            <div className="text-xs text-gray-500">
-                                <span className="font-semibold text-gray-600">Service Type:</span>{" "}
-                                {pmsConfig?.serviceType ?? taskServiceType ?? "—"}
-                            </div>
-                        )}
-                        <div className="text-xs text-gray-500">
-                            <span className="font-semibold text-gray-600">Scheduled Maintenance:</span>{" "}
-                            {intervalDisplay ?? "—"}
-                        </div>
-                        <div className="text-xs text-gray-500">
-                            <span className="font-semibold text-gray-600">Metric at Service:</span>{" "}
-                            {currentMetric ?? "—"}
-                        </div>
-                        {taskPriority && (
-                            <div className="text-xs text-gray-500 flex items-center gap-1.5">
-                                <span className="font-semibold text-gray-600">Priority:</span>
-                                <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase ${
-                                    taskPriority === "high" ? "bg-red-100 text-red-700"
-                                    : taskPriority === "medium" ? "bg-amber-100 text-amber-700"
-                                    : "bg-gray-100 text-gray-500"
-                                }`}>{taskPriority}</span>
-                            </div>
-                        )}
-                    </div>
-                </div>
-            </div>
-
-            <div className="grid gap-4">
-                <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-1">Initial Findings / Faults</label>
-                    <textarea
-                        className="w-full p-4 rounded-xl border border-gray-200 text-sm focus:border-[#66B2B2] focus:ring-2 focus:ring-[#66B2B2]/10 outline-none resize-none"
-                        rows={2}
-                        value={fields.findings}
-                        onChange={(e) => setFields({...fields, findings: e.target.value})}
-                        placeholder="Detail any damage or leaks..."
-                    />
-                </div>
-
-                <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-1">Technical Work Performed</label>
-                    <textarea
-                        className="w-full p-4 rounded-xl border border-gray-200 text-sm focus:border-[#66B2B2] focus:ring-2 focus:ring-[#66B2B2]/10 outline-none resize-none"
-                        rows={2}
-                        value={fields.workDone}
-                        onChange={(e) => setFields({...fields, workDone: e.target.value})}
-                        placeholder="Describe services completed..."
-                    />
-                </div>
-
-                <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-1">Strategic Recommendations</label>
-                    <Input
-                        className="h-10 rounded-xl text-xs"
-                        placeholder="e.g. Belt change in 500h"
-                        value={fields.recommendations}
-                        onChange={(e) => setFields({...fields, recommendations: e.target.value})}
-                    />
-                </div>
-
-                <div className="p-4 rounded-xl bg-gray-50 border border-gray-100 space-y-3">
-                    <div className="text-[10px] font-black text-gray-600 uppercase tracking-widest">Parts Used</div>
-                    {/* Part selector row */}
-                    <div className="flex gap-2 items-end">
-                        <div className="flex-1 space-y-1">
-                            <label className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Part</label>
-                            <Select
-                                value={selectedPartId === "" ? "" : String(selectedPartId)}
-                                onValueChange={(v) => setSelectedPartId(Number(v))}
-                            >
-                                <SelectTrigger className="h-9 bg-white border-gray-200 text-xs">
-                                    <SelectValue placeholder="Select part…" />
-                                </SelectTrigger>
-                                <SelectContent className="bg-white border-gray-200">
-                                    {inventoryItems.map((item) => (
-                                        <SelectItem key={item.id} value={String(item.id)} className="text-xs">
-                                            {item.name}
-                                            <span className="text-gray-400 ml-1">— ₱{item.pricePerUnit}/{item.unit}</span>
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        <div className="w-24 space-y-1">
-                            <label className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">
-                                Qty {selectedPartId !== "" ? `(${inventoryItems.find(i => i.id === selectedPartId)?.unit ?? ""})` : ""}
-                            </label>
-                            <Input
-                                type="number"
-                                min="1"
-                                step="1"
-                                className="h-9 bg-white border-gray-200 text-xs text-center"
-                                value={partQty}
-                                onChange={(e) => setPartQty(e.target.value)}
-                            />
-                        </div>
-                        <Button
-                            type="button"
-                            variant="outline"
-                            className="h-9 px-3 border-gray-200 text-[#66B2B2] hover:bg-[#66B2B2]/10 text-xs font-bold shrink-0"
-                            disabled={selectedPartId === "" || !partQty || Number(partQty) <= 0}
-                            onClick={() => {
-                                const item = inventoryItems.find(i => i.id === selectedPartId);
-                                if (!item) return;
-                                const qty = Math.max(1, Math.floor(Number(partQty)));
-                                const already = fields.selectedParts ?? [];
-                                const existing = already.find(p => p.inventoryItemId === item.id);
-                                const updated = existing
-                                    ? already.map(p => p.inventoryItemId === item.id ? { ...p, quantity: p.quantity + qty } : p)
-                                    : [...already, { inventoryItemId: item.id, name: item.name, quantity: qty, pricePerUnit: item.pricePerUnit }];
-                                setFields({ ...fields, selectedParts: updated });
-                                setSelectedPartId("");
-                                setPartQty("1");
-                            }}
-                        >
-                            + Add
-                        </Button>
-                    </div>
-                    {/* Selected parts list */}
-                    {(fields.selectedParts ?? []).length > 0 && (
-                        <div className="space-y-1.5 mt-1">
-                            {(fields.selectedParts ?? []).map((part) => (
-                                <div key={part.inventoryItemId} className="flex items-center justify-between bg-white rounded-lg px-3 py-2 border border-gray-100">
-                                    <div className="text-xs font-semibold text-gray-700 flex-1 min-w-0 truncate">{part.name}</div>
-                                    <div className="text-[10px] text-gray-400 mx-3 shrink-0">
-                                        {part.quantity} × ₱{part.pricePerUnit.toLocaleString("en-PH")}
-                                    </div>
-                                    <div className="text-xs font-bold text-[#66B2B2] shrink-0 mr-2">
-                                        ₱{(part.quantity * part.pricePerUnit).toLocaleString("en-PH", { minimumFractionDigits: 2 })}
-                                    </div>
-                                    <button
-                                        type="button"
-                                        className="text-gray-300 hover:text-[#EF4444] transition-colors shrink-0"
-                                        onClick={() => setFields({ ...fields, selectedParts: (fields.selectedParts ?? []).filter(p => p.inventoryItemId !== part.inventoryItemId) })}
-                                    >
-                                        ✕
-                                    </button>
-                                </div>
-                            ))}
-                            <div className="flex justify-between items-center pt-1 border-t border-gray-200 mt-1">
-                                <span className="text-[10px] font-black text-gray-500 uppercase tracking-wider">Total</span>
-                                <span className="text-sm font-black text-gray-900 font-mono-tech">
-                                    ₱{partsTotal.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                </span>
-                            </div>
-                        </div>
-                    )}
-                </div>
-            </div>
-            <div className="flex gap-3 pt-2">
-                <Button variant="ghost" className="flex-1 h-12 rounded-xl text-gray-400 font-bold" onClick={onBack}>Previous</Button>
-                <Button
-                    className="flex-[2] h-12 bg-[#66B2B2] text-white font-bold rounded-xl hover:bg-[#5A9E9E]"
-                    onClick={() => onSave({ ...fields, cost: partsTotal })}
-                >
-                    Save Progress & Proceed
-                </Button>
-            </div>
+  return (
+    <div className="space-y-6 animate-in fade-in duration-300">
+      <div className="grid grid-cols-1 gap-4">
+        <div className="p-4 rounded-xl bg-gray-50 border border-gray-100">
+          <div className="text-[10px] text-gray-500 uppercase font-bold tracking-widest mb-2">Equipment Unit</div>
+          <div className="text-xs text-gray-500 mt-1"><span className="font-semibold text-gray-600">Equipment Name:</span> {eqName}</div>
+          <div className="text-xs text-gray-500 mt-1"><span className="font-semibold text-gray-600">Equipment Type:</span> {eqType}</div>
+          <div className="text-xs text-gray-500 mt-0.5"><span className="font-semibold text-gray-600">Client:</span> {clientName}</div>
+          <div className="text-xs text-gray-500 mt-0.5">
+            <span className="font-semibold text-gray-600">Status:</span>{" "}
+            {eqPmsStatus ? (
+              <span className={`font-bold ${eqPmsStatus === "Overdue" ? "text-red-500"
+                  : eqPmsStatus === "Due" ? "text-amber-500"
+                    : eqPmsStatus === "Due Soon" ? "text-[#66B2B2]"
+                      : "text-green-600"
+                }`}>{eqPmsStatus}</span>
+            ) : (
+              <span className="text-gray-400">—</span>
+            )}
+          </div>
         </div>
-    );
+        <div className="p-4 rounded-xl bg-gray-50 border border-gray-100">
+          <div className="text-[10px] text-gray-500 uppercase font-bold tracking-widest mb-2">Service Context</div>
+          <div className="space-y-1">
+            {(pmsConfig?.serviceType || taskServiceType) && (
+              <div className="text-xs text-gray-500">
+                <span className="font-semibold text-gray-600">Service Type:</span>{" "}
+                {pmsConfig?.serviceType ?? taskServiceType ?? "—"}
+              </div>
+            )}
+            <div className="text-xs text-gray-500">
+              <span className="font-semibold text-gray-600">Scheduled Maintenance:</span>{" "}
+              {intervalDisplay ?? "—"}
+            </div>
+            <div className="text-xs text-gray-500">
+              <span className="font-semibold text-gray-600">Metric at Service:</span>{" "}
+              {currentMetric ?? "—"}
+            </div>
+            {taskPriority && (
+              <div className="text-xs text-gray-500 flex items-center gap-1.5">
+                <span className="font-semibold text-gray-600">Priority:</span>
+                <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase ${taskPriority === "high" ? "bg-red-100 text-red-700"
+                    : taskPriority === "medium" ? "bg-amber-100 text-amber-700"
+                      : "bg-gray-100 text-gray-500"
+                  }`}>{taskPriority}</span>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-4">
+        <div className="space-y-1.5">
+          <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-1">Initial Findings / Faults</label>
+          <textarea
+            className="w-full p-4 rounded-xl border border-gray-200 text-sm focus:border-[#66B2B2] focus:ring-2 focus:ring-[#66B2B2]/10 outline-none resize-none"
+            rows={2}
+            value={fields.findings}
+            onChange={(e) => setFields({ ...fields, findings: e.target.value })}
+            placeholder="Detail any damage or leaks..."
+          />
+        </div>
+
+        <div className="space-y-1.5">
+          <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-1">Technical Work Performed</label>
+          <textarea
+            className="w-full p-4 rounded-xl border border-gray-200 text-sm focus:border-[#66B2B2] focus:ring-2 focus:ring-[#66B2B2]/10 outline-none resize-none"
+            rows={2}
+            value={fields.workDone}
+            onChange={(e) => setFields({ ...fields, workDone: e.target.value })}
+            placeholder="Describe services completed..."
+          />
+        </div>
+
+        <div className="space-y-1.5">
+          <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-1">Strategic Recommendations</label>
+          <Input
+            className="h-10 rounded-xl text-xs"
+            placeholder="e.g. Belt change in 500h"
+            value={fields.recommendations}
+            onChange={(e) => setFields({ ...fields, recommendations: e.target.value })}
+          />
+        </div>
+
+        <div className="p-4 rounded-xl bg-gray-50 border border-gray-100 space-y-3">
+          <div className="text-[10px] font-black text-gray-600 uppercase tracking-widest">Parts Used</div>
+          {/* Part selector row */}
+          <div className="flex gap-2 items-end">
+            <div className="flex-1 space-y-1">
+              <label className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Part</label>
+              <Select
+                value={selectedPartId === "" ? "" : String(selectedPartId)}
+                onValueChange={(v) => setSelectedPartId(Number(v))}
+              >
+                <SelectTrigger className="h-9 bg-white border-gray-200 text-xs">
+                  <SelectValue placeholder="Select part…" />
+                </SelectTrigger>
+                <SelectContent className="bg-white border-gray-200">
+                  {inventoryItems.map((item) => (
+                    <SelectItem key={item.id} value={String(item.id)} className="text-xs">
+                      {item.name}
+                      <span className="text-gray-400 ml-1">— ₱{item.pricePerUnit}/{item.unit}</span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="w-24 space-y-1">
+              <label className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">
+                Qty {selectedPartId !== "" ? `(${inventoryItems.find(i => i.id === selectedPartId)?.unit ?? ""})` : ""}
+              </label>
+              <Input
+                type="number"
+                min="1"
+                step="1"
+                className="h-9 bg-white border-gray-200 text-xs text-center"
+                value={partQty}
+                onChange={(e) => setPartQty(e.target.value)}
+              />
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              className="h-9 px-3 border-gray-200 text-[#66B2B2] hover:bg-[#66B2B2]/10 text-xs font-bold shrink-0"
+              disabled={selectedPartId === "" || !partQty || Number(partQty) <= 0}
+              onClick={() => {
+                const item = inventoryItems.find(i => i.id === selectedPartId);
+                if (!item) return;
+                const qty = Math.max(1, Math.floor(Number(partQty)));
+                const already = fields.selectedParts ?? [];
+                const existing = already.find(p => p.inventoryItemId === item.id);
+                const updated = existing
+                  ? already.map(p => p.inventoryItemId === item.id ? { ...p, quantity: p.quantity + qty } : p)
+                  : [...already, { inventoryItemId: item.id, name: item.name, quantity: qty, pricePerUnit: item.pricePerUnit }];
+                setFields({ ...fields, selectedParts: updated });
+                setSelectedPartId("");
+                setPartQty("1");
+              }}
+            >
+              + Add
+            </Button>
+          </div>
+          {/* Selected parts list */}
+          {(fields.selectedParts ?? []).length > 0 && (
+            <div className="space-y-1.5 mt-1">
+              {(fields.selectedParts ?? []).map((part) => (
+                <div key={part.inventoryItemId} className="flex items-center justify-between bg-white rounded-lg px-3 py-2 border border-gray-100">
+                  <div className="text-xs font-semibold text-gray-700 flex-1 min-w-0 truncate">{part.name}</div>
+                  <div className="text-[10px] text-gray-400 mx-3 shrink-0">
+                    {part.quantity} × ₱{part.pricePerUnit.toLocaleString("en-PH")}
+                  </div>
+                  <div className="text-xs font-bold text-[#66B2B2] shrink-0 mr-2">
+                    ₱{(part.quantity * part.pricePerUnit).toLocaleString("en-PH", { minimumFractionDigits: 2 })}
+                  </div>
+                  <button
+                    type="button"
+                    className="text-gray-300 hover:text-[#EF4444] transition-colors shrink-0"
+                    onClick={() => setFields({ ...fields, selectedParts: (fields.selectedParts ?? []).filter(p => p.inventoryItemId !== part.inventoryItemId) })}
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+              <div className="flex justify-between items-center pt-1 border-t border-gray-200 mt-1">
+                <span className="text-[10px] font-black text-gray-500 uppercase tracking-wider">Total</span>
+                <span className="text-sm font-black text-gray-900 font-mono-tech">
+                  ₱{partsTotal.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+      <div className="flex gap-3 pt-2">
+        <Button variant="ghost" className="flex-1 h-12 rounded-xl text-gray-400 font-bold" onClick={onBack}>Previous</Button>
+        <Button
+          className="flex-[2] h-12 bg-[#66B2B2] text-white font-bold rounded-xl hover:bg-[#5A9E9E]"
+          onClick={() => onSave({ ...fields, cost: partsTotal })}
+        >
+          Save Progress & Proceed
+        </Button>
+      </div>
+    </div>
+  );
 }
 
 function SignaturePad({ label, value, onChange, caption }: { label: string, value?: string, onChange: (v: string) => void, caption: string }) {
-    const canvasRef = useRef<HTMLCanvasElement | null>(null);
-    const isDrawing = useRef(false);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const isDrawing = useRef(false);
 
-    useEffect(() => {
-        const canvas = canvasRef.current;
-        if (canvas) {
-            const ctx = canvas.getContext("2d");
-            if (ctx) {
-                ctx.fillStyle = "#ffffff";
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-                ctx.strokeStyle = "#111827";
-                ctx.lineWidth = 2.5;
-                ctx.lineCap = "round";
-            }
-        }
-    }, []);
-
-    const start = (e: React.PointerEvent) => {
-        isDrawing.current = true;
-        const rect = canvasRef.current!.getBoundingClientRect();
-        const ctx = canvasRef.current!.getContext("2d")!;
-        ctx.beginPath();
-        ctx.moveTo(e.clientX - rect.left, e.clientY - rect.top);
-        canvasRef.current!.setPointerCapture(e.pointerId);
-    };
-
-    const move = (e: React.PointerEvent) => {
-        if (!isDrawing.current) return;
-        const rect = canvasRef.current!.getBoundingClientRect();
-        const ctx = canvasRef.current!.getContext("2d")!;
-        ctx.lineTo(e.clientX - rect.left, e.clientY - rect.top);
-        ctx.stroke();
-    };
-
-    const end = () => {
-        if (!isDrawing.current) return;
-        isDrawing.current = false;
-        onChange(canvasRef.current!.toDataURL());
-    };
-
-    const reset = () => {
-        const canvas = canvasRef.current!;
-        const ctx = canvas.getContext("2d")!;
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
         ctx.fillStyle = "#ffffff";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
-        onChange("");
-    };
+        ctx.strokeStyle = "#111827";
+        ctx.lineWidth = 2.5;
+        ctx.lineCap = "round";
+      }
+    }
+  }, []);
 
-    return (
-        <div className="space-y-2">
-            <div className="flex justify-between items-center px-1">
-                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">{label}</label>
-                <button onClick={reset} className="text-[9px] font-black text-[#66B2B2] hover:underline underline-offset-2">Reset Pad</button>
-            </div>
-            <div className="relative group">
-                <canvas 
-                    ref={canvasRef} 
-                    width={600} 
-                    height={150} 
-                    onPointerDown={start} 
-                    onPointerMove={move} 
-                    onPointerUp={end}
-                    className="w-full h-28 border border-gray-200 rounded-xl bg-white touch-none cursor-crosshair shadow-inner"
-                />
-                {value && <div className="absolute top-2 right-2 px-2 py-0.5 bg-green-100 text-green-700 text-[8px] font-bold rounded-full uppercase">Captured</div>}
-            </div>
-            <p className="text-[10px] text-gray-400 italic ml-1">{caption}</p>
-        </div>
-    );
+  const start = (e: React.PointerEvent) => {
+    isDrawing.current = true;
+    const rect = canvasRef.current!.getBoundingClientRect();
+    const ctx = canvasRef.current!.getContext("2d")!;
+    ctx.beginPath();
+    ctx.moveTo(e.clientX - rect.left, e.clientY - rect.top);
+    canvasRef.current!.setPointerCapture(e.pointerId);
+  };
+
+  const move = (e: React.PointerEvent) => {
+    if (!isDrawing.current) return;
+    const rect = canvasRef.current!.getBoundingClientRect();
+    const ctx = canvasRef.current!.getContext("2d")!;
+    ctx.lineTo(e.clientX - rect.left, e.clientY - rect.top);
+    ctx.stroke();
+  };
+
+  const end = () => {
+    if (!isDrawing.current) return;
+    isDrawing.current = false;
+    onChange(canvasRef.current!.toDataURL());
+  };
+
+  const reset = () => {
+    const canvas = canvasRef.current!;
+    const ctx = canvas.getContext("2d")!;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    onChange("");
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="flex justify-between items-center px-1">
+        <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">{label}</label>
+        <button onClick={reset} className="text-[9px] font-black text-[#66B2B2] hover:underline underline-offset-2">Reset Pad</button>
+      </div>
+      <div className="relative group">
+        <canvas
+          ref={canvasRef}
+          width={600}
+          height={150}
+          onPointerDown={start}
+          onPointerMove={move}
+          onPointerUp={end}
+          className="w-full h-28 border border-gray-200 rounded-xl bg-white touch-none cursor-crosshair shadow-inner"
+        />
+        {value && <div className="absolute top-2 right-2 px-2 py-0.5 bg-green-100 text-green-700 text-[8px] font-bold rounded-full uppercase">Captured</div>}
+      </div>
+      <p className="text-[10px] text-gray-400 italic ml-1">{caption}</p>
+    </div>
+  );
 }
 
 export function EquipmentDetail({
@@ -4224,36 +4402,36 @@ export function EquipmentDetail({
     <div className="data-card p-6 space-y-6 animate-in slide-in-from-top duration-400 bg-white border border-gray-100 rounded-2xl shadow-xl shadow-gray-100/50">
       <div className="flex items-start justify-between">
         <div>
-           <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-[#66B2B2]/10 text-[#66B2B2] text-[9px] font-black uppercase tracking-[0.1em] mb-2">
-              <Package className="w-2.5 h-2.5" /> Managed Asset
-           </div>
-           <h3 className="text-2xl font-bold text-gray-900 tracking-tight">{equipment.name}</h3>
-           <p className="text-sm text-gray-500 font-medium">{equipment.equipmentType} <span className="text-gray-300 mx-1">|</span> {equipment.serialNumber}</p>
+          <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-[#66B2B2]/10 text-[#66B2B2] text-[9px] font-black uppercase tracking-[0.1em] mb-2">
+            <Package className="w-2.5 h-2.5" /> Managed Asset
+          </div>
+          <h3 className="text-2xl font-bold text-gray-900 tracking-tight">{equipment.name}</h3>
+          <p className="text-sm text-gray-500 font-medium">{equipment.equipmentType} <span className="text-gray-300 mx-1">|</span> {equipment.serialNumber}</p>
         </div>
         <div className="text-right">
-           <div className="text-[10px] text-gray-400 uppercase font-bold tracking-widest mb-1">Total Operating Time</div>
-           <div className="text-3xl font-bold text-gray-900 font-mono-tech">{parseFloat(String(equipment.hoursTotal)) || 0}<span className="text-sm ml-1 text-gray-400">H</span></div>
+          <div className="text-[10px] text-gray-400 uppercase font-bold tracking-widest mb-1">Total Operating Time</div>
+          <div className="text-3xl font-bold text-gray-900 font-mono-tech">{parseFloat(String(equipment.hoursTotal)) || 0}<span className="text-sm ml-1 text-gray-400">H</span></div>
         </div>
       </div>
 
       <div className="grid grid-cols-3 gap-4 border-y border-gray-50 py-5">
-         <div className="space-y-1">
-            <div className="text-[9px] text-gray-400 uppercase font-black tracking-widest">Serial Number</div>
-            <div className="text-xs font-mono-tech font-bold text-gray-900">{equipment.serialNumber}</div>
-         </div>
-         <div className="space-y-1">
-            <div className="text-[9px] text-gray-400 uppercase font-black tracking-widest">Global Positioning</div>
-            <div className="text-xs font-bold text-gray-900">{(equipment.lat !== undefined && equipment.lng !== undefined) ? `${equipment.lat}, ${equipment.lng}` : "Not specified"}</div>
-         </div>
-         <div className="space-y-1">
-            <div className="text-[9px] text-gray-400 uppercase font-black tracking-widest">Client Assignment</div>
-            <div className="text-xs font-bold text-gray-900 truncate">{client?.companyName}</div>
-         </div>
+        <div className="space-y-1">
+          <div className="text-[9px] text-gray-400 uppercase font-black tracking-widest">Serial Number</div>
+          <div className="text-xs font-mono-tech font-bold text-gray-900">{equipment.serialNumber}</div>
+        </div>
+        <div className="space-y-1">
+          <div className="text-[9px] text-gray-400 uppercase font-black tracking-widest">Global Positioning</div>
+          <div className="text-xs font-bold text-gray-900">{(equipment.lat !== undefined && equipment.lng !== undefined) ? `${equipment.lat}, ${equipment.lng}` : "Not specified"}</div>
+        </div>
+        <div className="space-y-1">
+          <div className="text-[9px] text-gray-400 uppercase font-black tracking-widest">Client Assignment</div>
+          <div className="text-xs font-bold text-gray-900 truncate">{client?.companyName}</div>
+        </div>
       </div>
 
       <div className="space-y-4">
         <div className="text-[10px] text-gray-400 uppercase font-black tracking-[0.2em] flex items-center gap-2">
-           <History className="w-3.5 h-3.5" /> Maintenance History Timeline
+          <History className="w-3.5 h-3.5" /> Maintenance History Timeline
         </div>
         <div className="space-y-2.5">
           {serviceHistory.filter(r => r.status === 'completed').length > 0 ? (
@@ -4269,17 +4447,17 @@ export function EquipmentDetail({
                   </div>
                   <div>
                     <div className="text-sm font-bold text-gray-900 group-hover:text-[#66B2B2] transition-colors">{(record as any).serviceType || record.serviceCategory}</div>
-                    <div className="text-[10px] text-gray-400 font-medium uppercase mt-0.5">{record.completedDate ? new Date(record.completedDate).toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'}) : '—'} <span className="mx-1">•</span> Tech: {record.technician}</div>
+                    <div className="text-[10px] text-gray-400 font-medium uppercase mt-0.5">{record.completedDate ? new Date(record.completedDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'} <span className="mx-1">•</span> Tech: {record.technician}</div>
                   </div>
                 </div>
                 <div className="w-8 h-8 rounded-full flex items-center justify-center bg-white border border-gray-100 text-gray-300 group-hover:text-[#66B2B2] transition-all">
-                    <ChevronRight className="w-4 h-4" />
+                  <ChevronRight className="w-4 h-4" />
                 </div>
               </div>
             ))
           ) : (
             <div className="text-center py-10 bg-gray-50/50 rounded-xl border border-dashed border-gray-200">
-               <div className="text-[10px] text-gray-400 font-bold uppercase tracking-[0.1em]">Initial State: No prior history</div>
+              <div className="text-[10px] text-gray-400 font-bold uppercase tracking-[0.1em]">Initial State: No prior history</div>
             </div>
           )}
         </div>
