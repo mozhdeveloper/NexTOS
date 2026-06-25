@@ -146,7 +146,7 @@ export default function Dashboard() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <KPICard
           label="Fleet Health"
-          value={`${Math.round(((equipment.length - totalOverdueEquipment) / equipment.length) * 100)}%`}
+          value={`${equipment.length > 0 ? Math.round(((equipment.length - totalOverdueEquipment) / equipment.length) * 100) : 100}%`}
           delta={`${totalOverdueEquipment} units due`}
           deltaUp={totalOverdueEquipment === 0}
           icon={ShieldCheck}
