@@ -13,7 +13,7 @@ import seedData from "@/data/seed-data.json";
 import { computePmsStatusFromRemaining } from "@/lib/pms-status";
 import type { Booking, Client, Equipment, Package as ClientPackage, ServiceCategory, ServicePhoto, ServiceRecord } from "@/types";
 import { ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
-import { Clock, Eye, Download, Camera, CheckCircle2, ChevronRight, FileText, Calendar, Plus, ExternalLink, HardHat, PackageCheck, ClipboardList, Settings, Wrench, Siren, HeartPulse, Gauge, Zap, Bell, Check, Users, MapPin, Receipt, ArrowRight, Printer } from "lucide-react";
+import { Clock, Eye, Download, Camera, CheckCircle2, ChevronRight, FileText, Calendar, Plus, ExternalLink, HardHat, PackageCheck, ClipboardList, Settings, Wrench, Siren, HeartPulse, Gauge, Zap, Bell, Check, Users, MapPin, Receipt, ArrowRight, Printer, FlaskConical } from "lucide-react";
 import { TechnicianRatingForm } from "@/components/TechnicianRatingForm";
 import {
   Dialog,
@@ -23,7 +23,7 @@ import { Button } from "@/components/ui/button";
 
 type DashboardServiceTab = "upcoming" | "calibration" | "testing";
 
-type HeavyStatus = "OK" | "Due Soon" | "Due" | "Overdue";
+type HeavyStatus = "OK" | "Due Soon" | "Due" | "Overdue" | "Near Service";
 type CalibrationStatus = "OK" | "Due Soon" | "Due" | "Overdue";
 
 type OverviewRow = {
@@ -65,6 +65,7 @@ type DonutDatum = {
 const HEAVY_COLORS: Record<HeavyStatus, string> = {
   OK: "#10B981",
   "Due Soon": "#F2A900",
+  "Near Service": "#D97706",
   Due: "#F97316",
   Overdue: "#EF4444",
 };
@@ -368,6 +369,7 @@ export default function ClientDashboard() {
     const counts: Record<HeavyStatus, number> = {
       OK: 0,
       "Due Soon": 0,
+      "Near Service": 0,
       Due: 0,
       Overdue: 0,
     };

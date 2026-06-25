@@ -221,10 +221,10 @@ export default function CRM() {
     if (!selectedClientId) return null;
     return {
       contacts: contacts.filter(c => c.clientId === selectedClientId),
-      equipment: equipment.filter(e => e.clientId === selectedClientId),
+      equipment: equipment.filter(e => String(e.clientId) === String(selectedClientId)),
       deals: deals.filter(d => d.clientId === selectedClientId),
       serviceHistory: serviceRecords.filter(s => s.clientId === selectedClientId),
-      bookings: bookings.filter(b => b.clientId === selectedClientId),
+      bookings: bookings.filter(b => String(b.clientId) === String(selectedClientId)),
       packages: packages.filter(p => p.clientId === selectedClientId),
       invoices: invoices.filter(i => i.clientId === selectedClientId),
       tasks: tasks.filter(t => t.relatedId === selectedClientId && t.relatedType === 'client'),
@@ -320,7 +320,7 @@ export default function CRM() {
     }));
     useCRMStore.setState((state: any) => ({
       clients: [
-        ...state.clients.filter((c: any) => !mapped.some((mc) => mc.id === c.id)),
+        ...state.clients.filter((c: any) => !mapped.some((mc: any) => mc.id === c.id)),
         ...mapped,
       ],
     }));
@@ -424,7 +424,6 @@ export default function CRM() {
     setLeadPhone("");
     setLeadInquiryType("sales");
     setLeadPriority("medium");
-    setLeadAssignedTo(seedStaff.find((s) => ["sales", "admin"].includes(s.role?.toLowerCase()))?.name || seedStaff[0]?.name || "Sales");
     setLeadNotes("");
   };
 
@@ -460,7 +459,7 @@ export default function CRM() {
       email: leadEmail.trim(),
       phone: leadPhone.trim(),
       inquiryType: leadInquiryType,
-      status: "active" as const,
+      status: "new" as const,
       priority: leadPriority,
       score: 0,
       assignedTo: user?.name || "",
@@ -602,7 +601,7 @@ export default function CRM() {
   return (
     <div className="space-y-4 overflow-x-hidden">
       {selectedClientId && selectedClient && clientData ? (
-        <CliecntProfile 
+        <ClientProfile 
           client={selectedClient} 
           data={clientData} 
           onBack={() => setSelectedClientId(null)} 
@@ -1610,8 +1609,10 @@ export default function CRM() {
                     className={CRM_MODAL_SUBMIT_CLASS}
                     onClick={() => {
                       useOperationsStore.getState().addEquipment({
-                        clientId: selectedClientId!,
+                        clientId: String(selectedClientId!),
+                        name: eqModel || eqUnitId || "New Equipment",
                         unitId: eqUnitId,
+                        equipmentType: eqType || "Heavy Equipment",
                         type: eqType,
                         serialNumber: eqSerial,
                         manufacturer: "TBD",
@@ -1619,8 +1620,6 @@ export default function CRM() {
                         installDate: new Date().toISOString(),
                         warrantyExpiry: new Date(Date.now() + 365 * 86400000).toISOString(),
                         status: "active",
-                        lastService: new Date().toISOString(),
-                        nextServiceDue: 5000,
                         currentHours: Number(eqHours) || 0,
                         location: eqLocation,
                         notes: "",
@@ -2268,7 +2267,7 @@ function ClientProfile({
                       <td className="py-2.5 px-3 text-black font-mono-tech">{eq.currentHours}h</td>
                       <td className="py-2.5 px-3">
                         <div className="flex items-center gap-1">
-                          <QRButton serial={eq.serialNumber} unitId={eq.unitId} />
+                          <QRButton serial={eq.serialNumber} unitId={eq.unitId ?? ""} />
                           <button className="p-1 rounded hover:bg-gray-100 text-gray-600 hover:text-black">
                             <Wrench className="w-3.5 h-3.5" />
                           </button>
@@ -2380,7 +2379,7 @@ function ClientProfile({
 }
 
 function StatusBadge({ status }: { status: Equipment["status"] }) {
-  const configs: Record<Equipment["status"], { label: string; color: string }> = {
+  const configs: Record<string, { label: string; color: string }> = {
     active: { label: "Active", color: "bg-[#10B981]/10 text-[#10B981]" },
     inactive: { label: "Inactive", color: "bg-gray-100 text-gray-600" },
     maintenance: { label: "Maintenance", color: "bg-[#66B2B2]/10 text-[#66B2B2]" },
@@ -2390,7 +2389,7 @@ function StatusBadge({ status }: { status: Equipment["status"] }) {
     service_due: { label: "Service Due", color: "bg-[#66B2B2]/20 text-[#66B2B2] animate-pulse" },
   };
 
-  const config = configs[status];
+  const config = configs[status ?? "active"];
   return (
     <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${config.color}`}>
       {config.label}

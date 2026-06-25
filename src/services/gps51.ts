@@ -223,8 +223,8 @@ function pickFirstNonNegative(...values: unknown[]): number | undefined {
       });
       if (!response.ok) return "";
 
-      const data = await response.json();
-      const address = typeof data?.display_name === "string" ? data.display_name.trim() : "";
+      const data = await response.json() as Record<string, unknown>;
+      const address = typeof data?.display_name === "string" ? (data.display_name as string).trim() : "";
       if (address) {
         geocodeCache.set(cacheKey, address);
       }
@@ -369,7 +369,7 @@ export async function gps51Login(username: string, password: string): Promise<GP
     }),
   });
 
-  const data = await response.json();
+  const data = await response.json() as Record<string, any>;
   logGPS51("login.response", data);
 
   if (data.status !== 0) {
@@ -411,7 +411,7 @@ export async function fetchLastPosition(
     }
   );
 
-  const data = await response.json();
+  const data = await response.json() as Record<string, any>;
   logGPS51("lastposition.response", data);
 
   if (data.status !== 0 || !data.records?.length) return null;
@@ -475,7 +475,7 @@ export async function fetchRouteHistory(
     }
   );
 
-  const data = await response.json();
+  const data = await response.json() as Record<string, any>;
   logGPS51("history.response", data);
   logGPS51("history.response.summary", {
     startDate,

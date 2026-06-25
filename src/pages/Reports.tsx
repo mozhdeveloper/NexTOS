@@ -55,7 +55,7 @@ export default function Reports() {
   
   const totalDue = equipment.filter(e => {
     if (e.equipmentType === "Heavy Equipment") {
-        const remaining = e.nextPMSHours - e.currentHours;
+        const remaining = (e.nextPMSHours ?? 0) - (e.currentHours ?? 0);
         return remaining > 0 && remaining <= 50;
     }
     if (e.equipmentType === "Lab Equipment" || e.equipmentType === "Testing Equipment") {
@@ -69,7 +69,7 @@ export default function Reports() {
 
   const totalOverdue = equipment.filter(e => {
     if (e.equipmentType === "Heavy Equipment") {
-        return e.nextPMSHours - e.currentHours <= 0;
+        return (e.nextPMSHours ?? 0) - (e.currentHours ?? 0) <= 0;
     }
     if (e.equipmentType === "Lab Equipment" || e.equipmentType === "Testing Equipment") {
         const nextDate = e.nextCalibrationDate ? new Date(e.nextCalibrationDate) : null;
@@ -155,9 +155,9 @@ export default function Reports() {
     return clients.map(client => {
         const clientInvoices = invoices.filter(i => i.clientId === client.id);
         const clientServices = serviceRecords.filter(s => s.clientId === client.id);
-        const clientEq = equipment.filter(e => e.clientId === client.id);
+        const clientEq = equipment.filter(e => String(e.clientId) === String(client.id));
         const overdueCount = clientEq.filter(e => {
-            if (e.equipmentType === "Heavy Equipment") return e.nextPMSHours - e.currentHours <= 0;
+            if (e.equipmentType === "Heavy Equipment") return (e.nextPMSHours ?? 0) - (e.currentHours ?? 0) <= 0;
             const nextDate = e.nextCalibrationDate ? new Date(e.nextCalibrationDate) : null;
             return nextDate && nextDate <= now;
         }).length;

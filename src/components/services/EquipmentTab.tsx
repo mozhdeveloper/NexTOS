@@ -126,7 +126,7 @@ export function EquipmentTab({
               const worstStatus = computeEquipmentWorstStatus(seedEq);
               const statusDef = seedData.pmsStatuses.find(s => s.value === worstStatus);
               const isSelected = selectedSeedId === seedEq.id;
-              const isHighlighted = storeId !== null && highlightedEquipment === storeId;
+              const isHighlighted = storeId !== null && String(highlightedEquipment) === String(storeId);
 
               // Service history for this equipment (used in expanded panel)
               const rowSeedHistory = (seedServiceRecordsData?.records ?? [])

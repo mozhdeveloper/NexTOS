@@ -4,7 +4,7 @@ import { useOperationsStore } from "@/stores/useOperationsStore";
 import { useBillingStore } from "@/stores/useBillingStore";
 import { useClientPortalStore } from "@/stores/useClientPortalStore";
 import { trpc } from "@/providers/trpc";
-import type { Booking, Package, ServiceType } from "@/types";
+import type { Booking, Package, ServiceCategory, ServiceType } from "@/types";
 import {
   Calendar,
   CalendarDays,
@@ -122,7 +122,7 @@ function isPackageCompatible(pkg: Package, serviceType: ServiceType) {
   return true;
 }
 
-function toServiceCategory(serviceType: ServiceType): Booking["serviceCategory"] {
+function toServiceCategory(serviceType: ServiceType): ServiceCategory {
   if (serviceType === "pms") return "Heavy Equipment PMS";
   if (serviceType === "calibration") return "Calibration PMS";
   if (serviceType === "repair") return "Repair";
@@ -583,7 +583,7 @@ export default function ClientBookings() {
         packageName,
         preferredTechnician: bookingTechnician,
         notes: noteWithStatus,
-      });
+      } as any);
     }
 
     setBookingComplete(true);

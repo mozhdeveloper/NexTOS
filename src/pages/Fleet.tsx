@@ -869,7 +869,7 @@ export default function Fleet() {
   }, []);
 
   const selectedUnit = units.find((u) => u.id === selectedUnitId);
-  const selectedEquipment = equipment.find((e) => e.id === selectedUnit?.equipmentId);
+  const selectedEquipment = equipment.find((e) => String(e.id) === String(selectedUnit?.equipmentId));
   const selectedUnitLabel = selectedEquipment?.unitId || selectedUnit?.unitName || "Unit";
   const selectedSeedDisplay = getSeedDisplayForUnit(selectedUnitLabel);
   const selectedSeedEquipment = getSeedEquipmentForUnit(selectedUnitLabel);
@@ -911,7 +911,7 @@ export default function Fleet() {
       phone: "",
       status: "active",
       address: "",
-      city: c.location ?? "",
+      city: (c as any).location ?? c.address ?? "",
       country: "",
       contractValue: 0,
       lastContact: new Date().toISOString(),
@@ -937,7 +937,7 @@ export default function Fleet() {
     for (const bu of seedBackfillUnits) {
       const bLabel = (bu.unitName || "").toUpperCase().split(" ")[0];
       const exists = displayUnits.some((u) => {
-        const uEq = equipment.find((e) => e.id === u.equipmentId);
+        const uEq = equipment.find((e) => String(e.id) === String(u.equipmentId));
         const rawLabel = (uEq?.unitId || u.unitName || "") as string;
         const lookup = rawLabel.toUpperCase().split(" ")[0];
         const displayName = (gpsNameMapping[lookup] || gpsNameMapping[rawLabel.toUpperCase()] || uEq?.unitId || u.unitName || "") as string;
@@ -948,7 +948,7 @@ export default function Fleet() {
     }
 
     const getMappedGpsNumber = (u: typeof displayUnits[0]) => {
-      const eq = equipment.find((e) => e.id === u.equipmentId);
+      const eq = equipment.find((e) => String(e.id) === String(u.equipmentId));
       const unitLabelText = (eq?.unitId || u.unitName || "").toUpperCase();
       const lookup = unitLabelText.split(" ")[0].trim();
       const mapped = gpsNameMapping[lookup] || gpsNameMapping[unitLabelText] || null;
@@ -974,7 +974,7 @@ export default function Fleet() {
     // Deduplicate: when two units resolve to the same display name, keep the one with seed data
     const seenDisplayNames = new Set<string>();
     return sorted.filter((u) => {
-      const uEq = equipment.find((e) => e.id === u.equipmentId);
+      const uEq = equipment.find((e) => String(e.id) === String(u.equipmentId));
       const rawLabel = (uEq?.unitId || u.unitName || "").toUpperCase();
       const lookup = rawLabel.split(" ")[0].trim();
       const displayName = (gpsNameMapping[lookup] || gpsNameMapping[rawLabel] || uEq?.unitId || u.unitName || "").toUpperCase().split(" ")[0];
@@ -1250,6 +1250,7 @@ export default function Fleet() {
     if (!Array.isArray(seedData?.equipment)) return;
 
     const excavatorEntry = seedData.equipment.find((equipment: any) => equipment.id === "EQ-001");
+    if (!excavatorEntry) return;
     const excavatorConfigs = getPmsConfigs(excavatorEntry);
     if (excavatorConfigs.length === 0) return;
     if (gps001TotalHoursValue === null || gps001TotalHoursValue <= 0) return;
@@ -1281,7 +1282,7 @@ export default function Fleet() {
       }
       if (achievedMilestone <= previousMilestone) return;
 
-      const intervalUnitDisplay = intervalUnitLower === "km" ? "Km" : intervalUnit;
+      const intervalUnitDisplay = (intervalUnitLower as string) === "km" ? "Km" : intervalUnit;
       const serviceType =
         typeof pmsConfig?.serviceType === "string" && pmsConfig.serviceType.trim().length > 0
           ? pmsConfig.serviceType
@@ -2156,7 +2157,7 @@ export default function Fleet() {
                     if (isGps001Unit(unit) && hideGps001Pin) return false;
                     return true;
                   }).map((unit) => {
-                    const eq = equipment.find((entry) => entry.id === unit.equipmentId);
+                    const eq = equipment.find((entry) => String(entry.id) === String(unit.equipmentId));
                     const unitLabelText = eq?.unitId || unit.unitName || "";
                     const seedDisplay = getSeedDisplayForUnit(unitLabelText);
 
@@ -2459,8 +2460,8 @@ export default function Fleet() {
 
             <div className="divide-y divide-gray-100 dark:divide-white/5">
                 {sortedUnits.map((unit) => {
-                const eq = equipment.find((e) => e.id === unit.equipmentId);
-                const client = clients.find((c) => c.id === eq?.clientId);
+                const eq = equipment.find((e) => String(e.id) === String(unit.equipmentId));
+                const client = clients.find((c) => String(c.id) === String(eq?.clientId));
                 const isSelected = selectedUnitId === unit.id;
                 const unitLabelText = eq?.unitId || unit.unitName || "";
                 const unitLabel = unitLabelText.toUpperCase();
@@ -2625,7 +2626,7 @@ export default function Fleet() {
                               className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-gray-700 dark:text-[#EAEAEA] hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
                               onClick={() => {
                                 setOpenCardMenuId(null);
-                                const eqEntry = equipment.find((e) => e.id === unit.equipmentId);
+                                const eqEntry = equipment.find((e) => String(e.id) === String(unit.equipmentId));
                                 let modalEq: ModalEquipment | null = null;
                                 if (displayEquipmentName) {
                                   const seedEntry = seedData.equipment.find((s) => s.name === displayEquipmentName);
@@ -2647,7 +2648,7 @@ export default function Fleet() {
                                     id: String(eqEntry.id),
                                     name: eqEntry.type || eqEntry.unitId || unit.unitName || "",
                                     type: eqEntry.equipmentType || "",
-                                    clientId: eqEntry.clientId || 0,
+                                    clientId: Number(String(eqEntry.clientId).replace(/\D/g, "")) || 0,
                                     serialNumber: eqEntry.serialNumber || "",
                                     image: (eqEntry as any)?.image,
                                     notes: "",

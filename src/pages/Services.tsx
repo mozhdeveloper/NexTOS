@@ -1404,7 +1404,7 @@ export default function Services() {
         {activeTab === "dashboard" && (
           <DashboardTab
             activeTasks={activeTasks}
-            allScheduledMaintenance={allScheduledMaintenance}
+            allScheduledMaintenance={allScheduledMaintenance as any}
             serviceRecords={allServiceRecords}
             onViewReport={(r) => setShowReport(r as any)}
             onSetActiveTab={setActiveTab}

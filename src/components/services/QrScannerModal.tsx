@@ -62,7 +62,7 @@ export function QrScannerModal({ open, onClose, onScanSuccess }: QrScannerModalP
       setScanning(false);
       if (scannerRef.current) {
         scannerRef.current.stop().catch(console.error);
-        scannerRef.current.clear().catch(console.error);
+        (scannerRef.current.clear() as any)?.catch?.(console.error);
         scannerRef.current = null;
       }
     }, 5000);

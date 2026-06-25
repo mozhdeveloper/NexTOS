@@ -142,6 +142,7 @@ export const invoices = mysqlTable("invoices", {
 });
 
 export type User = typeof users.$inferSelect;
+export type InsertUser = typeof users.$inferInsert;
 export type Equipment = typeof equipment.$inferSelect;
 export type ServiceRecord = typeof serviceRecords.$inferSelect;
 export type Booking = typeof bookings.$inferSelect;

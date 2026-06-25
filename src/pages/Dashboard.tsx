@@ -119,7 +119,7 @@ export default function Dashboard() {
   ];
 
   const pieData = [
-    { name: "On-Time", value: tasks.filter((t) => t.status === "pending" || t.status === "in_progress").length, color: "#10B981" },
+    { name: "On-Time", value: tasks.filter((t) => t.status === "upcoming" || t.status === "due_soon" || t.status === "due_today").length, color: "#10B981" },
     { name: "Completed", value: tasks.filter((t) => t.status === "completed").length, color: "#66B2B2" },
     { name: "Overdue", value: getOverdueTasks().length, color: "#EF4444" },
   ];
@@ -398,7 +398,7 @@ export default function Dashboard() {
       {/* Fleet Status Row */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-3">
         {units.slice(0, 5).map((unit) => {
-          const eq = equipment.find(e => e.id === unit.equipmentId);
+          const eq = equipment.find(e => String(e.id) === String(unit.equipmentId));
           return (
             <div key={unit.id} className="data-card p-3 relative overflow-hidden group">
               {unit.serviceDue && <div className="absolute top-0 right-0 w-8 h-8 bg-red-500/10 rounded-bl-full flex items-center justify-center"><AlertTriangle className="w-3 h-3 text-red-500" /></div>}

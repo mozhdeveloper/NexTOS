@@ -5,6 +5,7 @@ import { useBillingStore } from "@/stores/useBillingStore";
 import { useClientPortalStore } from "@/stores/useClientPortalStore";
 import seedData from "@/data/seed-data.json";
 import { computePmsStatusFromRemaining } from "@/lib/pms-status";
+import type { Equipment } from "@/types";
 import {
   ResponsiveContainer,
   BarChart,
@@ -67,7 +68,7 @@ export default function ClientReports() {
   
   const parseH = (t?: string) => { const m = String(t ?? "").match(/(\d+)\s*h/i); return m ? Number(m[1]) : 0; };
   const getRemaining = (e: Equipment) => {
-    const cfg = e.pmsConfiguration?.find(c => c.serviceIntervalUnit?.toLowerCase() === "hours");
+    const cfg = e.pmsConfiguration?.find((c: any) => c.serviceIntervalUnit?.toLowerCase() === "hours");
     if (!cfg) return null;
     const cur = parseH(e.hoursTotal);
     return (Math.floor(cur / cfg.serviceInterval) + 1) * cfg.serviceInterval - cur;

@@ -357,8 +357,8 @@ export function ExecutionModal({
     useEffect(() => {
         return () => {
             if (scannerRef.current) {
-                try { const s = scannerRef.current.stop(); if (s && typeof (s as any).catch === "function") (s as any).catch(() => {}); } catch {}
-                try { const c = scannerRef.current.clear(); if (c && typeof (c as any).catch === "function") (c as any).catch(() => {}); } catch {}
+                try { const s = scannerRef.current.stop() as unknown; if (s && typeof (s as any).catch === "function") (s as any).catch(() => {}); } catch {}
+                try { const c = scannerRef.current.clear() as unknown; if (c && typeof (c as any).catch === "function") (c as any).catch(() => {}); } catch {}
             }
         };
     }, []);
